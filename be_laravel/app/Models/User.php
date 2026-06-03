@@ -6,11 +6,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use App\Models\Order; // <-- TAMBAHKAN BARIS INI
+use Laravel\Sanctum\HasApiTokens; // <-- PENAMBAHAN 1: Import HasApiTokens
+use App\Models\Order; 
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable; // <-- PENAMBAHAN 2: Tambahkan HasApiTokens di sini
 
     /**
      * The attributes that are mass assignable.
@@ -62,7 +63,6 @@ class User extends Authenticatable
         return $this->hasMany(Address::class);
     }
 
-    // <-- TAMBAHKAN FUNGSI INI
     public function orders()
     {
         return $this->hasMany(Order::class);
