@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ApiProductController;
 use App\Http\Controllers\Api\ApiCartController;
 use App\Http\Controllers\Api\ApiCheckoutController;
 use App\Http\Controllers\Api\ApiOrderController;
+use App\Http\Controllers\Api\ApiRajaOngkirController;
 
 // Rute Publik (Tanpa Token)
 Route::post('/register', [ApiAuthController::class, 'register']);
@@ -31,4 +32,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // RUTE RIWAYAT PESANAN
     Route::get('/orders', [ApiOrderController::class, 'index']);
+
+    Route::get('/rajaongkir/provinces', [ApiRajaOngkirController::class, 'getProvinces']);
+    Route::get('/rajaongkir/cities/{provinceId}', [ApiRajaOngkirController::class, 'getCities']);
+    Route::post('/rajaongkir/cost', [ApiRajaOngkirController::class, 'checkCost']);
 });

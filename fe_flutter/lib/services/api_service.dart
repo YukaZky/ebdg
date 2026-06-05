@@ -7,23 +7,35 @@ class ApiService {
   static const String baseUrl = "http://127.0.0.1:8000/api";
   static String? _token;
 
-  // Fungsi Login
-  static Future<bool> login(String email, String password) async {
-    final response = await http.post(
-      Uri.parse("$baseUrl/login"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"email": email, "password": password}),
-    );
+  // Ambil Token yang tersimpan
+  static String? get token => _token;
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      _token = data['access_token'];
-      return true;
+  // ==========================================
+  // FUNGSI AUTENTIKASI
+  // ==========================================
+  static Future<bool> login(String email, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/login"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"email": email, "password": password}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        _token = data['access_token'];
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print("Error Login: $e");
+      return false;
     }
-    return false;
   }
 
-  // Fungsi Mengambil Daftar Produk
+  // ==========================================
+  // FUNGSI PRODUK
+  // ==========================================
   static Future<List<Product>> getProducts() async {
     final response = await http.get(Uri.parse("$baseUrl/products"));
 
@@ -35,12 +47,7 @@ class ApiService {
       throw Exception("Gagal memuat produk");
     }
   }
-  // ... (kode fungsi getProducts & login sebelumnya)
 
-  // Ambil Token yang tersimpan
-  static String? get token => _token;
-
-  // Fungsi Mengambil Detail Produk
   static Future<Product?> getProductDetails(String slug) async {
     final response = await http.get(Uri.parse("$baseUrl/products/$slug"));
     if (response.statusCode == 200) {
@@ -50,7 +57,9 @@ class ApiService {
     return null;
   }
 
-  // Fungsi Tambah ke Keranjang
+  // ==========================================
+  // FUNGSI KERANJANG
+  // ==========================================
   static Future<bool> addToCart(int productId, int quantity) async {
     if (_token == null) return false;
 
@@ -69,7 +78,6 @@ class ApiService {
     return response.statusCode == 200;
   }
 
-  // Fungsi Ambil Keranjang
   static Future<Map<String, dynamic>> getCart() async {
     if (_token == null) throw Exception("Belum login");
 
@@ -87,30 +95,10 @@ class ApiService {
       throw Exception("Gagal memuat keranjang");
     }
   }
-  // Fungsi Checkout
-  static Future<String?> checkout(String address, String phone) async {
-    if (_token == null) throw Exception("Belum login");
 
-    final response = await http.post(
-      Uri.parse("$baseUrl/checkout"),
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $_token"
-      },
-      body: jsonEncode({
-        "address": address,
-        "phone": phone
-      }),
-    );
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['payment_url']; // Mengembalikan URL pembayaran Midtrans
-    } else {
-      return null;
-    }
-  }
-  // Fungsi Mengambil Riwayat Pesanan
+  // ==========================================
+  // FUNGSI RIWAYAT PESANAN
+  // ==========================================
   static Future<List<dynamic>> getOrders() async {
     if (_token == null) throw Exception("Belum login");
 
@@ -127,6 +115,77 @@ class ApiService {
       return data['data'];
     } else {
       throw Exception("Gagal memuat riwayat pesanan");
+    }
+  }
+
+  // ==========================================
+  // FUNGSI RAJAONGKIR
+  // ==========================================
+  static Future<List<dynamic>> getProvinces() async {
+    if (_token == null) return [];
+    
+    final response = await http.get(
+      Uri.parse("$baseUrl/rajaongkir/provinces"),
+      headers: {"Authorization": "Bearer $_token"}
+    );
+    return response.statusCode == 200 ? jsonDecode(response.body) : [];
+  }
+
+  static Future<List<dynamic>> getCities(String provinceId) async {
+    if (_token == null) return [];
+
+    final response = await http.get(
+      Uri.parse("$baseUrl/rajaongkir/cities/$provinceId"),
+      headers: {"Authorization": "Bearer $_token"}
+    );
+    return response.statusCode == 200 ? jsonDecode(response.body) : [];
+  }
+
+  static Future<List<dynamic>> checkCost(String destinationCityId, int weight, String courier) async {
+    if (_token == null) return [];
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/rajaongkir/cost"),
+      headers: {
+        "Content-Type": "application/json", 
+        "Authorization": "Bearer $_token"
+      },
+      body: jsonEncode({
+        "destination": destinationCityId,
+        "weight": weight,
+        "courier": courier,
+      }),
+    );
+    return response.statusCode == 200 ? jsonDecode(response.body) : [];
+  }
+
+  // ==========================================
+  // FUNGSI CHECKOUT TERBARU (Menggunakan RajaOngkir)
+  // ==========================================
+  static Future<String?> checkout(String address, String phone, String provinceName, String cityName, String courier, double shippingCost) async {
+    if (_token == null) throw Exception("Belum login");
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/checkout"),
+      headers: {
+        "Content-Type": "application/json", 
+        "Authorization": "Bearer $_token"
+      },
+      body: jsonEncode({
+        "address": address, 
+        "phone": phone,
+        "province_name": provinceName, 
+        "city_name": cityName,
+        "courier": courier, 
+        "shipping_cost": shippingCost
+      }),
+    );
+    
+    if (response.statusCode == 200) {
+       return jsonDecode(response.body)['payment_url'];
+    } else {
+       print("Gagal Checkout: ${response.body}");
+       return null;
     }
   }
 }

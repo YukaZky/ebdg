@@ -15,10 +15,14 @@ class ApiCheckoutController extends Controller
 {
     public function process(Request $request)
     {
-        // Validasi data pengiriman dari Flutter
+        // Validasi data pengiriman dari Flutter termasuk data RajaOngkir
         $request->validate([
             'address' => 'required|string',
             'phone' => 'required|string',
+            'province_name' => 'required|string',
+            'city_name' => 'required|string',
+            'courier' => 'required|string',
+            'shipping_cost' => 'required|numeric',
         ]);
 
         $user = $request->user();
@@ -30,11 +34,14 @@ class ApiCheckoutController extends Controller
             return response()->json(['success' => false, 'message' => 'Keranjang kosong'], 400);
         }
 
-        // 2. Hitung Total Harga
+        // 2. Hitung Total Harga Keranjang (Subtotal)
         $totalPrice = 0;
         foreach ($cartItems as $item) {
             $totalPrice += $item->product->regular_price * $item->quantity;
         }
+
+        // Total Akhir = Subtotal Barang + Ongkos Kirim
+        $grandTotal = $totalPrice + $request->shipping_cost;
 
         // 3. Buat Data Pesanan (Order)
         $order = Order::create([
@@ -42,13 +49,13 @@ class ApiCheckoutController extends Controller
             'subtotal' => $totalPrice,
             'discount' => 0,
             'tax' => 0,
-            'total' => $totalPrice,
+            'total' => $grandTotal, // Menyimpan total keseluruhan beserta ongkos kirim
             'name' => $user->name,
             'phone' => $request->phone,
-            'locality' => 'Mobile Checkout', 
+            'locality' => $request->courier, // Menyimpan nama kurir (jne, pos, tiki)
             'address' => $request->address,
-            'city' => 'Semarang', // Sementara di-hardcode, tahap selanjutnya bisa diintegrasikan dengan API RajaOngkir Anda
-            'state' => 'Jawa Tengah',
+            'city' => $request->city_name, // Menyimpan nama kota dari RajaOngkir
+            'state' => $request->province_name, // Menyimpan nama provinsi dari RajaOngkir
             'country' => 'Indonesia',
             'landmark' => '',
             'zip' => '',
@@ -81,7 +88,7 @@ class ApiCheckoutController extends Controller
         $params = [
             'transaction_details' => [
                 'order_id' => 'ORD-' . $order->id . '-' . time(),
-                'gross_amount' => $totalPrice,
+                'gross_amount' => $grandTotal, // Midtrans akan menagih sejumlah Harga Barang + Ongkir
             ],
             'customer_details' => [
                 'first_name' => $user->name,
