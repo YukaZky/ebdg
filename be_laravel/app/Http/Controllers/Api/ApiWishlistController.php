@@ -9,54 +9,39 @@ use Illuminate\Support\Facades\Auth;
 
 class ApiWishlistController extends Controller
 {
-    // Mengambil daftar wishlist user
     public function index()
     {
         $items = Wishlist::with('product')
             ->where('user_id', Auth::id())
             ->orderBy('created_at', 'desc')
             ->get();
-            
-        return response()->json([
-            'status' => 'success',
-            'data' => $items
-        ], 200);
+        return response()->json(['status' => 'success', 'data' => $items]);
     }
 
-    // Menambahkan produk ke wishlist
     public function add(Request $request)
     {
-        $request->validate([
-            'product_id' => 'required|exists:products,id'
-        ]);
+        $request->validate(['product_id' => 'required|exists:products,id']);
 
         Wishlist::firstOrCreate([
             'user_id' => Auth::id(),
             'product_id' => $request->product_id,
         ]);
 
-        $wishlistCount = Wishlist::where('user_id', Auth::id())->count();
-
         return response()->json([
-            'status' => 'success',
-            'message' => 'Produk berhasil ditambahkan ke wishlist.',
-            'count' => $wishlistCount
-        ], 200);
+            'status' => 'success', 
+            'message' => 'Produk ditambahkan ke wishlist'
+        ]);
     }
 
-    // Menghapus produk dari wishlist
     public function remove($product_id)
     {
         Wishlist::where('user_id', Auth::id())
             ->where('product_id', $product_id)
             ->delete();
 
-        $wishlistCount = Wishlist::where('user_id', Auth::id())->count();
-
         return response()->json([
-            'status' => 'success',
-            'message' => 'Produk berhasil dihapus dari wishlist.',
-            'count' => $wishlistCount
-        ], 200);
+            'status' => 'success', 
+            'message' => 'Produk dihapus dari wishlist'
+        ]);
     }
 }

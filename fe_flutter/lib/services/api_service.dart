@@ -193,7 +193,6 @@ class ApiService {
   // FUNGSI WISHLIST
   // ==========================================
 
-  // Mengambil daftar wishlist
   static Future<List<Product>> getWishlist() async {
     if (_token == null) return [];
     
@@ -207,14 +206,15 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = jsonDecode(response.body);
-      List<dynamic> wishlistData = data['data'] ?? []; 
-      return wishlistData.map((json) => Product.fromJson(json)).toList();
+      List<dynamic> wishlistData = data['data'] ?? [];
+      
+      // PERBAIKAN: Mengambil data 'product' dari objek wishlist
+      return wishlistData.map((item) => Product.fromJson(item['product'])).toList();
     } else {
       return [];
     }
   }
 
-  // Menambahkan produk ke wishlist
   static Future<bool> addToWishlist(int productId) async {
     if (_token == null) return false;
 
@@ -231,7 +231,6 @@ class ApiService {
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
-  // Menghapus produk dari wishlist
   static Future<bool> removeFromWishlist(int productId) async {
     if (_token == null) return false;
 
