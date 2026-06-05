@@ -35,8 +35,10 @@ class _MainScreenState extends State<MainScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
-        selectedItemColor: Colors.blue,
-        unselectedItemColor: Colors.grey,
+        // --- MENGUBAH WARNA TOMBOL DI SINI ---
+        selectedItemColor: const Color(0xFFF7B602), // Warna saat di-klik (Kuning/Oranye)
+        unselectedItemColor: const Color(0xFF05254F), // Warna saat belum di-klik (Biru Gelap)
+        backgroundColor: Colors.white, // Background bar (bisa diubah jika perlu)
         type: BottomNavigationBarType.fixed, // Memastikan ke-4 tombol muat dengan proporsional
         items: const [
           BottomNavigationBarItem(
@@ -53,7 +55,7 @@ class _MainScreenState extends State<MainScreen> {
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person),
-            label: 'Akun', // Tombol baru di sebelah kanan pesanan
+            label: 'Akun',
           ),
         ],
       ),

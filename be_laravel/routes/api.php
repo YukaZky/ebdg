@@ -36,4 +36,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/rajaongkir/provinces', [ApiRajaOngkirController::class, 'getProvinces']);
     Route::get('/rajaongkir/cities/{provinceId}', [ApiRajaOngkirController::class, 'getCities']);
     Route::post('/rajaongkir/cost', [ApiRajaOngkirController::class, 'checkCost']);
+
+    Route::get('/wishlist', [\App\Http\Controllers\WishlistController::class, 'index']);
+    Route::post('/wishlist/add', [\App\Http\Controllers\WishlistController::class, 'store']);
+    Route::delete('/wishlist/remove/{productId}', [\App\Http\Controllers\WishlistController::class, 'destroy']);
 });

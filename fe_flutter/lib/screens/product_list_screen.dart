@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/product_model.dart';
 import '../services/api_service.dart';
 import 'product_detail_screen.dart';
-import 'wishlist_screen.dart'; // Import halaman wishlist baru
+import 'wishlist_screen.dart'; 
 
 class ProductListScreen extends StatefulWidget {
   const ProductListScreen({Key? key}) : super(key: key);
@@ -30,13 +30,24 @@ class _ProductListScreenState extends State<ProductListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         titleSpacing: 16,
+        
+        // --- MENGGUNAKAN GAMBAR SEBAGAI BACKGROUND APPBAR ---
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage('assets/appbar.png'), 
+              fit: BoxFit.cover, 
+            ),
+          ),
+        ),
+
         title: Container(
           height: 45,
           decoration: BoxDecoration(
-            color: Colors.grey.shade100,
+            color: Colors.white.withOpacity(0.95),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.grey.shade300),
           ),
@@ -54,9 +65,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
           ),
         ),
         actions: [
-          // TOMBOL WISHLIST (LOVE) BARU
+          // TOMBOL WISHLIST (LOVE)
           IconButton(
-            icon: const Icon(Icons.favorite_border, color: Colors.black87, size: 28),
+            icon: const Icon(Icons.favorite_border, color: Colors.white, size: 28),
             onPressed: () {
               // Jika user belum login, ingatkan untuk login. Jika sudah, arahkan ke WishlistScreen.
               if (ApiService.token == null) {
@@ -73,7 +84,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
           ),
           // TOMBOL NOTIFIKASI
           IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.black87, size: 28),
+            icon: const Icon(Icons.notifications_none, color: Colors.white, size: 28),
             onPressed: () {
               // Fungsi notifikasi Anda di sini
             },
