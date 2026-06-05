@@ -27,10 +27,29 @@ class ApiService {
         return true;
       }
       return false;
-    } catch (e) {
+    } 
+    catch (e) {
       print("Error Login: $e");
       return false;
     }
+  }
+  // Fungsi Register
+  static Future<bool> register(String name, String email, String password, String passwordConfirmation) async {
+    final response = await http.post(
+      Uri.parse("$baseUrl/register"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "name": name,
+        "email": email,
+        "password": password,
+        "password_confirmation": passwordConfirmation
+      }),
+    );
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return true;
+    }
+    return false;
   }
 
   // ==========================================
@@ -95,6 +114,20 @@ class ApiService {
       throw Exception("Gagal memuat keranjang");
     }
   }
+  // Fungsi Hapus Item Keranjang
+  static Future<bool> removeFromCart(int id) async {
+    if (_token == null) return false;
+
+    final response = await http.delete(
+      Uri.parse("$baseUrl/cart/remove/$id"),
+      headers: {
+        "Accept": "application/json",
+        "Authorization": "Bearer $_token"
+      },
+    );
+
+    return response.statusCode == 200;
+  }
 
   // ==========================================
   // FUNGSI RIWAYAT PESANAN
@@ -116,6 +149,42 @@ class ApiService {
     } else {
       throw Exception("Gagal memuat riwayat pesanan");
     }
+  }
+  // Fungsi Mengambil User Profile
+  static Future<Map<String, dynamic>?> getUserProfile() async {
+    if (_token == null) return null;
+
+    final response = await http.get(
+      Uri.parse("$baseUrl/user-profile"),
+      headers: {
+        "Accept": "application/json",
+        "Authorization": "Bearer $_token"
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return null;
+  }
+
+  // Fungsi Logout
+  static Future<bool> logout() async {
+    if (_token == null) return false;
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/logout"),
+      headers: {
+        "Accept": "application/json",
+        "Authorization": "Bearer $_token"
+      },
+    );
+
+    if (response.statusCode == 200) {
+      _token = null; // Hapus token dari memory
+      return true;
+    }
+    return false;
   }
 
   // ==========================================
