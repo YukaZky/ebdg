@@ -27,12 +27,12 @@ class ApiService {
         return true;
       }
       return false;
-    } 
-    catch (e) {
+    } catch (e) {
       print("Error Login: $e");
       return false;
     }
   }
+
   // Fungsi Register
   static Future<bool> register(String name, String email, String password, String passwordConfirmation) async {
     final response = await http.post(
@@ -114,6 +114,7 @@ class ApiService {
       throw Exception("Gagal memuat keranjang");
     }
   }
+
   // Fungsi Hapus Item Keranjang
   static Future<bool> removeFromCart(int id) async {
     if (_token == null) return false;
@@ -150,6 +151,7 @@ class ApiService {
       throw Exception("Gagal memuat riwayat pesanan");
     }
   }
+
   // Fungsi Mengambil User Profile
   static Future<Map<String, dynamic>?> getUserProfile() async {
     if (_token == null) return null;
@@ -185,6 +187,63 @@ class ApiService {
       return true;
     }
     return false;
+  }
+
+  // ==========================================
+  // FUNGSI WISHLIST
+  // ==========================================
+
+  // Mengambil daftar wishlist
+  static Future<List<Product>> getWishlist() async {
+    if (_token == null) return [];
+    
+    final response = await http.get(
+      Uri.parse("$baseUrl/wishlist"),
+      headers: {
+        "Accept": "application/json",
+        "Authorization": "Bearer $_token"
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = jsonDecode(response.body);
+      List<dynamic> wishlistData = data['data'] ?? []; 
+      return wishlistData.map((json) => Product.fromJson(json)).toList();
+    } else {
+      return [];
+    }
+  }
+
+  // Menambahkan produk ke wishlist
+  static Future<bool> addToWishlist(int productId) async {
+    if (_token == null) return false;
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/wishlist/add"),
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": "Bearer $_token"
+      },
+      body: jsonEncode({"product_id": productId}),
+    );
+
+    return response.statusCode == 200 || response.statusCode == 201;
+  }
+
+  // Menghapus produk dari wishlist
+  static Future<bool> removeFromWishlist(int productId) async {
+    if (_token == null) return false;
+
+    final response = await http.delete(
+      Uri.parse("$baseUrl/wishlist/remove/$productId"),
+      headers: {
+        "Accept": "application/json",
+        "Authorization": "Bearer $_token"
+      },
+    );
+
+    return response.statusCode == 200;
   }
 
   // ==========================================
