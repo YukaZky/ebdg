@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\ApiCartController;
 use App\Http\Controllers\Api\ApiCheckoutController;
 use App\Http\Controllers\Api\ApiOrderController;
 use App\Http\Controllers\Api\ApiRajaOngkirController;
+use App\Http\Controllers\Api\ApiWishlistController;
 
 // Rute Publik (Tanpa Token)
 Route::post('/register', [ApiAuthController::class, 'register']);
@@ -33,6 +34,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // RUTE RIWAYAT PESANAN
     Route::get('/orders', [ApiOrderController::class, 'index']);
 
+    Route::get('/wishlist', [ApiWishlistController::class, 'index']);
+    Route::post('/wishlist/add', [ApiWishlistController::class, 'add']);
+    Route::delete('/wishlist/remove/{product_id}', [ApiWishlistController::class, 'remove']);
+
     Route::get('/rajaongkir/provinces', [ApiRajaOngkirController::class, 'getProvinces']);
     Route::get('/rajaongkir/cities/{provinceId}', [ApiRajaOngkirController::class, 'getCities']);
     Route::post('/rajaongkir/cost', [ApiRajaOngkirController::class, 'checkCost']);
@@ -40,4 +45,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/wishlist', [\App\Http\Controllers\WishlistController::class, 'index']);
     Route::post('/wishlist/add', [\App\Http\Controllers\WishlistController::class, 'store']);
     Route::delete('/wishlist/remove/{productId}', [\App\Http\Controllers\WishlistController::class, 'destroy']);
+
+    
 });
