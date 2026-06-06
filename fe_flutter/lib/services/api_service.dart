@@ -3,11 +3,9 @@ import 'package:http/http.dart' as http;
 import '../models/product_model.dart';
 
 class ApiService {
-  // Ganti dengan domain production Anda atau IP 10.0.2.2 jika menggunakan emulator Android lokal
   static const String baseUrl = "http://127.0.0.1:8000/api";
   static String? _token;
 
-  // Ambil Token yang tersimpan
   static String? get token => _token;
 
   // ==========================================
@@ -33,7 +31,6 @@ class ApiService {
     }
   }
 
-  // Fungsi Register
   static Future<bool> register(String name, String email, String password, String passwordConfirmation) async {
     final response = await http.post(
       Uri.parse("$baseUrl/register"),
@@ -115,7 +112,6 @@ class ApiService {
     }
   }
 
-  // Fungsi Hapus Item Keranjang
   static Future<bool> removeFromCart(int id) async {
     if (_token == null) return false;
 
@@ -152,7 +148,6 @@ class ApiService {
     }
   }
 
-  // Fungsi Mengambil User Profile
   static Future<Map<String, dynamic>?> getUserProfile() async {
     if (_token == null) return null;
 
@@ -170,7 +165,6 @@ class ApiService {
     return null;
   }
 
-  // Fungsi Logout
   static Future<bool> logout() async {
     if (_token == null) return false;
 
@@ -183,7 +177,7 @@ class ApiService {
     );
 
     if (response.statusCode == 200) {
-      _token = null; // Hapus token dari memory
+      _token = null; 
       return true;
     }
     return false;
@@ -192,7 +186,6 @@ class ApiService {
   // ==========================================
   // FUNGSI WISHLIST
   // ==========================================
-
   static Future<List<Product>> getWishlist() async {
     if (_token == null) return [];
     
@@ -208,7 +201,6 @@ class ApiService {
       final Map<String, dynamic> data = jsonDecode(response.body);
       List<dynamic> wishlistData = data['data'] ?? [];
       
-      // PERBAIKAN: Mengambil data 'product' dari objek wishlist
       return wishlistData.map((item) => Product.fromJson(item['product'])).toList();
     } else {
       return [];
@@ -286,9 +278,6 @@ class ApiService {
     return response.statusCode == 200 ? jsonDecode(response.body) : [];
   }
 
-  // ==========================================
-  // FUNGSI CHECKOUT TERBARU (Menggunakan RajaOngkir)
-  // ==========================================
   static Future<String?> checkout(String address, String phone, String provinceName, String cityName, String courier, double shippingCost) async {
     if (_token == null) throw Exception("Belum login");
 
@@ -314,5 +303,86 @@ class ApiService {
        print("Gagal Checkout: ${response.body}");
        return null;
     }
+  }
+
+  // ==========================================
+  // FUNGSI ADMIN PANEL (TOKO SAYA)
+  // ==========================================
+
+  // Ambil Data Statistik Dashboard Admin
+  static Future<Map<String, dynamic>?> getAdminDashboardStats() async {
+    if (_token == null) return null;
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/admin/dashboard"),
+        headers: {
+          "Accept": "application/json",
+          "Authorization": "Bearer $_token"
+        },
+      );
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      print("Admin Error: $e");
+    }
+    return null;
+  }
+
+  // Ambil Semua Produk Admin
+  static Future<List<dynamic>> getAdminProducts() async {
+    if (_token == null) return [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/products"), headers: {"Authorization": "Bearer $_token"});
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
+    return [];
+  }
+
+  // Tambah Produk Baru
+  static Future<bool> addAdminProduct(Map<String, dynamic> productData) async {
+    if (_token == null) return false;
+    final response = await http.post(
+      Uri.parse("$baseUrl/admin/products/store"),
+      headers: {"Content-Type": "application/json", "Authorization": "Bearer $_token"},
+      body: jsonEncode(productData),
+    );
+    return response.statusCode == 201;
+  }
+
+  // Hapus Produk
+  static Future<bool> deleteAdminProduct(int id) async {
+    if (_token == null) return false;
+    final response = await http.delete(Uri.parse("$baseUrl/admin/products/delete/$id"), headers: {"Authorization": "Bearer $_token"});
+    return response.statusCode == 200;
+  }
+
+  // Ambil Semua Pesanan Masuk
+  static Future<List<dynamic>> getAdminOrders() async {
+    if (_token == null) return [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/orders"), headers: {"Authorization": "Bearer $_token"});
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
+    return [];
+  }
+
+  // Update Status Pesanan (ordered, delivered, canceled)
+  static Future<bool> updateAdminOrderStatus(int orderId, String status) async {
+    if (_token == null) return false;
+    final response = await http.put(
+      Uri.parse("$baseUrl/admin/orders/update-status/$orderId"),
+      headers: {"Content-Type": "application/json", "Authorization": "Bearer $_token"},
+      body: jsonEncode({"status": status}),
+    );
+    return response.statusCode == 200;
+  }
+
+  // Ambil Kupon Diskon
+  static Future<List<dynamic>> getAdminCoupons() async {
+    if (_token == null) return [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/coupons"), headers: {"Authorization": "Bearer $_token"});
+    return response.statusCode == 200 ? jsonDecode(response.body)['data'] : [];
+  }
+
+  // Ambil Pesan Masuk (Kontak)
+  static Future<List<dynamic>> getAdminContacts() async {
+    if (_token == null) return [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/contacts"), headers: {"Authorization": "Bearer $_token"});
+    return response.statusCode == 200 ? jsonDecode(response.body)['data'] : [];
   }
 }

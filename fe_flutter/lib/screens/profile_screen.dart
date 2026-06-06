@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'register_screen.dart';
+import 'admin/admin_dashboard_screen.dart'; // Import screen admin baru
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -25,7 +26,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // Mengambil data profil dari backend Laravel jika token ada
   Future<void> _fetchProfile() async {
     setState(() => isLoading = true);
     try {
@@ -39,7 +39,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // Proses autentikasi login langsung dari dalam Tab
   Future<void> _handleLogin() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -58,15 +57,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
       _emailController.clear();
       _passwordController.clear();
-      _fetchProfile(); // Segera ambil profil & refresh halaman ke mode Terautentikasi
+      _fetchProfile(); 
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Login Gagal! Akun tidak ditemukan.')),
+        const SnackBar(content: Text('Login Gagal! Akun tidak ditemukan atau kredensial salah.')),
       );
     }
   }
 
-  // Proses logout
   Future<void> _handleLogout() async {
     setState(() => isLoading = true);
     bool success = await ApiService.logout();
@@ -74,7 +72,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (success) {
       setState(() {
-        userProfile = null; // Menghapus data profil di state agar UI kembali ke form login
+        userProfile = null; 
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Berhasil keluar dari akun')),
@@ -88,7 +86,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // KONDISI 1: Jika pengguna belum melakukan login
     if (ApiService.token == null) {
       return Scaffold(
         appBar: AppBar(title: const Text("Masuk ke Akun")),
@@ -143,7 +140,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     context,
                     MaterialPageRoute(builder: (context) => const RegisterScreen()),
                   ).then((_) {
-                    // Memicu render ulang saat kembali dari RegisterScreen jika diperlukan
                     setState(() {});
                   });
                 },
@@ -155,7 +151,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
-    // KONDISI 2: Jika pengguna sudah login, tampilkan data profilnya
+    // Variabel pengecekan hak akses Admin. 
+    // Sesuaikan parameter 'utype', 'role', atau 'is_admin' dengan skema tabel users di database Laravel Anda.
+    bool isAdmin = false;
+    if (userProfile != null) {
+      isAdmin = userProfile!['is_admin'] == 1 || 
+                userProfile!['utype'] == 'ADM' || 
+                userProfile!['role'] == 'admin';
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text("Profil Pengguna")),
       body: isLoading
@@ -213,6 +217,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                       const SizedBox(height: 40),
+                      
+                      // Jika User adalah Admin, tampilkan Tombol "Toko Saya"
+                      if (isAdmin) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const AdminDashboardScreen()),
+                              );
+                            },
+                            icon: const Icon(Icons.storefront),
+                            label: const Text("Toko Saya (Admin Panel)"),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.indigo,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(

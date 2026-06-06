@@ -8,7 +8,8 @@ use App\Http\Controllers\Api\ApiCartController;
 use App\Http\Controllers\Api\ApiCheckoutController;
 use App\Http\Controllers\Api\ApiOrderController;
 use App\Http\Controllers\Api\ApiRajaOngkirController;
-use App\Http\Controllers\Api\ApiWishlistController; // Gunakan controller khusus API
+use App\Http\Controllers\Api\ApiWishlistController;
+use App\Http\Controllers\Api\ApiAdminController; // Tambahkan controller admin API Anda
 
 Route::post('/register', [ApiAuthController::class, 'register']);
 Route::post('/login', [ApiAuthController::class, 'login']);
@@ -36,4 +37,41 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/rajaongkir/provinces', [ApiRajaOngkirController::class, 'getProvinces']);
     Route::get('/rajaongkir/cities/{provinceId}', [ApiRajaOngkirController::class, 'getCities']);
     Route::post('/rajaongkir/cost', [ApiRajaOngkirController::class, 'checkCost']);
+    
+    // ==========================================
+    // RUTE ADMIN PANEL (Toko Saya) - LENGKAP
+    // ==========================================
+    Route::middleware('admin')->prefix('admin')->group(function () {
+        // Dashboard
+        Route::get('/dashboard', [ApiAdminController::class, 'dashboardStats']);
+
+        // CRUD Produk
+        Route::get('/products', [ApiAdminController::class, 'getProducts']);
+        Route::post('/products/store', [ApiAdminController::class, 'storeProduct']);
+        Route::put('/products/update/{id}', [ApiAdminController::class, 'updateProduct']);
+        Route::delete('/products/delete/{id}', [ApiAdminController::class, 'deleteProduct']);
+
+        // CRUD Kategori & Brand
+        Route::get('/categories', [ApiAdminController::class, 'getCategories']);
+        Route::post('/categories/store', [ApiAdminController::class, 'storeCategory']);
+        Route::get('/brands', [ApiAdminController::class, 'getBrands']);
+        Route::post('/brands/store', [ApiAdminController::class, 'storeBrand']);
+
+        // Manajemen Pesanan & Transaksi
+        Route::get('/orders', [ApiAdminController::class, 'getOrders']);
+        Route::get('/orders/{id}', [ApiAdminController::class, 'getOrderDetail']);
+        Route::put('/orders/update-status/{id}', [ApiAdminController::class, 'updateOrderStatus']);
+
+        // CRUD Kupon Diskon
+        Route::get('/coupons', [ApiAdminController::class, 'getCoupons']);
+        Route::post('/coupons/store', [ApiAdminController::class, 'storeCoupon']);
+        Route::delete('/coupons/delete/{id}', [ApiAdminController::class, 'deleteCoupon']);
+
+        // Slide Banner, Kontak & Pengaturan
+        Route::get('/slides', [ApiAdminController::class, 'getSlides']);
+        Route::get('/contacts', [ApiAdminController::class, 'getContacts']);
+        Route::put('/contacts/read/{id}', [ApiAdminController::class, 'markContactRead']);
+        Route::get('/settings/whatsapp', [ApiAdminController::class, 'getWhatsappSettings']);
+        Route::put('/settings/whatsapp/update', [ApiAdminController::class, 'updateWhatsappSettings']);
+    });
 });
