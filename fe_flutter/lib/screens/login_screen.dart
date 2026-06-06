@@ -41,11 +41,13 @@ class _LoginScreenState extends State<LoginScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-      // Pindah ke MainScreen setelah login berhasil,
-      // akan merender ulang halaman Profil berkat BottomNavigationBar
+      
+      // Mengarahkan kembali ke MainScreen dengan tab indeks ke-3 (Akun/Profil)
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const MainScreen()),
+        MaterialPageRoute(
+          builder: (context) => const MainScreen(initialIndex: 3), // DIUBAH DI SINI
+        ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -61,27 +63,22 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6), // Latar belakang abu muda
+      backgroundColor: const Color(0xFFF3F4F6),
       body: Stack(
         children: [
-          // Background Atas Gradien
           Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
+            top: 0, left: 0, right: 0,
             child: Container(
               height: MediaQuery.of(context).size.height * 0.4,
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)], // Gradien gelap elegan
+                  colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
               ),
             ),
           ),
-          
-          // Konten Utama di Tengah
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -106,8 +103,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                     const SizedBox(height: 32),
-
-                    // Kartu Form Login Mengambang
                     Container(
                       padding: const EdgeInsets.all(28.0),
                       decoration: BoxDecoration(
@@ -129,8 +124,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF2C5364)),
                           ),
                           const SizedBox(height: 24),
-                          
-                          // Input Email
                           TextField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
@@ -141,8 +134,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           const SizedBox(height: 20),
-
-                          // Input Password
                           TextField(
                             controller: _passwordController,
                             obscureText: !_isPasswordVisible,
@@ -161,8 +152,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
-
-                          // Lupa Password
                           Align(
                             alignment: Alignment.centerRight,
                             child: TextButton(
@@ -171,8 +160,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           const SizedBox(height: 16),
-
-                          // Tombol Login
                           SizedBox(
                             height: 50,
                             child: isLoggingIn
@@ -191,8 +178,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 32),
-
-                    // Teks Buat Akun
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
