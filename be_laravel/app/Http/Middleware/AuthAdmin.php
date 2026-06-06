@@ -10,22 +10,34 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AuthAdmin
 {
-    /**
-     * Handle an incoming request.
-     *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
-     */
     public function handle(Request $request, Closure $next): Response
     {
-        if (Auth::check()) {
-            if (Auth::user()->utype === 'ADM') {
-                return $next($request);
-            } else {
-                Session::flush();
-                return redirect()->route('login');
-            }
-        } else {
-            return redirect()->route('login');
+        // 1. Cek apakah user sudah login
+        if (!Auth::check()) {
+            return $this->unauthorizedResponse($request, 'Anda harus login terlebih dahulu.');
         }
+
+        // 2. Cek apakah role user adalah Admin
+        if (Auth::user()->utype === 'ADM') {
+            return $next($request);
+        }
+
+        // 3. Jika bukan admin, handle sesuai tipe request
+        Session::flush();
+        return $this->unauthorizedResponse($request, 'Akses ditolak: Anda bukan admin.');
+    }
+
+    /**
+     * Memilih format respon berdasarkan asal request (API atau Web)
+     */
+    private function unauthorizedResponse(Request $request, $message)
+    {
+        // Jika request berasal dari API (Flutter), kirim JSON
+        if ($request->expectsJson() || $request->is('api/*')) {
+            return response()->json(['status' => 'error', 'message' => $message], 403);
+        }
+
+        // Jika request berasal dari Web, redirect ke login
+        return redirect()->route('login');
     }
 }
