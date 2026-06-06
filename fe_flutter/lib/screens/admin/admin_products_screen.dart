@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import 'admin_product_form_screen.dart'; // Import form yang baru dibuat
 
 class AdminProductsScreen extends StatefulWidget {
   const AdminProductsScreen({Key? key}) : super(key: key);
@@ -44,8 +45,14 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.indigo,
         child: const Icon(Icons.add, color: Colors.white),
-        onPressed: () {
-          // Navigasi ke Form Tambah Produk Baru
+        onPressed: () async {
+          // Buka Halaman Tambah. Tunggu hingga halaman ditutup.
+          final isChanged = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AdminProductFormScreen()),
+          );
+          // Jika isChanged true (berhasil simpan), reload data tabel.
+          if (isChanged == true) _loadProducts();
         },
       ),
       body: isLoading
@@ -65,7 +72,19 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () {}),
+                            // TOMBOL EDIT
+                            IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.blue),
+                              onPressed: () async {
+                                // Buka form edit dan kirim data produk yang bersangkutan
+                                final isChanged = await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => AdminProductFormScreen(product: item)),
+                                );
+                                if (isChanged == true) _loadProducts();
+                              },
+                            ),
+                            // TOMBOL HAPUS
                             IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
                               onPressed: () => _showDeleteDialog(item['id']),

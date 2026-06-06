@@ -385,4 +385,29 @@ class ApiService {
     final response = await http.get(Uri.parse("$baseUrl/admin/contacts"), headers: {"Authorization": "Bearer $_token"});
     return response.statusCode == 200 ? jsonDecode(response.body)['data'] : [];
   }
+
+  // Update Produk (Edit)
+  static Future<bool> updateAdminProduct(int id, Map<String, dynamic> productData) async {
+    if (_token == null) return false;
+    final response = await http.put(
+      Uri.parse("$baseUrl/admin/products/update/$id"),
+      headers: {"Content-Type": "application/json", "Authorization": "Bearer $_token"},
+      body: jsonEncode(productData),
+    );
+    return response.statusCode == 200;
+  }
+
+  // Ambil Kategori untuk Dropdown
+  static Future<List<dynamic>> getAdminCategories() async {
+    if (_token == null) return [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/categories"), headers: {"Authorization": "Bearer $_token"});
+    return response.statusCode == 200 ? jsonDecode(response.body)['data'] ?? [] : [];
+  }
+
+  // Ambil Brand untuk Dropdown
+  static Future<List<dynamic>> getAdminBrands() async {
+    if (_token == null) return [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/brands"), headers: {"Authorization": "Bearer $_token"});
+    return response.statusCode == 200 ? jsonDecode(response.body)['data'] ?? [] : [];
+  }
 }
