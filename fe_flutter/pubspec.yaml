@@ -24,6 +24,7 @@ flutter:
 
   assets:
     - assets/appbar.png
-    - assets/logoapkk.png
+    - assets/logoapk.png
     - assets/logoapk1.png
     - assets/logoapk2.png
+    - assets/logonobg.png

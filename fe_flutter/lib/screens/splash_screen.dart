@@ -28,7 +28,7 @@ class _SplashScreenState extends State<SplashScreen> {
     return Scaffold(
       body: SizedBox.expand(
         child: Image.asset(
-          'assets/logoapkk.png',
+          'assets/logoapk.png',
           fit: BoxFit.cover, // Mengisi seluruh layar tanpa gepeng
         ),
       ),
