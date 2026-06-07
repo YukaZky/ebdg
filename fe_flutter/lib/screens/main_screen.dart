@@ -2,25 +2,32 @@ import 'package:flutter/material.dart';
 import 'product_list_screen.dart';
 import 'cart_screen.dart';
 import 'order_history_screen.dart';
-import 'profile_screen.dart'; // Import halaman profil yang dinamis
+import 'profile_screen.dart'; 
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({Key? key}) : super(key: key);
+  final int initialIndex; // 1. Tambahkan parameter indeks awal
+  const MainScreen({Key? key, this.initialIndex = 0}) : super(key: key); // 2. Set default ke 0 (Beranda)
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _selectedIndex = 0;
+  late int _selectedIndex; // 3. Ubah menjadi late variable
 
   // Daftar halaman yang akan dipanggil oleh Bottom Navigation Bar
   final List<Widget> _screens = [
     const ProductListScreen(),
     const CartScreen(),
     const OrderHistoryScreen(),
-    const ProfileScreen(), // Halaman Akun ditempatkan di indeks ke-3
+    const ProfileScreen(), // Indeks ke-3
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.initialIndex; // 4. Inisialisasi sesuai indeks yang dikirim
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -35,11 +42,10 @@ class _MainScreenState extends State<MainScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
-        // --- MENGUBAH WARNA TOMBOL DI SINI ---
-        selectedItemColor: const Color(0xFFF7B602), // Warna saat di-klik (Kuning/Oranye)
-        unselectedItemColor: const Color(0xFF05254F), // Warna saat belum di-klik (Biru Gelap)
-        backgroundColor: Colors.white, // Background bar (bisa diubah jika perlu)
-        type: BottomNavigationBarType.fixed, // Memastikan ke-4 tombol muat dengan proporsional
+        selectedItemColor: const Color(0xFFF7B602), 
+        unselectedItemColor: const Color(0xFF05254F), 
+        backgroundColor: Colors.white, 
+        type: BottomNavigationBarType.fixed, 
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
