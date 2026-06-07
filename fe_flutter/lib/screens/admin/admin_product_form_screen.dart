@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart'; // Wajib untuk pengecekan kIsWeb
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
@@ -25,18 +26,18 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
   final _shortDescCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
-  final _salePriceCtrl = TextEditingController(); // Baru
+  final _salePriceCtrl = TextEditingController();
   final _qtyCtrl = TextEditingController();
-  final _weightCtrl = TextEditingController(); // Baru
-  final _expDateCtrl = TextEditingController(); // Baru
+  final _weightCtrl = TextEditingController();
+  final _expDateCtrl = TextEditingController();
 
   String? _selectedCategory;
   String? _selectedBrand;
   String _stockStatus = 'instock';
 
-  // Image Upload Variables
-  File? _mainImage;
-  List<File> _galleryImages = [];
+  // Image Upload Variables (Menggunakan XFile agar support Web & Mobile)
+  XFile? _mainImage;
+  List<XFile> _galleryImages = [];
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -71,7 +72,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     
     // Format Tanggal Kadaluarsa
     if (p['exp_date'] != null) {
-      // Mengambil bagian "YYYY-MM-DD" saja jika ada timestamp
       _expDateCtrl.text = p['exp_date'].toString().split(' ')[0]; 
     }
     
@@ -88,19 +88,27 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
 
   // --- Fungsi Pilih Gambar Utama ---
   Future<void> _pickMainImage() async {
-    final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) {
-      setState(() => _mainImage = File(picked.path));
+    try {
+      final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
+      if (picked != null) {
+        setState(() => _mainImage = picked);
+      }
+    } catch (e) {
+      print("Gagal mengambil gambar: $e");
     }
   }
 
   // --- Fungsi Pilih Galeri Gambar ---
   Future<void> _pickGalleryImages() async {
-    final List<XFile> picked = await _picker.pickMultiImage();
-    if (picked.isNotEmpty) {
-      setState(() {
-        _galleryImages.addAll(picked.map((e) => File(e.path)));
-      });
+    try {
+      final List<XFile> picked = await _picker.pickMultiImage();
+      if (picked.isNotEmpty) {
+        setState(() {
+          _galleryImages.addAll(picked);
+        });
+      }
+    } catch (e) {
+      print("Gagal mengambil galeri gambar: $e");
     }
   }
 
@@ -119,6 +127,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     }
   }
 
+  // --- Fungsi Simpan ke Server ---
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedCategory == null || _selectedBrand == null) {
@@ -128,26 +137,32 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
 
     setState(() => isSaving = true);
 
-    // Semua field string/text diubah jadi String
+    // Filter field untuk mencegah error 500 Laravel
     Map<String, String> productFields = {
       "name": _nameCtrl.text,
       "short_description": _shortDescCtrl.text,
       "description": _descCtrl.text,
       "regular_price": _priceCtrl.text,
-      "sale_price": _salePriceCtrl.text,
-      "weight": _weightCtrl.text,
-      "exp_date": _expDateCtrl.text,
+      "weight": _weightCtrl.text.isEmpty ? "0" : _weightCtrl.text,
       "stock_status": _stockStatus,
       "quantity": _qtyCtrl.text,
       "category_id": _selectedCategory!,
       "brand_id": _selectedBrand!,
     };
 
+    // Hanya kirim field harga promo dan expired date jika tidak kosong
+    if (_salePriceCtrl.text.isNotEmpty) {
+      productFields["sale_price"] = _salePriceCtrl.text;
+    }
+    if (_expDateCtrl.text.isNotEmpty) {
+      productFields["exp_date"] = _expDateCtrl.text;
+    }
+
     bool success = await ApiService.saveAdminProduct(
       productFields,
       mainImage: _mainImage,
       galleryImages: _galleryImages,
-      productId: widget.product?['id'], // Kirim ID jika ini mode edit
+      productId: widget.product?['id'],
     );
 
     setState(() => isSaving = false);
@@ -157,6 +172,15 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
       Navigator.pop(context, true); 
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menyimpan produk!")));
+    }
+  }
+
+  // --- Helper Widget Render Gambar (Web vs Mobile) ---
+  Widget _buildImage(XFile file) {
+    if (kIsWeb) {
+      return Image.network(file.path, fit: BoxFit.cover); 
+    } else {
+      return Image.file(File(file.path), fit: BoxFit.cover);
     }
   }
 
@@ -179,7 +203,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // --- SECTION UNGGAH GAMBAR ---
+                    // --- SECTION UNGGAH GAMBAR UTAMA ---
                     const Text("Gambar Utama", style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     GestureDetector(
@@ -192,7 +216,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                           border: Border.all(color: Colors.grey),
                         ),
                         child: _mainImage != null
-                            ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_mainImage!, fit: BoxFit.cover))
+                            ? ClipRRect(borderRadius: BorderRadius.circular(12), child: _buildImage(_mainImage!))
                             : isEdit && widget.product!['image'] != null
                                 ? ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
@@ -216,7 +240,10 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                         ..._galleryImages.map((img) => Stack(
                               alignment: Alignment.topRight,
                               children: [
-                                ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(img, width: 80, height: 80, fit: BoxFit.cover)),
+                                SizedBox(
+                                  width: 80, height: 80, 
+                                  child: ClipRRect(borderRadius: BorderRadius.circular(8), child: _buildImage(img))
+                                ),
                                 GestureDetector(
                                   onTap: () => setState(() => _galleryImages.remove(img)),
                                   child: const CircleAvatar(radius: 12, backgroundColor: Colors.red, child: Icon(Icons.close, size: 14, color: Colors.white)),
