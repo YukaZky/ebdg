@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import '../models/product_model.dart';
 
 class ApiService {
@@ -336,11 +337,10 @@ class ApiService {
     return [];
   }
 
-  // Simpan atau Update Produk (Support Upload Gambar via Multipart)
-  static Future<bool> saveAdminProduct(Map<String, String> fields, {File? mainImage, List<File>? galleryImages, int? productId}) async {
+  // Simpan atau Update Produk (Support Upload Gambar Web & Mobile)
+  static Future<bool> saveAdminProduct(Map<String, String> fields, {XFile? mainImage, List<XFile>? galleryImages, int? productId}) async {
     if (_token == null) return false;
     
-    // Jika productId kosong, berarti Tambah Baru. Jika ada, berarti Update.
     var uri = productId == null 
         ? Uri.parse("$baseUrl/admin/products/store") 
         : Uri.parse("$baseUrl/admin/products/update/$productId");
@@ -352,28 +352,41 @@ class ApiService {
       "Accept": "application/json",
     });
 
-    // Laravel membutuhkan '_method' = 'PUT' jika ingin update data via Multipart POST
     if (productId != null) {
       request.fields['_method'] = 'PUT';
     }
 
     request.fields.addAll(fields);
 
-    // Sisipkan Gambar Utama
+    // Sisipkan Gambar Utama (Kompatibel untuk Web & Mobile)
     if (mainImage != null) {
-      request.files.add(await http.MultipartFile.fromPath('image', mainImage.path));
+      request.files.add(http.MultipartFile.fromBytes(
+        'image',
+        await mainImage.readAsBytes(),
+        filename: mainImage.name,
+      ));
     }
 
-    // Sisipkan Gambar Galeri
+    // Sisipkan Galeri Gambar (Kompatibel untuk Web & Mobile)
     if (galleryImages != null && galleryImages.isNotEmpty) {
       for (var file in galleryImages) {
-        request.files.add(await http.MultipartFile.fromPath('images[]', file.path));
+        request.files.add(http.MultipartFile.fromBytes(
+          'images[]',
+          await file.readAsBytes(),
+          filename: file.name,
+        ));
       }
     }
 
     try {
       final response = await request.send();
-      return response.statusCode == 200 || response.statusCode == 201;
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      } else {
+        final respStr = await response.stream.bytesToString();
+        print("Gagal Upload: ${response.statusCode} - $respStr");
+        return false;
+      }
     } catch (e) {
       print("Error saving product: $e");
       return false;
