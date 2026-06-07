@@ -38,25 +38,40 @@ class ApiAdminController extends Controller
 
     public function storeProduct(Request $request)
     {
-        $request->validate([
-            'name' => 'required', 'short_description' => 'required', 'description' => 'required',
-            'regular_price' => 'required|numeric', 'stock_status' => 'required',
-            'quantity' => 'required|integer', 'category_id' => 'required', 'brand_id' => 'required'
-        ]);
-
         $product = new Product();
         $product->name = $request->name;
         $product->slug = Str::slug($request->name) . '-' . time();
         $product->short_description = $request->short_description;
         $product->description = $request->description;
         $product->regular_price = $request->regular_price;
-        $product->sale_price = $request->sale_price;
+        $product->sale_price = $request->sale_price ?? null;
         $product->SKU = $request->SKU ?? ('SKU-' . Str::upper(Str::random(6)));
         $product->stock_status = $request->stock_status;
         $product->quantity = $request->quantity;
         $product->category_id = $request->category_id;
         $product->brand_id = $request->brand_id;
         $product->weight = $request->weight ?? 0;
+        $product->exp_date = $request->exp_date ?? null;
+
+        // Upload Gambar Utama
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $file_name = time() . '.' . $image->extension();
+            $image->move(public_path('uploads/products'), $file_name);
+            $product->image = $file_name;
+        }
+
+        // Upload Galeri Gambar
+        if ($request->hasFile('images')) {
+            $gallery_arr = [];
+            foreach ($request->file('images') as $file) {
+                $gfile_name = time() . '-' . uniqid() . '.' . $file->extension();
+                $file->move(public_path('uploads/products'), $gfile_name);
+                array_push($gallery_arr, $gfile_name);
+            }
+            $product->images = implode(',', $gallery_arr);
+        }
+
         $product->save();
 
         return response()->json(['status' => 'success', 'message' => 'Produk berhasil ditambahkan', 'data' => $product], 201);
@@ -65,10 +80,40 @@ class ApiAdminController extends Controller
     public function updateProduct(Request $request, $id)
     {
         $product = Product::findOrFail($id);
-        $product->update($request->all());
+        
+        $product->name = $request->name;
+        $product->short_description = $request->short_description;
+        $product->description = $request->description;
+        $product->regular_price = $request->regular_price;
+        $product->sale_price = $request->sale_price ?? null;
+        $product->stock_status = $request->stock_status;
+        $product->quantity = $request->quantity;
+        $product->category_id = $request->category_id;
+        $product->brand_id = $request->brand_id;
+        $product->weight = $request->weight ?? 0;
+        $product->exp_date = $request->exp_date ?? null;
+
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $file_name = time() . '.' . $image->extension();
+            $image->move(public_path('uploads/products'), $file_name);
+            $product->image = $file_name;
+        }
+
+        if ($request->hasFile('images')) {
+            $gallery_arr = [];
+            foreach ($request->file('images') as $file) {
+                $gfile_name = time() . '-' . uniqid() . '.' . $file->extension();
+                $file->move(public_path('uploads/products'), $gfile_name);
+                array_push($gallery_arr, $gfile_name);
+            }
+            $product->images = implode(',', $gallery_arr);
+        }
+
+        $product->save();
+
         return response()->json(['status' => 'success', 'message' => 'Produk berhasil diperbarui', 'data' => $product], 200);
     }
-
     public function deleteProduct($id)
     {
         Product::findOrFail($id)->delete();

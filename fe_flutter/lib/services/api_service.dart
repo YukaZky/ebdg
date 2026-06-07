@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/product_model.dart';
 
@@ -335,15 +336,48 @@ class ApiService {
     return [];
   }
 
-  // Tambah Produk Baru
-  static Future<bool> addAdminProduct(Map<String, dynamic> productData) async {
+  // Simpan atau Update Produk (Support Upload Gambar via Multipart)
+  static Future<bool> saveAdminProduct(Map<String, String> fields, {File? mainImage, List<File>? galleryImages, int? productId}) async {
     if (_token == null) return false;
-    final response = await http.post(
-      Uri.parse("$baseUrl/admin/products/store"),
-      headers: {"Content-Type": "application/json", "Authorization": "Bearer $_token"},
-      body: jsonEncode(productData),
-    );
-    return response.statusCode == 201;
+    
+    // Jika productId kosong, berarti Tambah Baru. Jika ada, berarti Update.
+    var uri = productId == null 
+        ? Uri.parse("$baseUrl/admin/products/store") 
+        : Uri.parse("$baseUrl/admin/products/update/$productId");
+        
+    var request = http.MultipartRequest('POST', uri);
+    
+    request.headers.addAll({
+      "Authorization": "Bearer $_token",
+      "Accept": "application/json",
+    });
+
+    // Laravel membutuhkan '_method' = 'PUT' jika ingin update data via Multipart POST
+    if (productId != null) {
+      request.fields['_method'] = 'PUT';
+    }
+
+    request.fields.addAll(fields);
+
+    // Sisipkan Gambar Utama
+    if (mainImage != null) {
+      request.files.add(await http.MultipartFile.fromPath('image', mainImage.path));
+    }
+
+    // Sisipkan Gambar Galeri
+    if (galleryImages != null && galleryImages.isNotEmpty) {
+      for (var file in galleryImages) {
+        request.files.add(await http.MultipartFile.fromPath('images[]', file.path));
+      }
+    }
+
+    try {
+      final response = await request.send();
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print("Error saving product: $e");
+      return false;
+    }
   }
 
   // Hapus Produk
@@ -351,6 +385,20 @@ class ApiService {
     if (_token == null) return false;
     final response = await http.delete(Uri.parse("$baseUrl/admin/products/delete/$id"), headers: {"Authorization": "Bearer $_token"});
     return response.statusCode == 200;
+  }
+
+  // Ambil Kategori untuk Dropdown
+  static Future<List<dynamic>> getAdminCategories() async {
+    if (_token == null) return [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/categories"), headers: {"Authorization": "Bearer $_token"});
+    return response.statusCode == 200 ? jsonDecode(response.body)['data'] ?? [] : [];
+  }
+
+  // Ambil Brand untuk Dropdown
+  static Future<List<dynamic>> getAdminBrands() async {
+    if (_token == null) return [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/brands"), headers: {"Authorization": "Bearer $_token"});
+    return response.statusCode == 200 ? jsonDecode(response.body)['data'] ?? [] : [];
   }
 
   // Ambil Semua Pesanan Masuk
@@ -384,30 +432,5 @@ class ApiService {
     if (_token == null) return [];
     final response = await http.get(Uri.parse("$baseUrl/admin/contacts"), headers: {"Authorization": "Bearer $_token"});
     return response.statusCode == 200 ? jsonDecode(response.body)['data'] : [];
-  }
-
-  // Update Produk (Edit)
-  static Future<bool> updateAdminProduct(int id, Map<String, dynamic> productData) async {
-    if (_token == null) return false;
-    final response = await http.put(
-      Uri.parse("$baseUrl/admin/products/update/$id"),
-      headers: {"Content-Type": "application/json", "Authorization": "Bearer $_token"},
-      body: jsonEncode(productData),
-    );
-    return response.statusCode == 200;
-  }
-
-  // Ambil Kategori untuk Dropdown
-  static Future<List<dynamic>> getAdminCategories() async {
-    if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/categories"), headers: {"Authorization": "Bearer $_token"});
-    return response.statusCode == 200 ? jsonDecode(response.body)['data'] ?? [] : [];
-  }
-
-  // Ambil Brand untuk Dropdown
-  static Future<List<dynamic>> getAdminBrands() async {
-    if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/brands"), headers: {"Authorization": "Bearer $_token"});
-    return response.statusCode == 200 ? jsonDecode(response.body)['data'] ?? [] : [];
   }
 }
