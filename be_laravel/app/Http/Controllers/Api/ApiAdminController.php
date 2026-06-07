@@ -12,6 +12,7 @@ use App\Models\Coupon;
 use App\Models\Slide;
 use App\Models\Contact;
 use App\Models\WhatsappSetting;
+use App\Models\About; // Tambahkan import ini
 use Illuminate\Support\Str;
 
 class ApiAdminController extends Controller
@@ -121,9 +122,7 @@ class ApiAdminController extends Controller
         return response()->json(['status' => 'success', 'message' => 'Produk berhasil dihapus'], 200);
     }
 
-    // ==========================================
     // 3. KATEGORI & BRAND
-    // ==========================================
     public function getCategories() 
     { 
         return response()->json(['data' => Category::latest()->get()], 200); 
@@ -154,7 +153,6 @@ class ApiAdminController extends Controller
         $category->slug = Str::slug($category->name);
 
         if ($request->hasFile('image')) {
-            // Hapus gambar lama dari folder public/uploads/categories
             if ($category->image && file_exists(public_path('uploads/categories/' . $category->image))) {
                 unlink(public_path('uploads/categories/' . $category->image));
             }
@@ -171,7 +169,6 @@ class ApiAdminController extends Controller
     public function deleteCategory($id)
     {
         $category = Category::findOrFail($id);
-        // Hapus gambar dari folder public/uploads/categories sebelum data dihapus
         if ($category->image && file_exists(public_path('uploads/categories/' . $category->image))) {
             unlink(public_path('uploads/categories/' . $category->image));
         }
@@ -217,7 +214,6 @@ class ApiAdminController extends Controller
         }
 
         if ($request->hasFile('image')) {
-            // Hapus gambar lama dari folder public/uploads/brands
             if ($brand->image && file_exists(public_path('uploads/brands/' . $brand->image))) {
                 unlink(public_path('uploads/brands/' . $brand->image));
             }
@@ -234,7 +230,6 @@ class ApiAdminController extends Controller
     public function deleteBrand($id)
     {
         $brand = Brand::findOrFail($id);
-        // Hapus gambar dari folder public/uploads/brands sebelum data dihapus
         if ($brand->image && file_exists(public_path('uploads/brands/' . $brand->image))) {
             unlink(public_path('uploads/brands/' . $brand->image));
         }
@@ -285,7 +280,7 @@ class ApiAdminController extends Controller
         return response()->json(['status' => 'success'], 200);
     }
 
-    // 6. FITUR PEMANDANGAN LAIN (SLIDE, KONTAK, SETTING WA)
+    // 6. FITUR LAIN (SLIDE, KONTAK, SETTING WA)
     public function getSlides() { return response()->json(['data' => Slide::all()], 200); }
     public function getContacts() { return response()->json(['data' => Contact::latest()->get()], 200); }
     public function markContactRead($id) {
@@ -295,4 +290,33 @@ class ApiAdminController extends Controller
         return response()->json(['status' => 'success']);
     }
     public function getWhatsappSettings() { return response()->json(['data' => WhatsappSetting::first()], 200); }
+
+    // 7. MANAJEMEN LOKASI TOKO (ORIGIN)
+    public function getStoreLocation()
+    {
+        $about = About::firstOrCreate(['id' => 1]);
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'province_id' => $about->province_id,
+                'city_id' => $about->city_id,
+            ]
+        ], 200);
+    }
+
+    public function saveStoreLocation(Request $request)
+    {
+        $request->validate([
+            'province_id' => 'required',
+            'city_id' => 'required',
+        ]);
+
+        $about = About::firstOrCreate(['id' => 1]);
+        $about->province_id = $request->province_id;
+        $about->city_id = $request->city_id;
+        $about->district_id = null; // Reset jika lokasi berubah
+        $about->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Lokasi toko berhasil diperbarui'], 200);
+    }
 }

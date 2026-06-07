@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
-import 'admin_products_screen.dart'; // File screen manajemen produk
-import 'admin_categories_screen.dart'; // File screen manajemen kategori
-import 'admin_brands_screen.dart'; // File screen manajemen brand
+import 'admin_products_screen.dart'; 
+import 'admin_categories_screen.dart'; 
+import 'admin_brands_screen.dart'; 
+import 'admin_store_location_screen.dart'; // Tambahkan import ini
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({Key? key}) : super(key: key);
@@ -38,7 +39,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6F9), // Latar belakang abu-abu kebiruan yang sangat soft
+      backgroundColor: const Color(0xFFF4F6F9),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A)))
           : RefreshIndicator(
@@ -57,7 +58,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         height: 260,
                         decoration: const BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)], // Gradien Biru Gelap ke Terang
+                            colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
@@ -76,33 +77,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Header Custom (App Bar)
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
-                                      "Toko Saya Panel",
-                                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                                    ),
+                                    const Text("Toko Saya Panel", style: TextStyle(color: Colors.white70, fontSize: 14)),
                                     const SizedBox(height: 4),
-                                    const Text(
-                                      "Halo, Admin! 👋",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                    const Text("Halo, Admin! 👋", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                                   ],
                                 ),
                                 Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.2),
-                                    shape: BoxShape.circle,
-                                  ),
+                                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
                                   child: IconButton(
                                     icon: const Icon(Icons.notifications_active_rounded, color: Colors.white),
                                     onPressed: () {},
@@ -112,40 +99,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             ),
                             const SizedBox(height: 32),
 
-                            // --- 3. Panel Statistik Utama ---
+                            // --- 3. Panel Statistik ---
                             Container(
                               padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(24),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
-                                    blurRadius: 15,
-                                    offset: const Offset(0, 8),
-                                  ),
-                                ],
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 8))],
                               ),
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      const Text(
-                                        "Ringkasan Performa",
-                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                      ),
+                                      const Text("Ringkasan Performa", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                       Icon(Icons.bar_chart_rounded, color: Colors.grey[400]),
                                     ],
                                   ),
                                   const Divider(height: 30),
-                                  
-                                  // Grid Statistik 2x2 di dalam Container
                                   Row(
                                     children: [
                                       Expanded(child: _buildCompactStat("Produk", dashboardStats?['total_products']?.toString() ?? "0", Icons.inventory_2_outlined, Colors.blue)),
-                                      Container(width: 1, height: 40, color: Colors.grey[200]), // Garis pemisah vertikal
+                                      Container(width: 1, height: 40, color: Colors.grey[200]),
                                       Expanded(child: _buildCompactStat("Pesanan", dashboardStats?['new_orders']?.toString() ?? "0", Icons.pending_actions_outlined, Colors.orange)),
                                     ],
                                   ),
@@ -153,7 +128,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                   Row(
                                     children: [
                                       Expanded(child: _buildCompactStat("Pesan", dashboardStats?['unread_messages']?.toString() ?? "0", Icons.mail_outline_rounded, Colors.red)),
-                                      Container(width: 1, height: 40, color: Colors.grey[200]), // Garis pemisah vertikal
+                                      Container(width: 1, height: 40, color: Colors.grey[200]),
                                       Expanded(child: _buildCompactStat("Klien", dashboardStats?['total_customers']?.toString() ?? "0", Icons.people_outline_rounded, Colors.green)),
                                     ],
                                   ),
@@ -163,13 +138,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             const SizedBox(height: 32),
 
                             // --- 4. Menu Manajemen ---
-                            const Text(
-                              "Manajemen Toko",
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
-                            ),
+                            const Text("Manajemen Toko", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
                             const SizedBox(height: 16),
                             
-                            // Wadah untuk List Menu
                             Container(
                               decoration: BoxDecoration(
                                 color: Colors.white,
@@ -178,44 +149,37 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               ),
                               child: Column(
                                 children: [
-                                  _buildListMenu(context, "Kelola Produk", "Tambah, edit, dan hapus barang", Icons.shopping_bag_outlined, Colors.teal, true, () {
+                                  _buildListMenu(context, "Kelola Produk", "Tambah, edit, hapus barang", Icons.shopping_bag_outlined, Colors.teal, true, () {
                                     Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminProductsScreen()));
                                   }),
-                                  _buildListMenu(context, "Kelola Kategori", "Atur pengelompokan produk", Icons.category_outlined, Colors.purple, true, () {
-                                    // Navigasi ke Layar Kategori
+                                  _buildListMenu(context, "Kelola Kategori", "Atur pengelompokan", Icons.category_outlined, Colors.purple, true, () {
                                     Navigator.push(context, MaterialPageRoute(builder: (context) => AdminCategoriesScreen()));
                                   }),
                                   _buildListMenu(context, "Kelola Brand", "Atur merek produk", Icons.branding_watermark_outlined, Colors.indigo, true, () {
-                                    // Navigasi ke Layar Brand
                                     Navigator.push(context, MaterialPageRoute(builder: (context) => AdminBrandsScreen()));
                                   }),
-                                  _buildListMenu(context, "Slide Banner", "Atur banner halaman depan", Icons.view_carousel_outlined, Colors.blueAccent, false, () {}),
+                                  // --- MENU BARU ---
+                                  _buildListMenu(context, "Lokasi Toko", "Atur asal pengiriman", Icons.location_on_outlined, Colors.redAccent, true, () {
+                                    Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminStoreLocationScreen()));
+                                  }),
+                                  _buildListMenu(context, "Slide Banner", "Atur banner depan", Icons.view_carousel_outlined, Colors.blueAccent, false, () {}),
                                 ],
                               ),
                             ),
                             const SizedBox(height: 24),
-
-                            const Text(
-                              "Transaksi & Interaksi",
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
-                            ),
+                            const Text("Transaksi & Interaksi", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
                             const SizedBox(height: 16),
-                            
                             Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.grey.shade200),
-                              ),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade200)),
                               child: Column(
                                 children: [
-                                  _buildListMenu(context, "Daftar Pesanan", "Cek status transaksi masuk", Icons.receipt_long_outlined, Colors.deepOrange, true, () {}),
-                                  _buildListMenu(context, "Pesan Pelanggan", "Balas pertanyaan pembeli", Icons.chat_outlined, Colors.amber, true, () {}),
-                                  _buildListMenu(context, "Kupon Diskon", "Buat promo dan voucher", Icons.confirmation_num_outlined, Colors.pink, false, () {}),
+                                  _buildListMenu(context, "Daftar Pesanan", "Cek status transaksi", Icons.receipt_long_outlined, Colors.deepOrange, true, () {}),
+                                  _buildListMenu(context, "Pesan Pelanggan", "Balas pesan", Icons.chat_outlined, Colors.amber, true, () {}),
+                                  _buildListMenu(context, "Kupon Diskon", "Voucher promo", Icons.confirmation_num_outlined, Colors.pink, false, () {}),
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 40), // Jarak bawah
+                            const SizedBox(height: 40),
                           ],
                         ),
                       ),
@@ -227,28 +191,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // --- Komponen Bantuan ---
-
-  // Desain statistik yang lebih compact untuk dimasukkan ke dalam Panel
   Widget _buildCompactStat(String title, String value, IconData icon, Color color) {
     return Column(
       children: [
         Icon(icon, color: color, size: 28),
         const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
-        ),
+        Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
         const SizedBox(height: 2),
-        Text(
-          title,
-          style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500),
-        ),
+        Text(title, style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500)),
       ],
     );
   }
 
-  // Desain menu berbentuk baris (ListTile) yang terlihat lebih bersih dan hierarkis
   Widget _buildListMenu(BuildContext context, String title, String subtitle, IconData icon, Color color, bool showDivider, VoidCallback onTap) {
     return Column(
       children: [
@@ -256,10 +210,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           leading: Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
             child: Icon(icon, color: color, size: 24),
           ),
           title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),

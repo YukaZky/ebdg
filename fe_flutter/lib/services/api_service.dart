@@ -311,6 +311,44 @@ class ApiService {
   // FUNGSI ADMIN PANEL (TOKO SAYA)
   // ==========================================
 
+  // BARU: Ambil Lokasi Toko (Origin RajaOngkir)
+  static Future<Map<String, dynamic>?> getAdminStoreLocation() async {
+    if (_token == null) return null;
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/admin/store-location"),
+        headers: {"Accept": "application/json", "Authorization": "Bearer $_token"},
+      );
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) {
+      print("Admin Error: $e");
+    }
+    return null;
+  }
+
+  // BARU: Simpan Lokasi Toko (Origin RajaOngkir)
+  static Future<bool> saveAdminStoreLocation(String provinceId, String cityId) async {
+    if (_token == null) return false;
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/admin/store-location"),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer $_token"
+        },
+        body: jsonEncode({
+          "province_id": provinceId,
+          "city_id": cityId,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Admin Error: $e");
+      return false;
+    }
+  }
+
   // Ambil Data Statistik Dashboard Admin
   static Future<Map<String, dynamic>?> getAdminDashboardStats() async {
     if (_token == null) return null;

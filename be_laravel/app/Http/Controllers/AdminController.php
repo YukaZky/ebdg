@@ -20,7 +20,6 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\File;
 use Intervention\Image\Laravel\Facades\Image;
 use Illuminate\Support\Facades\Hash;
-// Pastikan semua 'use' statement ini ada di bagian atas
 use App\Exports\ProductsReportExport;
 use Maatwebsite\Excel\Facades\Excel;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -30,24 +29,18 @@ class AdminController extends BaseController
 {
     public function get_brands_by_category(Request $request)
     {
-        // Ambil ID kategori dari request
         $categoryId = $request->input('category_id');
 
-        // Cari semua merek yang memiliki category_id yang sesuai
-        // Kita hanya butuh 'id' dan 'name' untuk dropdown
         $brands = Brand::where('category_id', $categoryId)
             ->select('id', 'name')
             ->orderBy('name', 'asc')
             ->get();
 
-        // Kembalikan hasilnya dalam format JSON
         return response()->json($brands);
     }
 
     public function about_edit()
     {
-        // Menggunakan firstOrCreate agar jika data belum ada, akan dibuat baris baru yang kosong.
-        // Ini mencegah error saat halaman diakses pertama kali.
         $about = About::firstOrCreate(['id' => 1]);
         return view('admin.edit-about', compact('about'));
     }
@@ -55,13 +48,15 @@ class AdminController extends BaseController
     public function about_update(Request $request)
     {
         $request->validate([
-            // Tambahkan validasi untuk logo
             'logo_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:1024',
             'poster_image' => 'nullable|image|mimes:jpeg,png,jpg,gif',
             'our_story' => 'required|string',
             'our_vision' => 'required|string',
             'our_mission' => 'required|string',
             'the_company' => 'required|string',
+            'province_id' => 'nullable|string',
+            'city_id' => 'nullable|string',
+            'district_id' => 'nullable|string',
         ]);
 
         $about = About::find(1);
@@ -69,10 +64,11 @@ class AdminController extends BaseController
         $about->our_vision = $request->our_vision;
         $about->our_mission = $request->our_mission;
         $about->the_company = $request->the_company;
+        $about->province_id = $request->province_id;
+        $about->city_id = $request->city_id;
+        $about->district_id = $request->district_id;
 
-        // --- LOGIKA BARU UNTUK UPLOAD LOGO ---
         if ($request->hasFile('logo_image')) {
-            // Hapus logo lama jika ada
             if ($about->logo_image && File::exists(public_path('uploads/about') . '/' . $about->logo_image)) {
                 File::delete(public_path('uploads/about') . '/' . $about->logo_image);
             }
@@ -82,7 +78,6 @@ class AdminController extends BaseController
             $this->GenerateAboutLogoImage($image, $file_name);
             $about->logo_image = $file_name;
         }
-        // --- AKHIR LOGIKA BARU ---
 
         if ($request->hasFile('poster_image')) {
             if ($about->poster_image && File::exists(public_path('uploads/about') . '/' . $about->poster_image)) {
@@ -97,17 +92,15 @@ class AdminController extends BaseController
 
         $about->save();
 
-        return redirect()->route('admin.about.edit')->with('status', 'Profil Usaha berhasil diperbarui!');
+        return redirect()->route('admin.about.edit')->with('status', 'Profil Usaha & Lokasi Toko berhasil diperbarui!');
     }
 
-    // --- FUNGSI BARU UNTUK PROSES LOGO ---
     public function GenerateAboutLogoImage($image, $imageName)
     {
         $destinationPath = public_path('uploads/about');
         if (!File::isDirectory($destinationPath)) {
             File::makeDirectory($destinationPath, 0755, true, true);
         }
-        // Untuk logo, kita hanya memindahkannya tanpa mengubah ukuran
         $image->move($destinationPath, $imageName);
     }
 
@@ -119,15 +112,14 @@ class AdminController extends BaseController
         }
 
         $img = Image::read($image->path());
-        // Mengatur gambar agar sesuai rasio 4:1, contoh ukuran 1200x300
         $img->cover(1200, 300, "top");
         $img->save($destinationPath . '/' . $imageName);
     }
 
     public function users()
     {
-        $users = User::orderBy('created_at', 'DESC')->paginate(15); // Mengambil data user dengan pagination
-        return view('admin.user', compact('users')); // Mengirim data ke view user.blade.php
+        $users = User::orderBy('created_at', 'DESC')->paginate(15); 
+        return view('admin.user', compact('users')); 
     }
 
     public function user_add()
@@ -137,33 +129,28 @@ class AdminController extends BaseController
 
     public function user_store(Request $request)
     {
-        // Validasi input dari form
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
-            'utype' => 'required|in:ADM,USR', // Memastikan nilai hanya ADM atau USR
+            'utype' => 'required|in:ADM,USR', 
         ]);
 
-        // Membuat instance User baru
         $user = new User();
         $user->name = $request->name;
         $user->email = $request->email;
-        $user->password = Hash::make($request->password); // Enkripsi password
+        $user->password = Hash::make($request->password); 
         $user->utype = $request->utype;
         $user->save();
 
-        // Redirect kembali ke halaman daftar pengguna dengan pesan sukses
         return redirect()->route('admin.users')->with('status', 'Pengguna baru berhasil ditambahkan!');
     }
 
     public function user_details($user_id)
     {
-        // Mengambil data user beserta relasi 'orders'
         $user = User::with('orders')->find($user_id);
 
         if (!$user) {
-            // Jika user tidak ditemukan, kembali ke halaman daftar pengguna
             return redirect()->route('admin.users')->with('error', 'Pengguna tidak ditemukan.');
         }
 
@@ -172,117 +159,76 @@ class AdminController extends BaseController
 
     public function user_destroy($id)
     {
-        // Cari pengguna berdasarkan ID
         $user = User::findOrFail($id);
-
-        // Hapus pengguna
         $user->delete();
-
-        // Arahkan kembali ke halaman daftar pengguna dengan pesan sukses
         return redirect()->route('admin.users')->with('status', 'Pengguna berhasil dihapus!');
     }
 
     public function search_users(Request $request)
     {
-        // Ambil keyword dari request ajax
         $query = $request->input('query');
-
-        // Cari user berdasarkan nama atau email
         $users = User::where('name', 'LIKE', "%{$query}%")
             ->orWhere('email', 'LIKE', "%{$query}%")
             ->get();
-
-        // Kembalikan hasil dalam bentuk JSON
         return response()->json($users);
     }
 
     public function search_category(Request $request)
     {
-        // Ambil keyword dari request ajax
         $query = $request->input('query');
-
-        // Cari user berdasarkan nama atau email
         $users = Category::where('name', 'LIKE', "%{$query}%")
             ->orWhere('slug', 'LIKE', "%{$query}%")
             ->get();
-
-        // Kembalikan hasil dalam bentuk JSON
         return response()->json($users);
     }
 
     public function search_brands(Request $request)
     {
-        // Ambil keyword dari request ajax
         $query = $request->input('query');
-
-        // Cari merek berdasarkan nama atau slug
         $brands = Brand::where('name', 'LIKE', "%{$query}%")
             ->orWhere('slug', 'LIKE', "%{$query}%")
             ->get();
-
-        // Kembalikan hasil dalam bentuk JSON
         return response()->json($brands);
     }
 
     public function search_contacts(Request $request)
     {
-        // Ambil keyword dari request ajax
         $query = $request->input('query');
-
-        // Cari kontak berdasarkan nama, email, telepon, atau isi komentar
         $contacts = Contact::where('name', 'LIKE', "%{$query}%")
             ->orWhere('email', 'LIKE', "%{$query}%")
             ->orWhere('phone', 'LIKE', "%{$query}%")
             ->orWhere('comment', 'LIKE', "%{$query}%")
             ->get();
-
-        // Kembalikan hasil dalam bentuk JSON
         return response()->json($contacts);
     }
 
     public function search_coupons(Request $request)
     {
-        // Ambil keyword dari request ajax
         $query = $request->input('query');
-
-        // Cari kupon berdasarkan kode
         $coupons = Coupon::where('code', 'LIKE', "%{$query}%")
             ->get();
-
-        // Kembalikan hasil dalam bentuk JSON
         return response()->json($coupons);
     }
 
     public function search_orders(Request $request)
     {
-        // Ambil keyword dari request ajax
         $query = $request->input('query');
-
-        // Cari pesanan berdasarkan id, nama, atau nomor telepon
-        // Pastikan untuk memuat relasi orderItems untuk mendapatkan jumlah item
         $orders = Order::with('orderItems')
             ->where('id', 'LIKE', "%{$query}%")
             ->orWhere('name', 'LIKE', "%{$query}%")
             ->orWhere('phone', 'LIKE', "%{$query}%")
             ->get();
-
-        // Kembalikan hasil dalam bentuk JSON
         return response()->json($orders);
     }
 
     public function search_products(Request $request)
     {
-        // Ambil keyword dari request ajax
         $query = $request->input('query');
-
-        // Cari produk dengan relasi category dan brand
         $products = Product::with(['category', 'brand'])
             ->where('name', 'LIKE', "%{$query}%")
             ->orWhere('slug', 'LIKE', "%{$query}%")
             ->orWhere('SKU', 'LIKE', "%{$query}%")
             ->get();
-
-        // Kembalikan hasil dalam bentuk JSON
         return response()->json($products);
     }
 
@@ -290,7 +236,6 @@ class AdminController extends BaseController
     {
         $orders = Order::orderBy('created_at', 'DESC')->get()->take(10);
 
-        // 👇👇👇 QUERY INI DIPERBARUI UNTUK MENAMBAHKAN STATUS 'SHIPPING' 👇👇👇
         $dashboardDatas = DB::select("Select 
             sum(total) As TotalAmount,
             sum(if(status='ordered', total,0)) As TotalOrderedAmount,
@@ -304,7 +249,6 @@ class AdminController extends BaseController
             sum(if(status='canceled', 1,0)) As TotalCanceled
             From Orders");
 
-        // 👇👇👇 QUERY INI JUGA DIPERBARUI 👇👇👇
         $monthlyDatas = DB::select("SELECT M.id As MonthNo, M.name As MonthName,
             IFNULL(D.TotalAmount,0) As TotalAmount,
             IFNULL(D.TotalOrderedAmount,0) As TotalOrderedAmount,
@@ -328,13 +272,13 @@ class AdminController extends BaseController
 
         $AmountM = implode(',', collect($monthlyDatas)->pluck('TotalAmount')->toArray());
         $OrderedAmountM = implode(',', collect($monthlyDatas)->pluck('TotalOrderedAmount')->toArray());
-        $ShippingAmountM = implode(',', collect($monthlyDatas)->pluck('TotalShippingAmount')->toArray()); // <-- BARU
+        $ShippingAmountM = implode(',', collect($monthlyDatas)->pluck('TotalShippingAmount')->toArray()); 
         $DeliveredAmountM = implode(',', collect($monthlyDatas)->pluck('TotalDeliveredAmount')->toArray());
         $CanceledAmountM = implode(',', collect($monthlyDatas)->pluck('TotalCanceledAmount')->toArray());
 
         $TotalAmount = collect($monthlyDatas)->sum('TotalAmount');
         $TotalOrderedAmount = collect($monthlyDatas)->sum('TotalOrderedAmount');
-        $TotalShippingAmount = collect($monthlyDatas)->sum('TotalShippingAmount'); // <-- BARU
+        $TotalShippingAmount = collect($monthlyDatas)->sum('TotalShippingAmount'); 
         $TotalDeliveredAmount = collect($monthlyDatas)->sum('TotalDeliveredAmount');
         $TotalCanceledAmount = collect($monthlyDatas)->sum('TotalCanceledAmount');
 
@@ -346,7 +290,6 @@ class AdminController extends BaseController
 
     public function brands()
     {
-        $brands = Brand::orderBy('id', 'desc')->paginate(10);
         $brands = Brand::withCount('products')->orderBy('id', 'desc')->paginate(10);
         return view('admin.brands', compact('brands'));
     }
@@ -381,7 +324,7 @@ class AdminController extends BaseController
 
         Brand::create([
             'name' => $request->name,
-            'slug' => Str::slug($request->name, '-'), // Membuat slug secara otomatis
+            'slug' => Str::slug($request->name, '-'), 
             'category_id' => $request->category_id,
             'image' => $imageName
         ]);
@@ -391,11 +334,8 @@ class AdminController extends BaseController
 
     public function brand_edit($id)
     {
-        // Cari merek berdasarkan ID, jika tidak ketemu akan menampilkan error 404
         $brand = Brand::findOrFail($id);
-        // Ambil semua kategori untuk dropdown
         $categories = Category::orderBy('name', 'asc')->get();
-
         return view('admin.brand-edit', compact('brand', 'categories'));
     }
 
@@ -405,7 +345,7 @@ class AdminController extends BaseController
             'id' => 'required|exists:brands,id',
             'name' => 'required|string|max:255',
             'category_id' => 'required|exists:categories,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif' // Gambar bersifat opsional saat update
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif' 
         ], [
             'name.required' => 'Nama merek tidak boleh kosong.',
             'category_id.required' => 'Anda harus memilih kategori.',
@@ -414,25 +354,20 @@ class AdminController extends BaseController
             'image.max' => 'Ukuran gambar maksimal adalah 2MB.',
         ]);
 
-        // 2. Cari merek yang akan di-update
         $brand = Brand::findOrFail($request->id);
 
-        // 3. Cek jika ada gambar baru yang diunggah
         $imageName = $brand->image;
         if ($request->hasFile('image')) {
-            // Hapus gambar lama jika ada
             $oldImagePath = public_path('uploads/brands/' . $brand->image);
             if (File::exists($oldImagePath)) {
                 File::delete($oldImagePath);
             }
 
-            // Unggah gambar baru
             $image = $request->file('image');
             $imageName = time() . '.' . $image->getClientOriginalExtension();
             $image->move(public_path('uploads/brands'), $imageName);
         }
 
-        // 4. Update data di database
         $brand->update([
             'name' => $request->name,
             'slug' => Str::slug($request->name, '-'),
@@ -440,10 +375,8 @@ class AdminController extends BaseController
             'image' => $imageName
         ]);
 
-        // 5. Redirect ke halaman daftar merek dengan pesan sukses
         return redirect()->route('admin.brands')->with('success', 'Data merek berhasil diperbarui!');
     }
-
 
     public function GenerateBrandThumbnailsImage($image, $imageName)
     {
@@ -495,7 +428,6 @@ class AdminController extends BaseController
         $category->save();
         return redirect()->route('admin.categories')->with('status', 'Kategori berhasil ditambahkan!');
     }
-
 
     public function category_edit($id)
     {
@@ -748,14 +680,12 @@ class AdminController extends BaseController
         $product = Product::findOrFail($request->product_id);
         $filename = trim($request->filename);
 
-        // Cek dan hapus file
         $imagePath = public_path('uploads/products/' . $filename);
         $thumbPath = public_path('uploads/products/thumbnails/' . $filename);
 
         if (File::exists($imagePath)) File::delete($imagePath);
         if (File::exists($thumbPath)) File::delete($thumbPath);
 
-        // Update DB
         $gallery = array_filter(explode(',', $product->images), fn($item) => trim($item) !== $filename);
         $product->images = implode(',', $gallery);
         $product->save();
@@ -854,7 +784,6 @@ class AdminController extends BaseController
 
     public function orderReport()
     {
-        // KEMBALIKAN KE QUERY LENGKAP: agar data notifikasi di header tetap ada
         $dashboardDatas = DB::select("Select sum(total) As TotalAmount,
                                  sum(if(status='ordered', total,0)) As TotalOrderedAmount,
                                  sum(if(status='delivered', total,0)) As TotalDeliveredAmount,
@@ -863,10 +792,8 @@ class AdminController extends BaseController
                                  sum(if(status='ordered', 1,0)) As TotalOrdered,
                                  sum(if(status='delivered', 1,0)) As TotalDelivered,
                                  sum(if(status='canceled', 1,0)) As TotalCanceled
-                                 From Orders
-                                 ");
+                                 From Orders");
 
-        // Data untuk pendapatan per bulan di tahun ini
         $monthlyDatas = DB::table('orders')
             ->select(
                 DB::raw('MONTH(created_at) as month_num'),
@@ -878,8 +805,6 @@ class AdminController extends BaseController
             ->orderBy('month_num', 'asc')
             ->get();
 
-
-        // Data untuk tabel produk terlaris
         $bestSellingProducts = DB::table('products')
             ->leftJoin('order_items', 'products.id', '=', 'order_items.product_id')
             ->leftJoin('orders', 'order_items.order_id', '=', 'orders.id')
@@ -894,7 +819,6 @@ class AdminController extends BaseController
             ->orderBy('products.name', 'asc')
             ->paginate(20);
 
-        // Kirim semua data yang dibutuhkan ke view
         return view('admin.orders.report', compact(
             'bestSellingProducts',
             'dashboardDatas',
@@ -907,9 +831,8 @@ class AdminController extends BaseController
         return Excel::download(new ProductsReportExport, 'laporan-produk-terlaris.xlsx');
     }
 
-   public function exportPdf()
+    public function exportPdf()
     {
-        // KEMBALIKAN KE QUERY LENGKAP: agar konsisten
         $dashboardDatas = DB::select("Select sum(total) As TotalAmount,
                                  sum(if(status='ordered', total,0)) As TotalOrderedAmount,
                                  sum(if(status='delivered', total,0)) As TotalDeliveredAmount,
@@ -918,10 +841,8 @@ class AdminController extends BaseController
                                  sum(if(status='ordered', 1,0)) As TotalOrdered,
                                  sum(if(status='delivered', 1,0)) As TotalDelivered,
                                  sum(if(status='canceled', 1,0)) As TotalCanceled
-                                 From Orders
-                                 ");
+                                 From Orders");
         
-        // Data untuk pendapatan per bulan di tahun ini
         $monthlyDatas = DB::table('orders')
             ->select(
                 DB::raw('MONTH(created_at) as month_num'),
@@ -933,7 +854,6 @@ class AdminController extends BaseController
             ->orderBy('month_num', 'asc')
             ->get();
             
-        // Data untuk tabel produk terlaris
         $bestSellingProducts = DB::table('products')
             ->leftJoin('order_items', 'products.id', '=', 'order_items.product_id')
             ->leftJoin('orders', 'order_items.order_id', '=', 'orders.id')
