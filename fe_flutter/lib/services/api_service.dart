@@ -33,7 +33,8 @@ class ApiService {
     }
   }
 
-  static Future<bool> register(String name, String email, String password, String passwordConfirmation) async {
+  static Future<bool> register(String name, String email, String password,
+      String passwordConfirmation) async {
     final response = await http.post(
       Uri.parse("$baseUrl/register"),
       headers: {"Content-Type": "application/json"},
@@ -87,10 +88,7 @@ class ApiService {
         "Content-Type": "application/json",
         "Authorization": "Bearer $_token"
       },
-      body: jsonEncode({
-        "product_id": productId,
-        "quantity": quantity
-      }),
+      body: jsonEncode({"product_id": productId, "quantity": quantity}),
     );
 
     return response.statusCode == 200;
@@ -179,7 +177,7 @@ class ApiService {
     );
 
     if (response.statusCode == 200) {
-      _token = null; 
+      _token = null;
       return true;
     }
     return false;
@@ -190,7 +188,7 @@ class ApiService {
   // ==========================================
   static Future<List<Product>> getWishlist() async {
     if (_token == null) return [];
-    
+
     final response = await http.get(
       Uri.parse("$baseUrl/wishlist"),
       headers: {
@@ -202,8 +200,10 @@ class ApiService {
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = jsonDecode(response.body);
       List<dynamic> wishlistData = data['data'] ?? [];
-      
-      return wishlistData.map((item) => Product.fromJson(item['product'])).toList();
+
+      return wishlistData
+          .map((item) => Product.fromJson(item['product']))
+          .toList();
     } else {
       return [];
     }
@@ -244,31 +244,34 @@ class ApiService {
   // ==========================================
   static Future<List<dynamic>> getProvinces() async {
     if (_token == null) return [];
-    
-    final response = await http.get(
-      Uri.parse("$baseUrl/rajaongkir/provinces"),
-      headers: {"Authorization": "Bearer $_token"}
-    );
+
+    final response = await http.get(Uri.parse("$baseUrl/rajaongkir/provinces"),
+        headers: {
+          "Accept": "application/json",
+          "Authorization": "Bearer $_token"
+        });
     return response.statusCode == 200 ? jsonDecode(response.body) : [];
   }
 
   static Future<List<dynamic>> getCities(String provinceId) async {
     if (_token == null) return [];
 
-    final response = await http.get(
-      Uri.parse("$baseUrl/rajaongkir/cities/$provinceId"),
-      headers: {"Authorization": "Bearer $_token"}
-    );
+    final response = await http
+        .get(Uri.parse("$baseUrl/rajaongkir/cities/$provinceId"), headers: {
+      "Accept": "application/json",
+      "Authorization": "Bearer $_token"
+    });
     return response.statusCode == 200 ? jsonDecode(response.body) : [];
   }
 
-  static Future<List<dynamic>> checkCost(String destinationCityId, int weight, String courier) async {
+  static Future<List<dynamic>> checkCost(
+      String destinationCityId, int weight, String courier) async {
     if (_token == null) return [];
 
     final response = await http.post(
       Uri.parse("$baseUrl/rajaongkir/cost"),
       headers: {
-        "Content-Type": "application/json", 
+        "Content-Type": "application/json",
         "Authorization": "Bearer $_token"
       },
       body: jsonEncode({
@@ -280,30 +283,36 @@ class ApiService {
     return response.statusCode == 200 ? jsonDecode(response.body) : [];
   }
 
-  static Future<String?> checkout(String address, String phone, String provinceName, String cityName, String courier, double shippingCost) async {
+  static Future<String?> checkout(
+      String address,
+      String phone,
+      String provinceName,
+      String cityName,
+      String courier,
+      double shippingCost) async {
     if (_token == null) throw Exception("Belum login");
 
     final response = await http.post(
       Uri.parse("$baseUrl/checkout"),
       headers: {
-        "Content-Type": "application/json", 
+        "Content-Type": "application/json",
         "Authorization": "Bearer $_token"
       },
       body: jsonEncode({
-        "address": address, 
+        "address": address,
         "phone": phone,
-        "province_name": provinceName, 
+        "province_name": provinceName,
         "city_name": cityName,
-        "courier": courier, 
+        "courier": courier,
         "shipping_cost": shippingCost
       }),
     );
-    
+
     if (response.statusCode == 200) {
-       return jsonDecode(response.body)['payment_url'];
+      return jsonDecode(response.body)['payment_url'];
     } else {
-       print("Gagal Checkout: ${response.body}");
-       return null;
+      print("Gagal Checkout: ${response.body}");
+      return null;
     }
   }
 
@@ -317,7 +326,10 @@ class ApiService {
     try {
       final response = await http.get(
         Uri.parse("$baseUrl/admin/store-location"),
-        headers: {"Accept": "application/json", "Authorization": "Bearer $_token"},
+        headers: {
+          "Accept": "application/json",
+          "Authorization": "Bearer $_token"
+        },
       );
       if (response.statusCode == 200) return jsonDecode(response.body);
     } catch (e) {
@@ -327,7 +339,8 @@ class ApiService {
   }
 
   // BARU: Simpan Lokasi Toko (Origin RajaOngkir)
-  static Future<bool> saveAdminStoreLocation(String provinceId, String cityId) async {
+  static Future<bool> saveAdminStoreLocation(
+      String provinceId, String cityId) async {
     if (_token == null) return false;
     try {
       final response = await http.post(
@@ -370,21 +383,24 @@ class ApiService {
   // Ambil Semua Produk Admin
   static Future<List<dynamic>> getAdminProducts() async {
     if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/products"), headers: {"Authorization": "Bearer $_token"});
-    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/products"),
+        headers: {"Authorization": "Bearer $_token"});
+    if (response.statusCode == 200)
+      return jsonDecode(response.body)['data'] ?? [];
     return [];
   }
 
   // Simpan atau Update Produk (Support Upload Gambar Web & Mobile)
-  static Future<bool> saveAdminProduct(Map<String, String> fields, {XFile? mainImage, List<XFile>? galleryImages, int? productId}) async {
+  static Future<bool> saveAdminProduct(Map<String, String> fields,
+      {XFile? mainImage, List<XFile>? galleryImages, int? productId}) async {
     if (_token == null) return false;
-    
-    var uri = productId == null 
-        ? Uri.parse("$baseUrl/admin/products/store") 
+
+    var uri = productId == null
+        ? Uri.parse("$baseUrl/admin/products/store")
         : Uri.parse("$baseUrl/admin/products/update/$productId");
-        
+
     var request = http.MultipartRequest('POST', uri);
-    
+
     request.headers.addAll({
       "Authorization": "Bearer $_token",
       "Accept": "application/json",
@@ -434,29 +450,39 @@ class ApiService {
   // Hapus Produk
   static Future<bool> deleteAdminProduct(int id) async {
     if (_token == null) return false;
-    final response = await http.delete(Uri.parse("$baseUrl/admin/products/delete/$id"), headers: {"Authorization": "Bearer $_token"});
+    final response = await http.delete(
+        Uri.parse("$baseUrl/admin/products/delete/$id"),
+        headers: {"Authorization": "Bearer $_token"});
     return response.statusCode == 200;
   }
 
   // Ambil Kategori untuk Dropdown
   static Future<List<dynamic>> getAdminCategories() async {
     if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/categories"), headers: {"Authorization": "Bearer $_token"});
-    return response.statusCode == 200 ? jsonDecode(response.body)['data'] ?? [] : [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/categories"),
+        headers: {"Authorization": "Bearer $_token"});
+    return response.statusCode == 200
+        ? jsonDecode(response.body)['data'] ?? []
+        : [];
   }
 
   // Ambil Brand untuk Dropdown
   static Future<List<dynamic>> getAdminBrands() async {
     if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/brands"), headers: {"Authorization": "Bearer $_token"});
-    return response.statusCode == 200 ? jsonDecode(response.body)['data'] ?? [] : [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/brands"),
+        headers: {"Authorization": "Bearer $_token"});
+    return response.statusCode == 200
+        ? jsonDecode(response.body)['data'] ?? []
+        : [];
   }
 
   // Ambil Semua Pesanan Masuk
   static Future<List<dynamic>> getAdminOrders() async {
     if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/orders"), headers: {"Authorization": "Bearer $_token"});
-    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/orders"),
+        headers: {"Authorization": "Bearer $_token"});
+    if (response.statusCode == 200)
+      return jsonDecode(response.body)['data'] ?? [];
     return [];
   }
 
@@ -465,7 +491,10 @@ class ApiService {
     if (_token == null) return false;
     final response = await http.put(
       Uri.parse("$baseUrl/admin/orders/update-status/$orderId"),
-      headers: {"Content-Type": "application/json", "Authorization": "Bearer $_token"},
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $_token"
+      },
       body: jsonEncode({"status": status}),
     );
     return response.statusCode == 200;
@@ -474,34 +503,40 @@ class ApiService {
   // Ambil Kupon Diskon
   static Future<List<dynamic>> getAdminCoupons() async {
     if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/coupons"), headers: {"Authorization": "Bearer $_token"});
+    final response = await http.get(Uri.parse("$baseUrl/admin/coupons"),
+        headers: {"Authorization": "Bearer $_token"});
     return response.statusCode == 200 ? jsonDecode(response.body)['data'] : [];
   }
 
   // Ambil Pesan Masuk (Kontak)
   static Future<List<dynamic>> getAdminContacts() async {
     if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/contacts"), headers: {"Authorization": "Bearer $_token"});
+    final response = await http.get(Uri.parse("$baseUrl/admin/contacts"),
+        headers: {"Authorization": "Bearer $_token"});
     return response.statusCode == 200 ? jsonDecode(response.body)['data'] : [];
   }
 
   // Fungsi Kelola Kategori (Admin)
-  static Future<bool> saveAdminCategory(Map<String, String> fields, {XFile? image, int? categoryId}) async {
+  static Future<bool> saveAdminCategory(Map<String, String> fields,
+      {XFile? image, int? categoryId}) async {
     if (_token == null) return false;
-    
-    var uri = categoryId == null 
-        ? Uri.parse("$baseUrl/admin/categories/store") 
+
+    var uri = categoryId == null
+        ? Uri.parse("$baseUrl/admin/categories/store")
         : Uri.parse("$baseUrl/admin/categories/update/$categoryId");
-        
+
     var request = http.MultipartRequest('POST', uri);
-    request.headers.addAll({"Authorization": "Bearer $_token", "Accept": "application/json"});
+    request.headers.addAll(
+        {"Authorization": "Bearer $_token", "Accept": "application/json"});
 
     if (categoryId != null) request.fields['_method'] = 'PUT';
     request.fields.addAll(fields);
 
     if (image != null) {
       request.files.add(http.MultipartFile.fromBytes(
-        'image', await image.readAsBytes(), filename: image.name,
+        'image',
+        await image.readAsBytes(),
+        filename: image.name,
       ));
     }
 
@@ -511,27 +546,33 @@ class ApiService {
 
   static Future<bool> deleteAdminCategory(int id) async {
     if (_token == null) return false;
-    final response = await http.delete(Uri.parse("$baseUrl/admin/categories/delete/$id"), headers: {"Authorization": "Bearer $_token"});
+    final response = await http.delete(
+        Uri.parse("$baseUrl/admin/categories/delete/$id"),
+        headers: {"Authorization": "Bearer $_token"});
     return response.statusCode == 200;
   }
 
   // Fungsi Kelola Brand (Admin)
-  static Future<bool> saveAdminBrand(Map<String, String> fields, {XFile? image, int? brandId}) async {
+  static Future<bool> saveAdminBrand(Map<String, String> fields,
+      {XFile? image, int? brandId}) async {
     if (_token == null) return false;
-    
-    var uri = brandId == null 
-        ? Uri.parse("$baseUrl/admin/brands/store") 
+
+    var uri = brandId == null
+        ? Uri.parse("$baseUrl/admin/brands/store")
         : Uri.parse("$baseUrl/admin/brands/update/$brandId");
-        
+
     var request = http.MultipartRequest('POST', uri);
-    request.headers.addAll({"Authorization": "Bearer $_token", "Accept": "application/json"});
+    request.headers.addAll(
+        {"Authorization": "Bearer $_token", "Accept": "application/json"});
 
     if (brandId != null) request.fields['_method'] = 'PUT';
     request.fields.addAll(fields);
 
     if (image != null) {
       request.files.add(http.MultipartFile.fromBytes(
-        'image', await image.readAsBytes(), filename: image.name,
+        'image',
+        await image.readAsBytes(),
+        filename: image.name,
       ));
     }
 
@@ -541,7 +582,9 @@ class ApiService {
 
   static Future<bool> deleteAdminBrand(int id) async {
     if (_token == null) return false;
-    final response = await http.delete(Uri.parse("$baseUrl/admin/brands/delete/$id"), headers: {"Authorization": "Bearer $_token"});
+    final response = await http.delete(
+        Uri.parse("$baseUrl/admin/brands/delete/$id"),
+        headers: {"Authorization": "Bearer $_token"});
     return response.statusCode == 200;
   }
 }

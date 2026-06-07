@@ -10,30 +10,62 @@ use App\Models\About;
 class ApiRajaOngkirController extends Controller
 {
     protected $apiKey;
+    protected $baseUrl;
     protected $origin;
 
     public function __construct()
     {
-        $this->apiKey = env('RAJAONGKIR_API_KEY');
-        $this->origin = env('RAJAONGKIR_ORIGIN', '399'); // Fallback ke .env jika belum di-set
+        // Membaca dari config/rajaongkir.php
+        $this->apiKey = config('rajaongkir.api_key');
+        $this->baseUrl = config('rajaongkir.base_url', 'https://api.rajaongkir.com/starter');
+        $this->origin = config('rajaongkir.origin', '399');
     }
 
     public function getProvinces()
     {
-        $response = Http::withHeaders(['key' => $this->apiKey])
-            ->get('https://api.rajaongkir.com/starter/province');
+        try {
+            $endpoint = rtrim($this->baseUrl, '/') . '/destination/province';
 
-        return response()->json($response->json()['rajaongkir']['results'] ?? []);
+            // TAMBAHAN ->withoutVerifying() UNTUK MENGATASI CURL ERROR 60
+            $response = Http::withoutVerifying()->withHeaders([
+                'Accept' => 'application/json',
+                'key' => $this->apiKey
+            ])->get($endpoint);
+
+            if ($response->successful()) {
+                // Support Komerce API ['data'] ATAU RajaOngkir Starter ['rajaongkir']['results']
+                $data = $response->json()['data'] ?? $response->json()['rajaongkir']['results'] ?? [];
+                return response()->json($data);
+            }
+
+            return response()->json(['error' => 'Gagal mengambil provinsi', 'detail' => $response->json()], 502);
+        } catch (\Throwable $e) {
+            \Log::error("API Mobile Provinces Error: " . $e->getMessage());
+            return response()->json(['error' => 'Server Error: ' . $e->getMessage()], 500);
+        }
     }
 
     public function getCities($provinceId)
     {
-        $response = Http::withHeaders(['key' => $this->apiKey])
-            ->get('https://api.rajaongkir.com/starter/city', [
-                'province' => $provinceId
-            ]);
+        try {
+            $endpoint = rtrim($this->baseUrl, '/') . "/destination/city/{$provinceId}";
 
-        return response()->json($response->json()['rajaongkir']['results'] ?? []);
+            // TAMBAHAN ->withoutVerifying() UNTUK MENGATASI CURL ERROR 60
+            $response = Http::withoutVerifying()->withHeaders([
+                'Accept' => 'application/json',
+                'key' => $this->apiKey
+            ])->get($endpoint);
+
+            if ($response->successful()) {
+                $data = $response->json()['data'] ?? $response->json()['rajaongkir']['results'] ?? [];
+                return response()->json($data);
+            }
+
+            return response()->json(['error' => 'Gagal mengambil kota', 'detail' => $response->json()], 502);
+        } catch (\Throwable $e) {
+            \Log::error("API Mobile Cities Error: " . $e->getMessage());
+            return response()->json(['error' => 'Server Error: ' . $e->getMessage()], 500);
+        }
     }
 
     public function checkCost(Request $request)
@@ -44,20 +76,55 @@ class ApiRajaOngkirController extends Controller
             'courier' => 'required' 
         ]);
 
-        // Mengambil origin kota dari Manajemen Toko (Tabel About)
         $about = About::first();
-        
-        // API Starter RajaOngkir membutuhkan parameter 'city_id'
         $originCity = ($about && $about->city_id) ? $about->city_id : $this->origin;
 
-        $response = Http::withHeaders(['key' => $this->apiKey])
-            ->post('https://api.rajaongkir.com/starter/cost', [
+        try {
+            $isKomerce = str_contains($this->baseUrl, 'komerce');
+            $endpoint = $isKomerce 
+                ? rtrim($this->baseUrl, '/') . '/calculate/domestic-cost'
+                : rtrim($this->baseUrl, '/') . '/cost';
+
+            // TAMBAHAN ->withoutVerifying() UNTUK MENGATASI CURL ERROR 60
+            $response = Http::withoutVerifying()->asForm()->withHeaders([
+                'Accept' => 'application/json',
+                'key' => $this->apiKey
+            ])->post($endpoint, [
                 'origin' => $originCity,
                 'destination' => $request->destination,
                 'weight' => $request->weight,
-                'courier' => $request->courier
+                'courier' => strtolower($request->courier)
             ]);
 
-        return response()->json($response->json()['rajaongkir']['results'][0]['costs'] ?? []);
+            if ($response->successful()) {
+                if ($isKomerce) {
+                    // Konversi response Komerce agar cocok dengan format bacaan Flutter (Starter)
+                    $data = $response->json()['data'] ?? [];
+                    $mapped = collect($data)->map(function($item) {
+                        return [
+                            'service' => $item['service'] ?? ($item['code'] ?? ''),
+                            'description' => $item['description'] ?? ($item['name'] ?? ''),
+                            'cost' => [
+                                [
+                                    'value' => (int) ($item['cost'] ?? ($item['price'] ?? 0)),
+                                    'etd' => $item['etd'] ?? '',
+                                    'note' => ''
+                                ]
+                            ]
+                        ];
+                    })->values()->toArray();
+                    
+                    return response()->json($mapped);
+                } else {
+                    $results = $response->json()['rajaongkir']['results'][0]['costs'] ?? [];
+                    return response()->json($results);
+                }
+            }
+
+            return response()->json(['error' => 'Gagal hitung ongkir', 'detail' => $response->json()], 502);
+        } catch (\Throwable $e) {
+            \Log::error("API Mobile checkCost Error: " . $e->getMessage());
+            return response()->json(['error' => 'Server Error: ' . $e->getMessage()], 500);
+        }
     }
 }

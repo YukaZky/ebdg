@@ -36,14 +36,28 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
     final storeData = await ApiService.getAdminStoreLocation();
     
     if (storeData != null && storeData['province_id'] != null) {
-       _selectedProvinceId = storeData['province_id'].toString();
-       await _fetchCities(_selectedProvinceId!); // Panggil API Kota
-       
-       if (storeData['city_id'] != null) {
-          setState(() {
-             _selectedCityId = storeData['city_id'].toString();
-          });
-       }
+      String fetchedProvId = storeData['province_id'].toString();
+      
+      // Pastikan ID provinsi dari database benar-benar ada di list API
+      bool provExists = _provinces.any((p) => p['province_id']?.toString() == fetchedProvId);
+      
+      if (provExists) {
+         _selectedProvinceId = fetchedProvId;
+         await _fetchCities(_selectedProvinceId!); // Panggil API Kota
+         
+         if (storeData['city_id'] != null) {
+            String fetchedCityId = storeData['city_id'].toString();
+            
+            // Pastikan ID kota dari database benar-benar ada di list API
+            bool cityExists = _cities.any((c) => c['city_id']?.toString() == fetchedCityId);
+            
+            if (cityExists) {
+              setState(() {
+                 _selectedCityId = fetchedCityId;
+              });
+            }
+         }
+      }
     }
     
     setState(() => _isLoading = false);
@@ -103,8 +117,9 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
                   value: _selectedProvinceId,
                   items: _provinces.map<DropdownMenuItem<String>>((prov) {
                     return DropdownMenuItem<String>(
-                      value: prov['province_id'].toString(),
-                      child: Text(prov['province']),
+                      // Mencegah error Null dengan aman
+                      value: prov['province_id']?.toString() ?? '',
+                      child: Text(prov['province']?.toString() ?? 'Tidak Diketahui'),
                     );
                   }).toList(),
                   onChanged: (value) {
@@ -113,7 +128,8 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
                       _selectedCityId = null; // Reset kota jika provinsi diganti
                       _cities = [];
                     });
-                    if (value != null) _fetchCities(value);
+                    // Pastikan value tidak kosong sebelum mengambil data kota
+                    if (value != null && value.isNotEmpty) _fetchCities(value);
                   },
                 ),
                 const SizedBox(height: 16),
@@ -123,8 +139,9 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
                   value: _selectedCityId,
                   items: _cities.map<DropdownMenuItem<String>>((city) {
                     return DropdownMenuItem<String>(
-                      value: city['city_id'].toString(),
-                      child: Text("${city['type']} ${city['city_name']}"),
+                      // Mencegah error Null dengan aman
+                      value: city['city_id']?.toString() ?? '',
+                      child: Text("${city['type'] ?? ''} ${city['city_name'] ?? 'Tidak Diketahui'}".trim()),
                     );
                   }).toList(),
                   onChanged: (value) {
