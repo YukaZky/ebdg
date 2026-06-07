@@ -114,15 +114,133 @@ class ApiAdminController extends Controller
 
         return response()->json(['status' => 'success', 'message' => 'Produk berhasil diperbarui', 'data' => $product], 200);
     }
+
     public function deleteProduct($id)
     {
         Product::findOrFail($id)->delete();
         return response()->json(['status' => 'success', 'message' => 'Produk berhasil dihapus'], 200);
     }
 
+    // ==========================================
     // 3. KATEGORI & BRAND
-    public function getCategories() { return response()->json(['data' => Category::all()], 200); }
-    public function getBrands() { return response()->json(['data' => Brand::all()], 200); }
+    // ==========================================
+    public function getCategories() 
+    { 
+        return response()->json(['data' => Category::latest()->get()], 200); 
+    }
+
+    public function storeCategory(Request $request)
+    {
+        $request->validate(['name' => 'required|string']);
+        $category = new Category();
+        $category->name = $request->name;
+        $category->slug = Str::slug($request->name);
+        
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $file_name = time() . '.' . $image->extension();
+            $image->move(public_path('uploads/categories'), $file_name);
+            $category->image = $file_name;
+        }
+        $category->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Kategori berhasil ditambahkan', 'data' => $category], 201);
+    }
+
+    public function updateCategory(Request $request, $id)
+    {
+        $category = Category::findOrFail($id);
+        $category->name = $request->name ?? $category->name;
+        $category->slug = Str::slug($category->name);
+
+        if ($request->hasFile('image')) {
+            // Hapus gambar lama dari folder public/uploads/categories
+            if ($category->image && file_exists(public_path('uploads/categories/' . $category->image))) {
+                unlink(public_path('uploads/categories/' . $category->image));
+            }
+            $image = $request->file('image');
+            $file_name = time() . '.' . $image->extension();
+            $image->move(public_path('uploads/categories'), $file_name);
+            $category->image = $file_name;
+        }
+        $category->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Kategori berhasil diupdate', 'data' => $category]);
+    }
+
+    public function deleteCategory($id)
+    {
+        $category = Category::findOrFail($id);
+        // Hapus gambar dari folder public/uploads/categories sebelum data dihapus
+        if ($category->image && file_exists(public_path('uploads/categories/' . $category->image))) {
+            unlink(public_path('uploads/categories/' . $category->image));
+        }
+        $category->delete();
+        return response()->json(['status' => 'success', 'message' => 'Kategori berhasil dihapus']);
+    }
+
+    public function getBrands() 
+    { 
+        return response()->json(['data' => Brand::latest()->get()], 200); 
+    }
+
+    public function storeBrand(Request $request)
+    {
+        $request->validate(['name' => 'required|string']);
+        $brand = new Brand();
+        $brand->name = $request->name;
+        $brand->slug = Str::slug($request->name);
+        
+        if ($request->has('category_id')) {
+            $brand->category_id = $request->category_id;
+        }
+        
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $file_name = time() . '.' . $image->extension();
+            $image->move(public_path('uploads/brands'), $file_name);
+            $brand->image = $file_name;
+        }
+        $brand->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Brand berhasil ditambahkan', 'data' => $brand], 201);
+    }
+
+    public function updateBrand(Request $request, $id)
+    {
+        $brand = Brand::findOrFail($id);
+        $brand->name = $request->name ?? $brand->name;
+        $brand->slug = Str::slug($brand->name);
+        
+        if ($request->has('category_id')) {
+            $brand->category_id = $request->category_id;
+        }
+
+        if ($request->hasFile('image')) {
+            // Hapus gambar lama dari folder public/uploads/brands
+            if ($brand->image && file_exists(public_path('uploads/brands/' . $brand->image))) {
+                unlink(public_path('uploads/brands/' . $brand->image));
+            }
+            $image = $request->file('image');
+            $file_name = time() . '.' . $image->extension();
+            $image->move(public_path('uploads/brands'), $file_name);
+            $brand->image = $file_name;
+        }
+        $brand->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Brand berhasil diupdate']);
+    }
+
+    public function deleteBrand($id)
+    {
+        $brand = Brand::findOrFail($id);
+        // Hapus gambar dari folder public/uploads/brands sebelum data dihapus
+        if ($brand->image && file_exists(public_path('uploads/brands/' . $brand->image))) {
+            unlink(public_path('uploads/brands/' . $brand->image));
+        }
+        $brand->delete();
+        return response()->json(['status' => 'success', 'message' => 'Brand berhasil dihapus']);
+    }
 
     // 4. MANAJEMEN PESANAN
     public function getOrders()

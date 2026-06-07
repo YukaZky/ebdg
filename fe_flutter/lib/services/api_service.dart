@@ -446,4 +446,64 @@ class ApiService {
     final response = await http.get(Uri.parse("$baseUrl/admin/contacts"), headers: {"Authorization": "Bearer $_token"});
     return response.statusCode == 200 ? jsonDecode(response.body)['data'] : [];
   }
+
+  // Fungsi Kelola Kategori (Admin)
+  static Future<bool> saveAdminCategory(Map<String, String> fields, {XFile? image, int? categoryId}) async {
+    if (_token == null) return false;
+    
+    var uri = categoryId == null 
+        ? Uri.parse("$baseUrl/admin/categories/store") 
+        : Uri.parse("$baseUrl/admin/categories/update/$categoryId");
+        
+    var request = http.MultipartRequest('POST', uri);
+    request.headers.addAll({"Authorization": "Bearer $_token", "Accept": "application/json"});
+
+    if (categoryId != null) request.fields['_method'] = 'PUT';
+    request.fields.addAll(fields);
+
+    if (image != null) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'image', await image.readAsBytes(), filename: image.name,
+      ));
+    }
+
+    final response = await request.send();
+    return response.statusCode == 200 || response.statusCode == 201;
+  }
+
+  static Future<bool> deleteAdminCategory(int id) async {
+    if (_token == null) return false;
+    final response = await http.delete(Uri.parse("$baseUrl/admin/categories/delete/$id"), headers: {"Authorization": "Bearer $_token"});
+    return response.statusCode == 200;
+  }
+
+  // Fungsi Kelola Brand (Admin)
+  static Future<bool> saveAdminBrand(Map<String, String> fields, {XFile? image, int? brandId}) async {
+    if (_token == null) return false;
+    
+    var uri = brandId == null 
+        ? Uri.parse("$baseUrl/admin/brands/store") 
+        : Uri.parse("$baseUrl/admin/brands/update/$brandId");
+        
+    var request = http.MultipartRequest('POST', uri);
+    request.headers.addAll({"Authorization": "Bearer $_token", "Accept": "application/json"});
+
+    if (brandId != null) request.fields['_method'] = 'PUT';
+    request.fields.addAll(fields);
+
+    if (image != null) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'image', await image.readAsBytes(), filename: image.name,
+      ));
+    }
+
+    final response = await request.send();
+    return response.statusCode == 200 || response.statusCode == 201;
+  }
+
+  static Future<bool> deleteAdminBrand(int id) async {
+    if (_token == null) return false;
+    final response = await http.delete(Uri.parse("$baseUrl/admin/brands/delete/$id"), headers: {"Authorization": "Bearer $_token"});
+    return response.statusCode == 200;
+  }
 }

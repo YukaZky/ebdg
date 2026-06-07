@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import 'admin_products_screen.dart'; // File screen manajemen produk
+import 'admin_categories_screen.dart'; // File screen manajemen kategori
+import 'admin_brands_screen.dart'; // File screen manajemen brand
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({Key? key}) : super(key: key);
@@ -179,7 +181,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                   _buildListMenu(context, "Kelola Produk", "Tambah, edit, dan hapus barang", Icons.shopping_bag_outlined, Colors.teal, true, () {
                                     Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminProductsScreen()));
                                   }),
-                                  _buildListMenu(context, "Kategori & Brand", "Atur pengelompokan produk", Icons.category_outlined, Colors.purple, true, () {}),
+                                  _buildListMenu(context, "Kelola Kategori", "Atur pengelompokan produk", Icons.category_outlined, Colors.purple, true, () {
+                                    // Navigasi ke Layar Kategori
+                                    Navigator.push(context, MaterialPageRoute(builder: (context) => AdminCategoriesScreen()));
+                                  }),
+                                  _buildListMenu(context, "Kelola Brand", "Atur merek produk", Icons.branding_watermark_outlined, Colors.indigo, true, () {
+                                    // Navigasi ke Layar Brand
+                                    Navigator.push(context, MaterialPageRoute(builder: (context) => AdminBrandsScreen()));
+                                  }),
                                   _buildListMenu(context, "Slide Banner", "Atur banner halaman depan", Icons.view_carousel_outlined, Colors.blueAccent, false, () {}),
                                 ],
                               ),
