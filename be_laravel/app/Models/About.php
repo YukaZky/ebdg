@@ -18,6 +18,7 @@ class About extends Model
         'the_company',
         'province_id',
         'city_id',
-        'district_id'
+        'district_id',
+        'id',
     ];
 }

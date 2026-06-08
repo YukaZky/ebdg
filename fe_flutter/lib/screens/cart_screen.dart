@@ -20,13 +20,10 @@ class _CartScreenState extends State<CartScreen> {
     _loadCart();
   }
 
-  // Load data dari API
   Future<void> _loadCart() async {
     try {
       final cartData = await ApiService.getCart();
       setState(() {
-        // Kita ubah list dari API menjadi list yang bisa dimodifikasi (mutable)
-        // dan tambahkan properti 'isChecked' dengan nilai default false
         _cartItems = (cartData['data'] as List).map((item) {
           var mutableItem = Map<String, dynamic>.from(item);
           mutableItem['isChecked'] = false;
@@ -40,19 +37,15 @@ class _CartScreenState extends State<CartScreen> {
     }
   }
 
-  // Helper untuk format mata uang Rupiah
   String formatCurrency(double price) {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(price);
   }
 
-  // Cek apakah tidak ada item sama sekali yang dicentang
   bool get _noneSelected => !_cartItems.any((item) => item['isChecked'] == true);
 
-  // Hitung total harga sesuai item yang dicentang
-  // Jika tidak ada yang dicentang, maka hitung total SEMUA item
+  // Hitung total harga
   double get totalPrice {
     double total = 0;
-    
     for (var item in _cartItems) {
       if (_noneSelected || item['isChecked'] == true) {
         final product = item['product'];
@@ -64,31 +57,34 @@ class _CartScreenState extends State<CartScreen> {
     return total;
   }
 
-  // Fungsi bersihkan seluruh keranjang (Lokal UI)
+  // Hitung total berat (gram) otomatis
+  double get totalWeight {
+    double weight = 0;
+    for (var item in _cartItems) {
+      if (_noneSelected || item['isChecked'] == true) {
+        final product = item['product'];
+        double w = double.tryParse(product['weight']?.toString() ?? '0') ?? 0;
+        int qty = int.tryParse(item['quantity'].toString()) ?? 1;
+        weight += w * qty;
+      }
+    }
+    // Minimal berat 1 kg (1000 gram) jika kosong di database
+    return weight > 0 ? weight : 1000; 
+  }
+
   void _clearCart() {
-    // TODO: Tambahkan fungsi pemanggilan API untuk hapus semua keranjang di sini jika ada
-    // await ApiService.clearCart();
-    
     setState(() {
       _cartItems.clear();
     });
   }
 
-  // Fungsi hapus satu item spesifik (Lokal UI)
   void _removeItem(int index) {
-    // TODO: Tambahkan fungsi pemanggilan API untuk hapus item spesifik berdasarkan ID
-    // await ApiService.removeCartItem(item['id']);
-
     setState(() {
       _cartItems.removeAt(index);
     });
   }
 
-  // Fungsi ubah jumlah produk + atau - (Lokal UI)
   void _updateQuantity(int index, int change) {
-    // TODO: Tambahkan pemanggilan API untuk update quantity
-    // await ApiService.updateCartQuantity(item['id'], newQuantity);
-
     setState(() {
       int currentQty = int.tryParse(_cartItems[index]['quantity'].toString()) ?? 1;
       int newQuantity = currentQty + change;
@@ -98,20 +94,21 @@ class _CartScreenState extends State<CartScreen> {
     });
   }
 
-  // Fungsi toggle checkbox
   void _toggleCheckbox(int index, bool? value) {
     setState(() {
       _cartItems[index]['isChecked'] = value ?? false;
     });
   }
 
-  // Aksi tombol checkout
   void _checkout() {
-    // Navigasi ke CheckoutScreen dengan membawa total yang dihitung
+    // Navigasi ke CheckoutScreen dengan membawa total harga & berat
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => CheckoutScreen(totalAmount: totalPrice),
+        builder: (context) => CheckoutScreen(
+          totalAmount: totalPrice,
+          totalWeight: totalWeight, // Mengirimkan parameter berat
+        ),
       ),
     );
   }
@@ -126,7 +123,6 @@ class _CartScreenState extends State<CartScreen> {
         elevation: 0.5,
         iconTheme: const IconThemeData(color: Colors.black),
         actions: [
-          // Tombol Bersihkan Keranjang
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
             onPressed: () {
@@ -137,10 +133,7 @@ class _CartScreenState extends State<CartScreen> {
                   title: const Text('Bersihkan Keranjang?'),
                   content: const Text('Apakah Anda yakin ingin menghapus semua item di keranjang?'),
                   actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Batal'),
-                    ),
+                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
                     TextButton(
                       onPressed: () {
                         _clearCart();
@@ -152,19 +145,13 @@ class _CartScreenState extends State<CartScreen> {
                 ),
               );
             },
-            tooltip: 'Bersihkan Keranjang',
           ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _cartItems.isEmpty
-              ? const Center(
-                  child: Text(
-                    'Keranjang belanja Anda kosong.',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                )
+              ? const Center(child: Text('Keranjang belanja Anda kosong.', style: TextStyle(fontSize: 16, color: Colors.grey)))
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: _cartItems.length,
@@ -181,103 +168,50 @@ class _CartScreenState extends State<CartScreen> {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Kotak Centang (Checkbox)
                             Padding(
                               padding: const EdgeInsets.only(top: 16.0),
                               child: SizedBox(
                                 width: 24,
-                                child: Checkbox(
-                                  value: item['isChecked'],
-                                  activeColor: Colors.blue,
-                                  onChanged: (value) => _toggleCheckbox(index, value),
-                                ),
+                                child: Checkbox(value: item['isChecked'], activeColor: Colors.blue, onChanged: (value) => _toggleCheckbox(index, value)),
                               ),
                             ),
                             const SizedBox(width: 8),
-                            
-                            // Gambar Produk Dinamis
                             Container(
-                              width: 70,
-                              height: 70,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.grey.shade200),
-                              ),
+                              width: 70, height: 70,
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
                                 child: product['image'] != null
-                                    ? Image.network(
-                                        "http://127.0.0.1:8000/uploads/products/${product['image']}",
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, color: Colors.grey),
-                                      )
+                                    ? Image.network("http://127.0.0.1:8000/uploads/products/${product['image']}", fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Colors.grey))
                                     : const Icon(Icons.image, color: Colors.grey, size: 40),
                               ),
                             ),
                             const SizedBox(width: 12),
-                            
-                            // Detail Produk
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    product['name'] ?? 'Produk Tanpa Nama',
-                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                  Text(product['name'] ?? 'Produk Tanpa Nama', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
                                   const SizedBox(height: 8),
-                                  Text(
-                                    formatCurrency(double.tryParse(product['regular_price'].toString()) ?? 0),
-                                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[700], fontSize: 14),
-                                  ),
+                                  Text(formatCurrency(double.tryParse(product['regular_price'].toString()) ?? 0), style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[700], fontSize: 14)),
                                 ],
                               ),
                             ),
-                            
-                            // Aksi (Hapus dan Jumlah Item)
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                IconButton(
-                                  icon: Icon(Icons.delete, color: Colors.grey[400], size: 20),
-                                  onPressed: () => _removeItem(index),
-                                  constraints: const BoxConstraints(),
-                                  padding: EdgeInsets.zero,
-                                ),
+                                IconButton(icon: Icon(Icons.delete, color: Colors.grey[400], size: 20), onPressed: () => _removeItem(index), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
                                 const SizedBox(height: 16),
                                 Row(
                                   children: [
                                     InkWell(
                                       onTap: () => _updateQuantity(index, -1),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: BoxDecoration(
-                                          border: Border.all(color: Colors.grey.shade300),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: const Icon(Icons.remove, size: 14, color: Colors.black87),
-                                      ),
+                                      child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(4)), child: const Icon(Icons.remove, size: 14)),
                                     ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                                      child: Text(
-                                        '${item['quantity']}',
-                                        style: const TextStyle(fontWeight: FontWeight.w600),
-                                      ),
-                                    ),
+                                    Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text('${item['quantity']}', style: const TextStyle(fontWeight: FontWeight.w600))),
                                     InkWell(
                                       onTap: () => _updateQuantity(index, 1),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: BoxDecoration(
-                                          border: Border.all(color: Colors.grey.shade300),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: const Icon(Icons.add, size: 14, color: Colors.black87),
-                                      ),
+                                      child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(4)), child: const Icon(Icons.add, size: 14)),
                                     ),
                                   ],
                                 ),
@@ -289,21 +223,9 @@ class _CartScreenState extends State<CartScreen> {
                     );
                   },
                 ),
-      
-      // Bagian Bawah (Total & Tombol Checkout)
       bottomNavigationBar: _isLoading ? const SizedBox.shrink() : Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              spreadRadius: 1,
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
+        decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), spreadRadius: 1, blurRadius: 10, offset: const Offset(0, -5))]),
         child: SafeArea(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -312,31 +234,15 @@ class _CartScreenState extends State<CartScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Total (${_noneSelected ? _cartItems.length : _cartItems.where((i) => i['isChecked'] == true).length} produk)',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                  ),
+                  Text('Total (${_noneSelected ? _cartItems.length : _cartItems.where((i) => i['isChecked'] == true).length} produk)', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                   const SizedBox(height: 2),
-                  Text(
-                    formatCurrency(totalPrice),
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blue[700]),
-                  ),
+                  Text(formatCurrency(totalPrice), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blue[700])),
                 ],
               ),
               ElevatedButton(
                 onPressed: _cartItems.isEmpty ? null : _checkout,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                  backgroundColor: Colors.blue[700],
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: const Text(
-                  'Checkout',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
+                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14), backgroundColor: Colors.blue[700], elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                child: const Text('Checkout', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
             ],
           ),

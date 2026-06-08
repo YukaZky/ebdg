@@ -5,7 +5,9 @@ import 'main_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final double totalAmount;
-  const CheckoutScreen({Key? key, required this.totalAmount}) : super(key: key);
+  final double totalWeight; 
+
+  const CheckoutScreen({Key? key, required this.totalAmount, required this.totalWeight}) : super(key: key);
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -24,8 +26,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _selectedCityId;
   String? _selectedCityName;
   String? _selectedCourier;
+  String? _selectedService; 
+  
   double _shippingCost = 0;
-
   bool _isLoading = false;
   bool _isLoadingOngkir = false;
 
@@ -48,6 +51,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _cities = [];
       _shippingCost = 0;
       _shippingOptions = [];
+      _selectedService = null;
     });
     final data = await ApiService.getCities(provinceId);
     setState(() => _cities = data);
@@ -59,37 +63,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() {
       _isLoadingOngkir = true;
       _shippingCost = 0;
+      _selectedService = null;
     });
 
-    // Asumsi berat total adalah 1000 gram (1 Kg). Bisa disesuaikan dengan total berat keranjang Anda
-    final data = await ApiService.checkCost(_selectedCityId!, 1000, _selectedCourier!);
+    final data = await ApiService.checkCost(_selectedCityId!, widget.totalWeight.toInt(), _selectedCourier!);
     
     setState(() {
       _isLoadingOngkir = false;
       _shippingOptions = data;
-      // Mengambil tarif pertama (Reguler) secara otomatis jika ada
       if (data.isNotEmpty && data[0]['cost'].isNotEmpty) {
-        _shippingCost = double.parse(data[0]['cost'][0]['value'].toString());
+        _selectedService = data[0]['service']?.toString();
+        _shippingCost = double.tryParse(data[0]['cost'][0]['value']?.toString() ?? '0') ?? 0;
       }
     });
   }
 
   void _processCheckout() async {
-    if (_addressController.text.isEmpty || _phoneController.text.isEmpty || _shippingCost == 0) {
+    if (_addressController.text.isEmpty || _phoneController.text.isEmpty || _shippingCost == 0 || _selectedService == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Lengkapi semua data dan pilih kurir!"), backgroundColor: Colors.red),
+        const SnackBar(content: Text("Lengkapi semua data dan pilih layanan kurir!"), backgroundColor: Colors.red),
       );
       return;
     }
 
     setState(() => _isLoading = true);
+    
+    String courierWithService = "${_selectedCourier?.toUpperCase()} - $_selectedService";
 
     String? paymentUrl = await ApiService.checkout(
       _addressController.text,
       _phoneController.text,
-      _selectedProvinceName ?? '',
-      _selectedCityName ?? '',
-      _selectedCourier?.toUpperCase() ?? '',
+      _selectedProvinceName ?? 'Tidak Diketahui',
+      _selectedCityName ?? 'Tidak Diketahui',
+      courierWithService, 
       _shippingCost
     );
 
@@ -98,7 +104,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (paymentUrl != null) {
       final Uri url = Uri.parse(paymentUrl);
       if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal membuka pembayaran")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal membuka halaman pembayaran")));
       } else {
         if (mounted) {
           Navigator.pushAndRemoveUntil(
@@ -130,51 +136,63 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 children: [
                   const Text("Alamat Penerima", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 16),
+                  
+                  // DROPDOWN PROVINSI
                   DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(labelText: "Pilih Provinsi"),
+                    decoration: const InputDecoration(labelText: "Pilih Provinsi", border: OutlineInputBorder()),
                     value: _selectedProvinceId,
                     items: _provinces.map<DropdownMenuItem<String>>((prov) {
+                      final id = (prov['id'] ?? prov['province_id'])?.toString() ?? '';
+                      final name = (prov['name'] ?? prov['province'])?.toString() ?? 'Tidak Diketahui';
                       return DropdownMenuItem<String>(
-                        value: prov['province_id'],
-                        child: Text(prov['province']),
+                        value: id,
+                        child: Text(name),
                       );
                     }).toList(),
                     onChanged: (value) {
                       setState(() {
                         _selectedProvinceId = value;
-                        _selectedProvinceName = _provinces.firstWhere((p) => p['province_id'] == value)['province'];
+                        final selected = _provinces.firstWhere((p) => (p['id'] ?? p['province_id'])?.toString() == value);
+                        _selectedProvinceName = (selected['name'] ?? selected['province'])?.toString() ?? 'Tidak Diketahui';
                       });
-                      _fetchCities(value!);
+                      if (value != null) _fetchCities(value);
                     },
                   ),
                   const SizedBox(height: 12),
+                  
+                  // DROPDOWN KOTA
                   DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(labelText: "Pilih Kota/Kabupaten"),
+                    decoration: const InputDecoration(labelText: "Pilih Kota/Kabupaten", border: OutlineInputBorder()),
                     value: _selectedCityId,
                     items: _cities.map<DropdownMenuItem<String>>((city) {
+                      final id = (city['id'] ?? city['city_id'])?.toString() ?? '';
+                      String cityName = city['name']?.toString() ?? "${city['type'] ?? ''} ${city['city_name'] ?? ''}".trim();
+                      if (cityName.isEmpty) cityName = 'Tidak Diketahui';
                       return DropdownMenuItem<String>(
-                        value: city['city_id'],
-                        child: Text("${city['type']} ${city['city_name']}"),
+                        value: id,
+                        child: Text(cityName),
                       );
                     }).toList(),
                     onChanged: (value) {
                       setState(() {
                         _selectedCityId = value;
-                        _selectedCityName = _cities.firstWhere((c) => c['city_id'] == value)['city_name'];
+                        final selected = _cities.firstWhere((c) => (c['id'] ?? c['city_id'])?.toString() == value);
+                        _selectedCityName = selected['name']?.toString() ?? "${selected['type'] ?? ''} ${selected['city_name'] ?? ''}".trim();
                       });
                       _calculateShipping();
                     },
                   ),
                   const SizedBox(height: 12),
+                  
                   TextField(
                     controller: _addressController,
-                    decoration: const InputDecoration(labelText: "Detail Alamat (Jalan, RT/RW)"),
+                    decoration: const InputDecoration(labelText: "Detail Alamat (Jalan, RT/RW)", border: OutlineInputBorder()),
                     maxLines: 2,
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _phoneController,
-                    decoration: const InputDecoration(labelText: "Nomor HP"),
+                    decoration: const InputDecoration(labelText: "Nomor HP Aktif", border: OutlineInputBorder()),
                     keyboardType: TextInputType.phone,
                   ),
                 ],
@@ -192,7 +210,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   const Text("Kurir Pengiriman", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(labelText: "Pilih Kurir"),
+                    decoration: const InputDecoration(labelText: "Pilih Ekspedisi", border: OutlineInputBorder()),
                     value: _selectedCourier,
                     items: _couriers.map((c) => DropdownMenuItem(value: c, child: Text(c.toUpperCase()))).toList(),
                     onChanged: (value) {
@@ -200,25 +218,43 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       _calculateShipping();
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
+                  
                   if (_isLoadingOngkir)
                     const Center(child: CircularProgressIndicator())
-                  else if (_shippingCost > 0)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Ongkos Kirim (${_shippingOptions[0]['service']})", style: const TextStyle(fontWeight: FontWeight.bold)),
-                          Text("Rp ${_shippingCost.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                        ],
-                      ),
+                  else if (_shippingOptions.isNotEmpty)
+                    // DROPDOWN LAYANAN ONGKIR
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: "Pilih Layanan Pengiriman", border: OutlineInputBorder()),
+                      value: _selectedService,
+                      items: _shippingOptions.map<DropdownMenuItem<String>>((option) {
+                        final service = option['service']?.toString() ?? 'Layanan';
+                        // Safety check untuk list cost
+                        final costList = option['cost'] as List?;
+                        final costVal = (costList != null && costList.isNotEmpty) ? (costList[0]['value']?.toString() ?? '0') : '0';
+                        final etd = (costList != null && costList.isNotEmpty) ? (costList[0]['etd']?.toString() ?? '') : '';
+                        
+                        return DropdownMenuItem<String>(
+                          value: service,
+                          child: Text("$service - Rp $costVal (${etd.isNotEmpty ? '$etd hari' : '-'})"),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedService = value;
+                          final selectedOption = _shippingOptions.firstWhere((opt) => opt['service']?.toString() == value);
+                          final costList = selectedOption['cost'] as List?;
+                          _shippingCost = double.tryParse((costList != null && costList.isNotEmpty) ? costList[0]['value']?.toString() ?? '0' : '0') ?? 0;
+                        });
+                      },
                     )
+                  else if (_selectedCourier != null && !_isLoadingOngkir)
+                    const Text("Tidak ada layanan kurir tersedia untuk rute ini.", style: TextStyle(color: Colors.red))
                 ],
               ),
             ),
-            const SizedBox(height: 100), // Space for bottom bar
+            const SizedBox(height: 100),
           ],
         ),
       ),
@@ -245,10 +281,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _processCheckout,
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE65100)),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE65100), padding: const EdgeInsets.symmetric(vertical: 14)),
                   child: _isLoading 
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white))
-                      : const Text("BAYAR SEKARANG", style: TextStyle(fontSize: 16)),
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text("BAYAR SEKARANG", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
