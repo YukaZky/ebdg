@@ -7,14 +7,17 @@ use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
 {
+    use HasFactory; // (Dipindah ke atas agar lebih rapi sesuai standar Laravel)
+
     protected $fillable = [
+        'user_id', // ← TAMBAHAN WAJIB: Agar ID penjual bisa disimpan
         'name',
         'slug',
         'short_description',
         'description',
         'regular_price',
         'sale_price',
-        'weight_gram', // ← ini wajib ada
+        'weight_gram', 
         'SKU',
         'stock_status',
         'featured',
@@ -26,8 +29,6 @@ class Product extends Model
         'brand_id'
     ];
 
-    use HasFactory;
-
     public function category()
     {
         return $this->belongsTo(Category::class, 'category_id');
@@ -36,6 +37,12 @@ class Product extends Model
     public function brand()
     {
         return $this->belongsTo(Brand::class, 'brand_id');
+    }
+
+    // ← TAMBAHAN WAJIB: Relasi ke tabel users (untuk memanggil data toko/penjual)
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     public function getActivePriceAttribute()

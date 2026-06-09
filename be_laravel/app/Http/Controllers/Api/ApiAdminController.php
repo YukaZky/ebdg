@@ -12,7 +12,7 @@ use App\Models\Coupon;
 use App\Models\Slide;
 use App\Models\Contact;
 use App\Models\WhatsappSetting;
-use App\Models\About; // Tambahkan import ini
+use App\Models\About;
 use Illuminate\Support\Str;
 
 class ApiAdminController extends Controller
@@ -20,26 +20,32 @@ class ApiAdminController extends Controller
     // 1. STATISTIK DASHBOARD
     public function dashboardStats()
     {
+        $userId = auth()->id();
+
         return response()->json([
             'status' => 'success',
-            'total_products' => Product::count(),
-            'new_orders' => Order::where('status', 'ordered')->count(),
-            'total_categories' => Category::count(),
-            'total_coupons' => Coupon::count(),
-            'total_sales' => Order::where('status', 'delivered')->sum('total'),
-            'unread_messages' => Contact::whereNull('read_at')->count(),
+            'total_products' => Product::where('user_id', $userId)->count(),
+            'new_orders' => Order::where('status', 'ordered')->where('user_id', $userId)->count(),
+            'total_categories' => Category::where('user_id', $userId)->count(),
+            'total_coupons' => Coupon::count(), // Kupon tetap global
+            'total_sales' => Order::where('status', 'delivered')->where('user_id', $userId)->sum('total'),
+            'unread_messages' => Contact::whereNull('read_at')->count(), // Pesan kontak tetap global
         ], 200);
     }
 
     // 2. MANAJEMEN PRODUK (CRUD)
     public function getProducts()
     {
-        return response()->json(['status' => 'success', 'data' => Product::with(['category', 'brand'])->latest()->get()], 200);
+        return response()->json([
+            'status' => 'success', 
+            'data' => Product::with(['category', 'brand'])->where('user_id', auth()->id())->latest()->get()
+        ], 200);
     }
 
     public function storeProduct(Request $request)
     {
         $product = new Product();
+        $product->user_id = auth()->id(); // Tautkan ke admin
         $product->name = $request->name;
         $product->slug = Str::slug($request->name) . '-' . time();
         $product->short_description = $request->short_description;
@@ -80,7 +86,7 @@ class ApiAdminController extends Controller
 
     public function updateProduct(Request $request, $id)
     {
-        $product = Product::findOrFail($id);
+        $product = Product::where('user_id', auth()->id())->findOrFail($id);
         
         $product->name = $request->name;
         $product->short_description = $request->short_description;
@@ -118,20 +124,21 @@ class ApiAdminController extends Controller
 
     public function deleteProduct($id)
     {
-        Product::findOrFail($id)->delete();
+        Product::where('user_id', auth()->id())->findOrFail($id)->delete();
         return response()->json(['status' => 'success', 'message' => 'Produk berhasil dihapus'], 200);
     }
 
     // 3. KATEGORI & BRAND
     public function getCategories() 
     { 
-        return response()->json(['data' => Category::latest()->get()], 200); 
+        return response()->json(['data' => Category::where('user_id', auth()->id())->latest()->get()], 200); 
     }
 
     public function storeCategory(Request $request)
     {
         $request->validate(['name' => 'required|string']);
         $category = new Category();
+        $category->user_id = auth()->id(); // Tautkan ke admin
         $category->name = $request->name;
         $category->slug = Str::slug($request->name);
         
@@ -148,7 +155,7 @@ class ApiAdminController extends Controller
 
     public function updateCategory(Request $request, $id)
     {
-        $category = Category::findOrFail($id);
+        $category = Category::where('user_id', auth()->id())->findOrFail($id);
         $category->name = $request->name ?? $category->name;
         $category->slug = Str::slug($category->name);
 
@@ -168,7 +175,7 @@ class ApiAdminController extends Controller
 
     public function deleteCategory($id)
     {
-        $category = Category::findOrFail($id);
+        $category = Category::where('user_id', auth()->id())->findOrFail($id);
         if ($category->image && file_exists(public_path('uploads/categories/' . $category->image))) {
             unlink(public_path('uploads/categories/' . $category->image));
         }
@@ -178,13 +185,14 @@ class ApiAdminController extends Controller
 
     public function getBrands() 
     { 
-        return response()->json(['data' => Brand::latest()->get()], 200); 
+        return response()->json(['data' => Brand::where('user_id', auth()->id())->latest()->get()], 200); 
     }
 
     public function storeBrand(Request $request)
     {
         $request->validate(['name' => 'required|string']);
         $brand = new Brand();
+        $brand->user_id = auth()->id(); // Tautkan ke admin
         $brand->name = $request->name;
         $brand->slug = Str::slug($request->name);
         
@@ -205,7 +213,7 @@ class ApiAdminController extends Controller
 
     public function updateBrand(Request $request, $id)
     {
-        $brand = Brand::findOrFail($id);
+        $brand = Brand::where('user_id', auth()->id())->findOrFail($id);
         $brand->name = $request->name ?? $brand->name;
         $brand->slug = Str::slug($brand->name);
         
@@ -229,7 +237,7 @@ class ApiAdminController extends Controller
 
     public function deleteBrand($id)
     {
-        $brand = Brand::findOrFail($id);
+        $brand = Brand::where('user_id', auth()->id())->findOrFail($id);
         if ($brand->image && file_exists(public_path('uploads/brands/' . $brand->image))) {
             unlink(public_path('uploads/brands/' . $brand->image));
         }
@@ -240,19 +248,19 @@ class ApiAdminController extends Controller
     // 4. MANAJEMEN PESANAN
     public function getOrders()
     {
-        return response()->json(['status' => 'success', 'data' => Order::latest()->get()], 200);
+        return response()->json(['status' => 'success', 'data' => Order::where('user_id', auth()->id())->latest()->get()], 200);
     }
 
     public function getOrderDetail($id)
     {
-        $order = Order::with(['orderItems.product', 'transaction'])->findOrFail($id);
+        $order = Order::with(['orderItems.product', 'transaction'])->where('user_id', auth()->id())->findOrFail($id);
         return response()->json(['status' => 'success', 'data' => $order], 200);
     }
 
     public function updateOrderStatus(Request $request, $id)
     {
         $request->validate(['status' => 'required']);
-        $order = Order::findOrFail($id);
+        $order = Order::where('user_id', auth()->id())->findOrFail($id);
         $order->status = $request->status;
         
         if($request->status == 'delivered') {
@@ -266,7 +274,10 @@ class ApiAdminController extends Controller
     }
 
     // 5. MANAJEMEN KUPON
-    public function getCoupons() { return response()->json(['data' => Coupon::all()], 200); }
+    public function getCoupons() 
+    { 
+        return response()->json(['data' => Coupon::all()], 200); 
+    }
     
     public function storeCoupon(Request $request)
     {
@@ -281,20 +292,33 @@ class ApiAdminController extends Controller
     }
 
     // 6. FITUR LAIN (SLIDE, KONTAK, SETTING WA)
-    public function getSlides() { return response()->json(['data' => Slide::all()], 200); }
-    public function getContacts() { return response()->json(['data' => Contact::latest()->get()], 200); }
-    public function markContactRead($id) {
+    public function getSlides() 
+    { 
+        return response()->json(['data' => Slide::all()], 200); 
+    }
+    
+    public function getContacts() 
+    { 
+        return response()->json(['data' => Contact::latest()->get()], 200); 
+    }
+    
+    public function markContactRead($id) 
+    {
         $contact = Contact::findOrFail($id);
         $contact->read_at = now();
         $contact->save();
         return response()->json(['status' => 'success']);
     }
-    public function getWhatsappSettings() { return response()->json(['data' => WhatsappSetting::first()], 200); }
+    
+    public function getWhatsappSettings() 
+    { 
+        return response()->json(['data' => WhatsappSetting::first()], 200); 
+    }
 
     // 7. MANAJEMEN LOKASI TOKO (ORIGIN)
     public function getStoreLocation()
     {
-        $about = About::firstOrCreate(['id' => 1]);
+        $about = About::firstOrCreate(['user_id' => auth()->id()]);
         return response()->json([
             'status' => 'success',
             'data' => [
@@ -311,7 +335,7 @@ class ApiAdminController extends Controller
             'city_id' => 'required',
         ]);
 
-        $about = About::firstOrCreate(['id' => 1]);
+        $about = About::firstOrCreate(['user_id' => auth()->id()]);
         $about->province_id = $request->province_id;
         $about->city_id = $request->city_id;
         $about->district_id = null; // Reset jika lokasi berubah
