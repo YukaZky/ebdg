@@ -10,8 +10,11 @@ class ApiProductController extends Controller
 {
     public function index()
     {
-        // Mengambil produk terbaru beserta relasi brand dan kategori jika diperlukan
-        $products = Product::with(['category', 'brand'])->orderBy('id', 'desc')->get();
+        // FILTER DITAMBAHKAN: Hanya ambil produk milik user/admin yang sedang login
+        $products = Product::with(['category', 'brand'])
+            ->where('user_id', auth()->id()) 
+            ->orderBy('id', 'desc')
+            ->get();
 
         return response()->json([
             'success' => true,
@@ -22,12 +25,16 @@ class ApiProductController extends Controller
 
     public function show($slug)
     {
-        $product = Product::with(['category', 'brand'])->where('slug', $slug)->first();
+        // FILTER DITAMBAHKAN: Pastikan admin tidak bisa mengintip detail produk admin lain
+        $product = Product::with(['category', 'brand'])
+            ->where('slug', $slug)
+            ->where('user_id', auth()->id())
+            ->first();
 
         if (!$product) {
             return response()->json([
                 'success' => false,
-                'message' => 'Produk tidak ditemukan'
+                'message' => 'Produk tidak ditemukan atau Anda tidak memiliki akses'
             ], 404);
         }
 

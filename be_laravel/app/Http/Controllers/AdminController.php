@@ -323,6 +323,7 @@ class AdminController extends BaseController
         }
 
         Brand::create([
+            'user_id' => auth()->id(),
             'name' => $request->name,
             'slug' => Str::slug($request->name, '-'), 
             'category_id' => $request->category_id,
