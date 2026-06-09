@@ -54,22 +54,22 @@ Route::middleware('auth:sanctum')->group(function () {
         // CRUD Kategori & Brand
         Route::get('/categories', [ApiAdminController::class, 'getCategories']);
         Route::post('/categories/store', [ApiAdminController::class, 'storeCategory']);
-        Route::put('/categories/update/{id}', [ApiAdminController::class, 'updateCategory']); 
-        Route::delete('/categories/delete/{id}', [ApiAdminController::class, 'deleteCategory']); 
+        Route::put('/categories/update/{id}', [ApiAdminController::class, 'updateCategory']);
+        Route::delete('/categories/delete/{id}', [ApiAdminController::class, 'deleteCategory']);
 
         Route::get('/brands', [ApiAdminController::class, 'getBrands']);
         Route::post('/brands/store', [ApiAdminController::class, 'storeBrand']);
-        Route::put('/brands/update/{id}', [ApiAdminController::class, 'updateBrand']); 
-        Route::delete('/brands/delete/{id}', [ApiAdminController::class, 'deleteBrand']); 
+        Route::put('/brands/update/{id}', [ApiAdminController::class, 'updateBrand']);
+        Route::delete('/brands/delete/{id}', [ApiAdminController::class, 'deleteBrand']);
 
         // --- KELOLA KATEGORI ---
-        Route::get('/admin/categories', [ApiAdminController::class, 'getCategories']); 
+        Route::get('/admin/categories', [ApiAdminController::class, 'getCategories']);
         Route::post('/admin/categories/store', [ApiAdminController::class, 'storeCategory']);
         Route::put('/admin/categories/update/{id}', [ApiAdminController::class, 'updateCategory']);
         Route::delete('/admin/categories/delete/{id}', [ApiAdminController::class, 'destroyCategory']);
 
         // --- KELOLA BRAND ---
-        Route::get('/admin/brands', [ApiAdminController::class, 'getBrands']); 
+        Route::get('/admin/brands', [ApiAdminController::class, 'getBrands']);
         Route::post('/admin/brands/store', [ApiAdminController::class, 'storeBrand']);
         Route::put('/admin/brands/update/{id}', [ApiAdminController::class, 'updateBrand']);
         Route::delete('/admin/brands/delete/{id}', [ApiAdminController::class, 'destroyBrand']);
@@ -91,4 +91,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/settings/whatsapp', [ApiAdminController::class, 'getWhatsappSettings']);
         Route::put('/settings/whatsapp/update', [ApiAdminController::class, 'updateWhatsappSettings']);
     });
+    
+    Route::get('/admin/store-location', [ApiAdminController::class, 'getStoreLocation']);
+    Route::post('/admin/store-location', [ApiAdminController::class, 'saveStoreLocation']);
 });
