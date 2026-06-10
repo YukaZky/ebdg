@@ -320,7 +320,6 @@ class ApiService {
   // FUNGSI ADMIN PANEL (TOKO SAYA)
   // ==========================================
 
-  // BARU: Ambil Lokasi Toko (Origin RajaOngkir)
   static Future<Map<String, dynamic>?> getAdminStoreLocation() async {
     if (_token == null) return null;
     try {
@@ -338,7 +337,6 @@ class ApiService {
     return null;
   }
 
-  // BARU: Simpan Lokasi Toko (Origin RajaOngkir)
   static Future<bool> saveAdminStoreLocation(
       String provinceId, String cityId) async {
     if (_token == null) return false;
@@ -362,7 +360,6 @@ class ApiService {
     }
   }
 
-  // Ambil Data Statistik Dashboard Admin
   static Future<Map<String, dynamic>?> getAdminDashboardStats() async {
     if (_token == null) return null;
     try {
@@ -380,19 +377,31 @@ class ApiService {
     return null;
   }
 
-  // Ambil Semua Produk Admin
   static Future<List<dynamic>> getAdminProducts() async {
     if (_token == null) return [];
     final response = await http.get(Uri.parse("$baseUrl/admin/products"),
         headers: {"Authorization": "Bearer $_token"});
-    if (response.statusCode == 200)
+    if (response.statusCode == 200) {
       return jsonDecode(response.body)['data'] ?? [];
+    }
     return [];
   }
 
-  // Simpan atau Update Produk (Support Upload Gambar Web & Mobile)
+  // ==============================================================
+  // UPDATE: Simpan / Update Produk Beserta Semua Field Variasinya
+  // ==============================================================
   static Future<bool> saveAdminProduct(Map<String, String> fields,
-      {XFile? mainImage, List<XFile>? galleryImages, int? productId}) async {
+      {XFile? mainImage, 
+       List<XFile>? galleryImages, 
+       int? productId,
+       List<String>? variationNames,
+       List<XFile?>? variationImages,
+       List<String>? variationIds,
+       List<String>? variationRegularPrices,
+       List<String>? variationSalePrices,
+       List<String>? variationWeights,
+       List<String>? variationQuantities,
+      }) async {
     if (_token == null) return false;
 
     var uri = productId == null
@@ -412,7 +421,6 @@ class ApiService {
 
     request.fields.addAll(fields);
 
-    // Sisipkan Gambar Utama (Kompatibel untuk Web & Mobile)
     if (mainImage != null) {
       request.files.add(http.MultipartFile.fromBytes(
         'image',
@@ -421,7 +429,6 @@ class ApiService {
       ));
     }
 
-    // Sisipkan Galeri Gambar (Kompatibel untuk Web & Mobile)
     if (galleryImages != null && galleryImages.isNotEmpty) {
       for (var file in galleryImages) {
         request.files.add(http.MultipartFile.fromBytes(
@@ -432,22 +439,59 @@ class ApiService {
       }
     }
 
+    // --- MENGEMAS ARRAY VARIASI DENGAN AMAN UNTUK BACKEND ---
+    if (variationNames != null && variationNames.isNotEmpty) {
+      for (int i = 0; i < variationNames.length; i++) {
+        // Nama wajib ada
+        request.fields['variation_names[$i]'] = variationNames[i];
+        
+        // Pastikan indeks array tetap sinkron agar backend tidak Undefined Array Key
+        if (variationIds != null && i < variationIds.length) {
+          request.fields['variation_ids[$i]'] = variationIds[i];
+        }
+        
+        if (variationRegularPrices != null && i < variationRegularPrices.length) {
+          request.fields['variation_regular_prices[$i]'] = variationRegularPrices[i].isEmpty ? '0' : variationRegularPrices[i];
+        }
+        
+        if (variationSalePrices != null && i < variationSalePrices.length) {
+          request.fields['variation_sale_prices[$i]'] = variationSalePrices[i]; // Kirim meski nilainya kosong
+        }
+        
+        if (variationWeights != null && i < variationWeights.length) {
+          request.fields['variation_weights[$i]'] = variationWeights[i].isEmpty ? '0' : variationWeights[i];
+        }
+        
+        if (variationQuantities != null && i < variationQuantities.length) {
+          request.fields['variation_quantities[$i]'] = variationQuantities[i].isEmpty ? '0' : variationQuantities[i];
+        }
+
+        // Gambar (Opsional)
+        if (variationImages != null && i < variationImages.length && variationImages[i] != null) {
+          request.files.add(http.MultipartFile.fromBytes(
+            'variation_images[$i]',
+            await variationImages[i]!.readAsBytes(),
+            filename: variationImages[i]!.name,
+          ));
+        }
+      }
+    }
+
     try {
       final response = await request.send();
       if (response.statusCode == 200 || response.statusCode == 201) {
         return true;
       } else {
         final respStr = await response.stream.bytesToString();
-        print("Gagal Upload: ${response.statusCode} - $respStr");
+        print("Error API saveAdminProduct [${response.statusCode}]: $respStr"); // <- PESAN ERROR AKAN MUNCUL DI TERMINAL DEBUG
         return false;
       }
     } catch (e) {
-      print("Error saving product: $e");
+      print("Exception API saveAdminProduct: $e");
       return false;
     }
   }
 
-  // Hapus Produk
   static Future<bool> deleteAdminProduct(int id) async {
     if (_token == null) return false;
     final response = await http.delete(
@@ -456,7 +500,6 @@ class ApiService {
     return response.statusCode == 200;
   }
 
-  // Ambil Kategori untuk Dropdown
   static Future<List<dynamic>> getAdminCategories() async {
     if (_token == null) return [];
     final response = await http.get(Uri.parse("$baseUrl/admin/categories"),
@@ -466,7 +509,6 @@ class ApiService {
         : [];
   }
 
-  // Ambil Brand untuk Dropdown
   static Future<List<dynamic>> getAdminBrands() async {
     if (_token == null) return [];
     final response = await http.get(Uri.parse("$baseUrl/admin/brands"),
@@ -476,17 +518,16 @@ class ApiService {
         : [];
   }
 
-  // Ambil Semua Pesanan Masuk
   static Future<List<dynamic>> getAdminOrders() async {
     if (_token == null) return [];
     final response = await http.get(Uri.parse("$baseUrl/admin/orders"),
         headers: {"Authorization": "Bearer $_token"});
-    if (response.statusCode == 200)
+    if (response.statusCode == 200) {
       return jsonDecode(response.body)['data'] ?? [];
+    }
     return [];
   }
 
-  // Update Status Pesanan (ordered, delivered, canceled)
   static Future<bool> updateAdminOrderStatus(int orderId, String status) async {
     if (_token == null) return false;
     final response = await http.put(
@@ -500,7 +541,6 @@ class ApiService {
     return response.statusCode == 200;
   }
 
-  // Ambil Kupon Diskon
   static Future<List<dynamic>> getAdminCoupons() async {
     if (_token == null) return [];
     final response = await http.get(Uri.parse("$baseUrl/admin/coupons"),
@@ -508,7 +548,6 @@ class ApiService {
     return response.statusCode == 200 ? jsonDecode(response.body)['data'] : [];
   }
 
-  // Ambil Pesan Masuk (Kontak)
   static Future<List<dynamic>> getAdminContacts() async {
     if (_token == null) return [];
     final response = await http.get(Uri.parse("$baseUrl/admin/contacts"),
@@ -516,7 +555,6 @@ class ApiService {
     return response.statusCode == 200 ? jsonDecode(response.body)['data'] : [];
   }
 
-  // Fungsi Kelola Kategori (Admin)
   static Future<bool> saveAdminCategory(Map<String, String> fields,
       {XFile? image, int? categoryId}) async {
     if (_token == null) return false;
@@ -552,7 +590,6 @@ class ApiService {
     return response.statusCode == 200;
   }
 
-  // Fungsi Kelola Brand (Admin)
   static Future<bool> saveAdminBrand(Map<String, String> fields,
       {XFile? image, int? brandId}) async {
     if (_token == null) return false;

@@ -46,53 +46,26 @@ class ApiAdminController extends Controller
 
     public function storeProduct(Request $request)
     {
-        $product = new Product();
-        $product->user_id = auth()->id(); // Tautkan ke admin
-        $product->name = $request->name;
-        $product->slug = Str::slug($request->name) . '-' . time();
-        $product->short_description = $request->short_description;
-        $product->description = $request->description;
-        $product->regular_price = $request->regular_price;
-        $product->sale_price = $request->sale_price ?? null;
-        $product->SKU = $request->SKU ?? ('SKU-' . Str::upper(Str::random(6)));
-        $product->stock_status = $request->stock_status;
-        $product->quantity = $request->quantity;
-        $product->category_id = $request->category_id;
-        $product->brand_id = $request->brand_id;
-        $product->weight = $request->weight ?? 0;
-        $product->exp_date = $request->exp_date ?? null;
-
-        // Upload Gambar Utama
-        if ($request->hasFile('image')) {
-            $image = $request->file('image');
-            $file_name = time() . '.' . $image->extension();
-            $image->move(public_path('uploads/products'), $file_name);
-            $product->image = $file_name;
-        }
-
-        // Upload Galeri Gambar
-        if ($request->hasFile('images')) {
-            $gallery_arr = [];
-            foreach ($request->file('images') as $file) {
-                $gfile_name = time() . '-' . uniqid() . '.' . $file->extension();
-                $file->move(public_path('uploads/products'), $gfile_name);
-                array_push($gallery_arr, $gfile_name);
-            }
-            $product->images = implode(',', $gallery_arr);
-        }
-
-        $product->save();
-
-        // --- PROSES SIMPAN VARIASI PRODUK BARU ---
+        // --- PROSES SIMPAN / UPDATE VARIASI PRODUK ---
         if ($request->has('variation_names')) {
+            // JIKA UPDATE: Hapus variasi lama terlebih dahulu
+            if (isset($id)) {
+                \App\Models\ProductVariation::where('product_id', $product->id)->delete();
+            }
+
             $variationNames = $request->input('variation_names');
+            $variationDescriptions = $request->input('variation_descriptions');
+            $variationPrices = $request->input('variation_prices');
             $variationImages = $request->file('variation_images');
 
             foreach ($variationNames as $index => $varName) {
                 if (!empty($varName)) {
-                    $variation = new ProductVariation();
+                    $variation = new \App\Models\ProductVariation();
                     $variation->product_id = $product->id;
                     $variation->name = $varName;
+                    $variation->description = $variationDescriptions[$index] ?? null;
+                    // Pastikan harga tersimpan, jika kosong default ke 0
+                    $variation->price = isset($variationPrices[$index]) ? (float)$variationPrices[$index] : 0;
 
                     if (isset($variationImages[$index])) {
                         $vImage = $variationImages[$index];
@@ -110,63 +83,33 @@ class ApiAdminController extends Controller
 
     public function updateProduct(Request $request, $id)
     {
-        $product = Product::where('user_id', auth()->id())->findOrFail($id);
-        
-        $product->name = $request->name;
-        $product->short_description = $request->short_description;
-        $product->description = $request->description;
-        $product->regular_price = $request->regular_price;
-        $product->sale_price = $request->sale_price ?? null;
-        $product->stock_status = $request->stock_status;
-        $product->quantity = $request->quantity;
-        $product->category_id = $request->category_id;
-        $product->brand_id = $request->brand_id;
-        $product->weight = $request->weight ?? 0;
-        $product->exp_date = $request->exp_date ?? null;
-
-        if ($request->hasFile('image')) {
-            $image = $request->file('image');
-            $file_name = time() . '.' . $image->extension();
-            $image->move(public_path('uploads/products'), $file_name);
-            $product->image = $file_name;
-        }
-
-        if ($request->hasFile('images')) {
-            $gallery_arr = [];
-            foreach ($request->file('images') as $file) {
-                $gfile_name = time() . '-' . uniqid() . '.' . $file->extension();
-                $file->move(public_path('uploads/products'), $gfile_name);
-                array_push($gallery_arr, $gfile_name);
-            }
-            $product->images = implode(',', $gallery_arr);
-        }
-
-        $product->save();
-
-        // --- PROSES UPDATE VARIASI PRODUK ---
+        // --- PROSES SIMPAN / UPDATE VARIASI PRODUK ---
         if ($request->has('variation_names')) {
-            // Hapus semua variasi lama untuk produk ini
-            ProductVariation::where('product_id', $product->id)->delete();
+            // JIKA UPDATE: Hapus variasi lama terlebih dahulu
+            if (isset($id)) {
+                \App\Models\ProductVariation::where('product_id', $product->id)->delete();
+            }
 
             $variationNames = $request->input('variation_names');
+            $variationDescriptions = $request->input('variation_descriptions');
+            $variationPrices = $request->input('variation_prices');
             $variationImages = $request->file('variation_images');
 
             foreach ($variationNames as $index => $varName) {
                 if (!empty($varName)) {
-                    $variation = new ProductVariation();
+                    $variation = new \App\Models\ProductVariation();
                     $variation->product_id = $product->id;
                     $variation->name = $varName;
+                    $variation->description = $variationDescriptions[$index] ?? null;
+                    // Pastikan harga tersimpan, jika kosong default ke 0
+                    $variation->price = isset($variationPrices[$index]) ? (float)$variationPrices[$index] : 0;
 
-                    // Cek apakah ada gambar baru yang diupload untuk variasi ini
                     if (isset($variationImages[$index])) {
                         $vImage = $variationImages[$index];
                         $vFileName = time() . '-var-' . uniqid() . '.' . $vImage->extension();
                         $vImage->move(public_path('uploads/products'), $vFileName);
                         $variation->image = $vFileName;
                     }
-                    // Catatan: Jika ingin menyimpan gambar lama saat diedit, logika tambahan 
-                    // perlu diterapkan di Flutter untuk mengirimkan URL gambar yang tidak diubah.
-                    
                     $variation->save();
                 }
             }
