@@ -11,10 +11,9 @@ class ApiProductController extends Controller
     // UNTUK BERANDA (PUBLIK)
     public function index()
     {
-        // HAPUS filter user_id agar pembeli bisa melihat semua produk dari semua toko
-        $products = Product::with(['category', 'brand'])
-            ->orderBy('id', 'desc')
-            ->get();
+        $products = Product::with(['category', 'brand', 'variations']) 
+        ->orderBy('id', 'desc')
+        ->get();
 
         return response()->json([
             'success' => true,

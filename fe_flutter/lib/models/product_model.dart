@@ -1,3 +1,24 @@
+// Tambahkan class ProductVariation di atas
+class ProductVariation {
+  final int id;
+  final String name;
+  final String? image;
+
+  ProductVariation({
+    required this.id, 
+    required this.name, 
+    this.image
+  });
+
+  factory ProductVariation.fromJson(Map<String, dynamic> json) {
+    return ProductVariation(
+      id: json['id'],
+      name: json['name'],
+      image: json['image'],
+    );
+  }
+}
+
 class Product {
   final int id;
   final String name;
@@ -10,6 +31,8 @@ class Product {
   final String stockStatus;
   final int quantity;
   final String? image;
+  // --- TAMBAHAN UNTUK VARIASI ---
+  final List<ProductVariation>? variations; 
 
   Product({
     required this.id,
@@ -23,6 +46,7 @@ class Product {
     required this.stockStatus,
     required this.quantity,
     this.image,
+    this.variations, // --- TAMBAHAN UNTUK VARIASI ---
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -38,6 +62,10 @@ class Product {
       stockStatus: json['stock_status'] ?? 'instock',
       quantity: json['quantity'] ?? 0,
       image: json['image'],
+      // --- PARSING DATA VARIASI DARI API ---
+      variations: json['variations'] != null 
+          ? (json['variations'] as List).map((i) => ProductVariation.fromJson(i)).toList() 
+          : [],
     );
   }
 }

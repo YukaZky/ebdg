@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Product;
+use App\Models\ProductVariation; // Tambahkan import model variasi
 use App\Models\Order;
 use App\Models\Category;
 use App\Models\Brand;
@@ -38,7 +39,8 @@ class ApiAdminController extends Controller
     {
         return response()->json([
             'status' => 'success', 
-            'data' => Product::with(['category', 'brand'])->where('user_id', auth()->id())->latest()->get()
+            // Tambahkan 'variations' ke dalam with() agar form edit bisa membacanya
+            'data' => Product::with(['category', 'brand', 'variations'])->where('user_id', auth()->id())->latest()->get()
         ], 200);
     }
 
@@ -81,6 +83,28 @@ class ApiAdminController extends Controller
 
         $product->save();
 
+        // --- PROSES SIMPAN VARIASI PRODUK BARU ---
+        if ($request->has('variation_names')) {
+            $variationNames = $request->input('variation_names');
+            $variationImages = $request->file('variation_images');
+
+            foreach ($variationNames as $index => $varName) {
+                if (!empty($varName)) {
+                    $variation = new ProductVariation();
+                    $variation->product_id = $product->id;
+                    $variation->name = $varName;
+
+                    if (isset($variationImages[$index])) {
+                        $vImage = $variationImages[$index];
+                        $vFileName = time() . '-var-' . uniqid() . '.' . $vImage->extension();
+                        $vImage->move(public_path('uploads/products'), $vFileName);
+                        $variation->image = $vFileName;
+                    }
+                    $variation->save();
+                }
+            }
+        }
+
         return response()->json(['status' => 'success', 'message' => 'Produk berhasil ditambahkan', 'data' => $product], 201);
     }
 
@@ -118,6 +142,35 @@ class ApiAdminController extends Controller
         }
 
         $product->save();
+
+        // --- PROSES UPDATE VARIASI PRODUK ---
+        if ($request->has('variation_names')) {
+            // Hapus semua variasi lama untuk produk ini
+            ProductVariation::where('product_id', $product->id)->delete();
+
+            $variationNames = $request->input('variation_names');
+            $variationImages = $request->file('variation_images');
+
+            foreach ($variationNames as $index => $varName) {
+                if (!empty($varName)) {
+                    $variation = new ProductVariation();
+                    $variation->product_id = $product->id;
+                    $variation->name = $varName;
+
+                    // Cek apakah ada gambar baru yang diupload untuk variasi ini
+                    if (isset($variationImages[$index])) {
+                        $vImage = $variationImages[$index];
+                        $vFileName = time() . '-var-' . uniqid() . '.' . $vImage->extension();
+                        $vImage->move(public_path('uploads/products'), $vFileName);
+                        $variation->image = $vFileName;
+                    }
+                    // Catatan: Jika ingin menyimpan gambar lama saat diedit, logika tambahan 
+                    // perlu diterapkan di Flutter untuk mengirimkan URL gambar yang tidak diubah.
+                    
+                    $variation->save();
+                }
+            }
+        }
 
         return response()->json(['status' => 'success', 'message' => 'Produk berhasil diperbarui', 'data' => $product], 200);
     }

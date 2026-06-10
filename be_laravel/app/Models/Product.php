@@ -17,7 +17,7 @@ class Product extends Model
         'description',
         'regular_price',
         'sale_price',
-        'weight_gram', 
+        'weight_gram',
         'SKU',
         'stock_status',
         'featured',
@@ -59,5 +59,10 @@ class Product extends Model
         }
 
         return 0;
+    }
+
+    public function variations()
+    {
+        return $this->hasMany(ProductVariation::class);
     }
 }
