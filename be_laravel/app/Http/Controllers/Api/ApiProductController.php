@@ -8,33 +8,33 @@ use Illuminate\Http\Request;
 
 class ApiProductController extends Controller
 {
+    // UNTUK BERANDA (PUBLIK)
     public function index()
     {
-        // FILTER DITAMBAHKAN: Hanya ambil produk milik user/admin yang sedang login
+        // HAPUS filter user_id agar pembeli bisa melihat semua produk dari semua toko
         $products = Product::with(['category', 'brand'])
-            ->where('user_id', auth()->id()) 
             ->orderBy('id', 'desc')
             ->get();
 
         return response()->json([
             'success' => true,
-            'message' => 'Daftar Produk Berhasil Diambil',
+            'message' => 'Daftar Semua Produk Berhasil Diambil',
             'data' => $products
         ], 200);
     }
 
+    // UNTUK HALAMAN DETAIL PRODUK (PUBLIK)
     public function show($slug)
     {
-        // FILTER DITAMBAHKAN: Pastikan admin tidak bisa mengintip detail produk admin lain
-        $product = Product::with(['category', 'brand'])
+        // HAPUS filter user_id agar pembeli bisa mengintip detail produk toko mana saja
+        $product = Product::with(['category', 'brand', 'user']) // Ditambah relasi 'user' agar tahu siapa penjualnya
             ->where('slug', $slug)
-            ->where('user_id', auth()->id())
             ->first();
 
         if (!$product) {
             return response()->json([
                 'success' => false,
-                'message' => 'Produk tidak ditemukan atau Anda tidak memiliki akses'
+                'message' => 'Produk tidak ditemukan'
             ], 404);
         }
 
