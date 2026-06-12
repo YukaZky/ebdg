@@ -1,10 +1,11 @@
+// ignore_for_file: avoid_print
+
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 
-// Class bantuan untuk menyimpan state variasi sementara di dalam form
 class VariationInput {
   int? id; 
   String name = '';
@@ -33,7 +34,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
   List<dynamic> categories = [];
   List<dynamic> brands = [];
 
-  // Controllers Produk Utama
   final _nameCtrl = TextEditingController();
   final _shortDescCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
@@ -47,11 +47,11 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
   String? _selectedBrand;
   String _stockStatus = 'instock';
 
-  // --- VARIASI PRODUK ---
   List<VariationInput> variations = [];
-
+  
   XFile? _mainImage;
-  List<XFile> _galleryImages = [];
+  List<XFile> _galleryImages = []; 
+  List<dynamic> _existingGalleryImages = []; 
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -74,11 +74,9 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     });
   }
 
-  // Membersihkan nilai yang terbaca "null" string dari Laravel
   String _cleanNumber(dynamic value) {
     if (value == null || value.toString() == 'null' || value.toString().isEmpty) return '';
     double? d = double.tryParse(value.toString());
-    // Jika nilainya bulat tanpa desimal (ex: 50000.0), tampilkan 50000 saja
     return (d != null && d == d.toInt()) ? d.toInt().toString() : value.toString();
   }
 
@@ -99,7 +97,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     
     _stockStatus = p['stock_status'] ?? 'instock';
 
-    // Pencocokan ID dengan toleransi parsing string yang aman
     if (categories.any((c) => c['id'].toString() == p['category_id'].toString())) {
       _selectedCategory = p['category_id'].toString();
     }
@@ -107,7 +104,12 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
       _selectedBrand = p['brand_id'].toString();
     }
 
-    // Load Existing Variations beserta parameter yang telah difilter dari "null" string
+    if (p['images'] != null) {
+      _existingGalleryImages = List<dynamic>.from(p['images']);
+    } else if (p['product_images'] != null) {
+      _existingGalleryImages = List<dynamic>.from(p['product_images']);
+    }
+
     if (p['variations'] != null) {
       for (var v in p['variations']) {
         final varInput = VariationInput();
@@ -179,7 +181,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
       return;
     }
     
-    // Validasi input wajib pada variasi dinamis
     if (variations.any((v) => v.name.trim().isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Semua nama variasi wajib diisi!')));
       return;
@@ -202,7 +203,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     if (_salePriceCtrl.text.isNotEmpty) productFields["sale_price"] = _salePriceCtrl.text;
     if (_expDateCtrl.text.isNotEmpty) productFields["exp_date"] = _expDateCtrl.text;
 
-    // Menyiapkan Data List Variasi untuk dikirimkan
     List<String> variationNames = variations.map((v) => v.name).toList();
     List<XFile?> variationImages = variations.map((v) => v.image).toList();
     List<String> variationIds = variations.map((v) => v.id?.toString() ?? '').toList();
@@ -211,10 +211,14 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     List<String> variationWeights = variations.map((v) => v.weight).toList();
     List<String> variationQuantities = variations.map((v) => v.quantity).toList();
 
+    // Merekam ID Gambar Galeri yang TIDAK Dihapus oleh User
+    List<String> keptGalleryIds = _existingGalleryImages.map((img) => img['id'].toString()).toList();
+
     bool success = await ApiService.saveAdminProduct(
       productFields,
       mainImage: _mainImage,
       galleryImages: _galleryImages,
+      keptGalleryImageIds: keptGalleryIds,
       productId: widget.product?['id'],
       variationNames: variationNames,
       variationImages: variationImages,
@@ -231,7 +235,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.product == null ? "Produk berhasil ditambahkan!" : "Produk berhasil diperbarui!")));
       Navigator.pop(context, true); 
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menyimpan produk! Cek terminal console Anda untuk detail error.")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menyimpan produk!")));
     }
   }
 
@@ -259,7 +263,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // --- SECTION UNGGAH GAMBAR UTAMA ---
                     const Text("Gambar Utama", style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     GestureDetector(
@@ -273,26 +276,51 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                         ),
                         child: _mainImage != null
                             ? ClipRRect(borderRadius: BorderRadius.circular(12), child: _buildImage(_mainImage!))
-                            : isEdit && widget.product!['image'] != null
+                            : isEdit && widget.product!['image'] != null && widget.product!['image'].toString().isNotEmpty
                                 ? ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
                                     child: Image.network("http://127.0.0.1:8000/uploads/products/${widget.product!['image']}", fit: BoxFit.cover),
                                   )
                                 : const Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [Icon(Icons.add_a_photo, size: 40, color: Colors.grey), Text("Ketuk untuk Unggah Gambar")],
+                                    children: [Icon(Icons.add_a_photo, size: 40, color: Colors.grey), Text("Ketuk untuk Unggah Gambar Utama")],
                                   ),
                       ),
                     ),
                     const SizedBox(height: 16),
 
-                    // --- SECTION GALERI GAMBAR ---
-                    const Text("Galeri Gambar", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text("Galeri Gambar (Opsional)", style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
+                        // Tampilkan Gambar Galeri Existing (Dengan Tombol Delete)
+                        ..._existingGalleryImages.map((imgData) {
+                          String imgUrl = imgData['image'] ?? '';
+                          return Stack(
+                            alignment: Alignment.topRight,
+                            children: [
+                              SizedBox(
+                                width: 80, height: 80, 
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8), 
+                                  child: Image.network(
+                                    "http://127.0.0.1:8000/uploads/products/$imgUrl", 
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (c, e, s) => Container(color: Colors.grey.shade300, child: const Icon(Icons.broken_image, color: Colors.grey)),
+                                  )
+                                )
+                              ),
+                              GestureDetector(
+                                onTap: () => setState(() => _existingGalleryImages.remove(imgData)),
+                                child: const CircleAvatar(radius: 12, backgroundColor: Colors.red, child: Icon(Icons.close, size: 14, color: Colors.white)),
+                              )
+                            ],
+                          );
+                        }),
+                        
+                        // Tampilkan Gambar Galeri Baru
                         ..._galleryImages.map((img) => Stack(
                               alignment: Alignment.topRight,
                               children: [
@@ -306,6 +334,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                                 )
                               ],
                             )),
+                        
                         GestureDetector(
                           onTap: _pickGalleryImages,
                           child: Container(
@@ -318,7 +347,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // --- SECTION FORM TEKS ---
                     _buildTextField("Nama Produk", _nameCtrl),
                     _buildTextField("Deskripsi Singkat", _shortDescCtrl, maxLines: 2, isRequired: false),
                     _buildTextField("Deskripsi Lengkap", _descCtrl, maxLines: 4, isRequired: false),
@@ -383,9 +411,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                     ),
                     const SizedBox(height: 32),
 
-                    // ==========================================
-                    // SECTION VARIASI PRODUK (Multi-Field Dinamis)
-                    // ==========================================
                     const Text("Variasi Warna / Jenis Produk", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 8),
                     Container(
@@ -531,7 +556,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                     ),
                     const SizedBox(height: 32),
 
-                    // --- TOMBOL SIMPAN ---
                     isSaving
                         ? const Center(child: CircularProgressIndicator())
                         : ElevatedButton.icon(

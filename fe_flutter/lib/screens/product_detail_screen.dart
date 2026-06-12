@@ -19,21 +19,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool isWishlisted = false;
   bool isWishlistLoading = false;
 
+  // --- State untuk Variasi Terpilih ---
+  ProductVariation? selectedVariation;
+
   @override
   void initState() {
     super.initState();
     _checkWishlistStatus();
   }
 
-  // Fungsi untuk mengecek apakah produk ini sudah ada di wishlist user
   Future<void> _checkWishlistStatus() async {
     if (ApiService.token == null) return;
-    
     try {
       final wishlist = await ApiService.getWishlist();
       if (mounted) {
         setState(() {
-          // Mengecek jika ID produk yang sedang dilihat ada di dalam list id wishlist
           isWishlisted = wishlist.any((item) => item.id == widget.product.id);
         });
       }
@@ -42,7 +42,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  // Fungsi untuk menambah / menghapus dari wishlist saat icon love diklik
   Future<void> _toggleWishlist() async {
     if (ApiService.token == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -52,32 +51,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
 
     setState(() => isWishlistLoading = true);
-    
     bool success;
     if (isWishlisted) {
-      // Jika sudah ada di wishlist, maka hapus
       success = await ApiService.removeFromWishlist(widget.product.id);
       if (success) {
         setState(() => isWishlisted = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Berhasil dihapus dari Wishlist")),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Berhasil dihapus dari Wishlist")));
       }
     } else {
-      // Jika belum ada di wishlist, maka tambahkan
       success = await ApiService.addToWishlist(widget.product.id);
       if (success) {
         setState(() => isWishlisted = true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Berhasil ditambahkan ke Wishlist")),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Berhasil ditambahkan ke Wishlist")));
       }
     }
-    
     setState(() => isWishlistLoading = false);
   }
 
-  // Fungsi untuk memasukkan ke keranjang (Add to Cart)
   Future<void> _addToCart() async {
     if (ApiService.token == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -86,33 +76,67 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return;
     }
 
-    if (widget.product.stockStatus != 'instock') {
+    int currentStock = selectedVariation != null ? selectedVariation!.quantity : widget.product.quantity;
+
+    if (currentStock <= 0 || widget.product.stockStatus != 'instock') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Maaf, stok produk sedang kosong")),
+        const SnackBar(content: Text("Maaf, stok produk/variasi ini sedang kosong")),
+      );
+      return;
+    }
+
+    // Jika produk memiliki variasi, pastikan pembeli memilih salah satu sebelum add to cart
+    if (widget.product.variations != null && widget.product.variations!.isNotEmpty && selectedVariation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Silakan pilih variasi produk terlebih dahulu")),
       );
       return;
     }
 
     setState(() => isAddingToCart = true);
 
+    // Kirim product id dan quantity ke cart (Anda bisa memodifikasi API nanti jika variasi_id dibutuhkan)
     bool success = await ApiService.addToCart(widget.product.id, quantity);
 
     setState(() => isAddingToCart = false);
 
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Produk berhasil ditambahkan ke keranjang!")),
-      );
-      Navigator.pop(context); // Kembali ke list setelah sukses menambah (opsional)
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Produk berhasil ditambahkan ke keranjang!")));
+      Navigator.pop(context); 
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Gagal menambahkan ke keranjang")),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menambahkan ke keranjang")));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // ==========================================
+    // LOGIKA PERHITUNGAN DINAMIS (Utama VS Variasi)
+    // ==========================================
+    
+    // 1. Tentukan Harga Tampil (Variasi vs Utama)
+    double displayPrice = selectedVariation != null
+        ? (selectedVariation!.salePrice ?? selectedVariation!.regularPrice)
+        : (widget.product.salePrice ?? widget.product.price);
+
+    // 2. Tentukan Stok Tampil
+    int displayStock = selectedVariation != null
+        ? selectedVariation!.quantity
+        : widget.product.quantity;
+
+    // 3. Tentukan Berat Tampil
+    int displayWeight = selectedVariation != null
+        ? selectedVariation!.weight
+        : 0; // Atur 0 jika produk utama tidak menyertakan response weight di modelnya
+
+    // 4. Tentukan Gambar Tampil
+    String? displayImage = selectedVariation?.image != null
+        ? "http://127.0.0.1:8000/uploads/products/${selectedVariation!.image}"
+        : (widget.product.image != null ? "http://127.0.0.1:8000/uploads/products/${widget.product.image}" : null);
+
+    // Cek apakah produk / variasi habis
+    bool isOutOfStock = displayStock <= 0 || widget.product.stockStatus != 'instock';
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
@@ -121,7 +145,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black87),
         actions: [
-          // --- TOMBOL WISHLIST (LOVE) DI POJOK KANAN ATAS ---
           isWishlistLoading 
               ? const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16.0),
@@ -142,14 +165,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Gambar Produk
+            // --- 1. GAMBAR PRODUK ---
             Container(
               width: double.infinity,
               height: 300,
               color: Colors.white,
-              child: widget.product.image != null
+              child: displayImage != null
                   ? Image.network(
-                      "http://127.0.0.1:8000/uploads/products/${widget.product.image}",
+                      displayImage,
                       fit: BoxFit.contain,
                       errorBuilder: (context, error, stackTrace) =>
                           const Icon(Icons.image_not_supported, size: 100, color: Colors.grey),
@@ -158,55 +181,87 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             const SizedBox(height: 16),
             
-            // Detail Informasi
+            // --- 2. INFORMASI PRODUK ---
             Container(
               color: Colors.white,
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.product.name,
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    widget.product.name,
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    "Rp ${widget.product.price.toStringAsFixed(0)}",
+                    "Rp ${displayPrice.toStringAsFixed(0)}",
                     style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFFE65100)),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
+
+                  // Stok & Berat Info
                   Row(
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: widget.product.stockStatus == 'instock' ? Colors.green.shade100 : Colors.red.shade100,
+                          color: !isOutOfStock ? Colors.green.shade100 : Colors.red.shade100,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          widget.product.stockStatus == 'instock' ? "Stok Tersedia" : "Habis",
+                          !isOutOfStock ? "Tersedia: $displayStock" : "Stok Habis",
                           style: TextStyle(
-                            color: widget.product.stockStatus == 'instock' ? Colors.green.shade800 : Colors.red.shade800,
+                            color: !isOutOfStock ? Colors.green.shade800 : Colors.red.shade800,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
+                      const SizedBox(width: 16),
+                      if (displayWeight > 0)
+                        Row(
+                          children: [
+                            const Icon(Icons.scale, size: 20, color: Colors.blueGrey),
+                            const SizedBox(width: 6),
+                            Text("$displayWeight Gram", style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black54)),
+                          ],
+                        ),
                     ],
                   ),
                   const Divider(height: 40, thickness: 1),
-                  const Text(
-                    "Deskripsi Produk",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
+
+                  // ==========================================
+                  // 3. PILIHAN VARIASI PRODUK (WIDGET CHIP)
+                  // ==========================================
+                  if (widget.product.variations != null && widget.product.variations!.isNotEmpty) ...[
+                    const Text("Pilih Variasi Produk:", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10.0,
+                      runSpacing: 10.0,
+                      children: widget.product.variations!.map((variation) {
+                        bool isSelected = selectedVariation == variation;
+                        return ChoiceChip(
+                          label: Text(variation.name, style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.black87,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
+                          )),
+                          selected: isSelected,
+                          selectedColor: Colors.deepOrange,
+                          backgroundColor: Colors.grey.shade200,
+                          onSelected: (bool selected) {
+                            setState(() {
+                              selectedVariation = selected ? variation : null;
+                              quantity = 1; // Reset jumlah pesanan jika variasi diganti
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const Divider(height: 40, thickness: 1),
+                  ],
+
+                  // --- 4. DESKRIPSI ---
+                  const Text("Deskripsi Produk", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
                   Text(
                     widget.product.description ?? 'Tidak ada deskripsi tersedia.',
@@ -247,7 +302,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     IconButton(
                       icon: const Icon(Icons.add),
                       onPressed: () {
-                        setState(() => quantity++);
+                        if (quantity < displayStock) {
+                          setState(() => quantity++);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Batas maksimal stok tercapai!")));
+                        }
                       },
                     ),
                   ],
@@ -260,9 +319,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 child: SizedBox(
                   height: 50,
                   child: ElevatedButton.icon(
-                    onPressed: isAddingToCart ? null : _addToCart,
+                    onPressed: (isAddingToCart || isOutOfStock) ? null : _addToCart,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: widget.product.stockStatus == 'instock' ? Colors.blue : Colors.grey,
+                      backgroundColor: !isOutOfStock ? Colors.blue : Colors.grey,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     icon: isAddingToCart 

@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Product;
-use App\Models\ProductVariation; // Tambahkan import model variasi
+use App\Models\ProductVariation; 
 use App\Models\Order;
 use App\Models\Category;
 use App\Models\Brand;
@@ -18,7 +18,9 @@ use Illuminate\Support\Str;
 
 class ApiAdminController extends Controller
 {
+    // ==========================================
     // 1. STATISTIK DASHBOARD
+    // ==========================================
     public function dashboardStats()
     {
         $userId = auth()->id();
@@ -28,94 +30,235 @@ class ApiAdminController extends Controller
             'total_products' => Product::where('user_id', $userId)->count(),
             'new_orders' => Order::where('status', 'ordered')->where('user_id', $userId)->count(),
             'total_categories' => Category::where('user_id', $userId)->count(),
-            'total_coupons' => Coupon::count(), // Kupon tetap global
+            'total_coupons' => Coupon::count(), 
             'total_sales' => Order::where('status', 'delivered')->where('user_id', $userId)->sum('total'),
-            'unread_messages' => Contact::whereNull('read_at')->count(), // Pesan kontak tetap global
+            'unread_messages' => Contact::whereNull('read_at')->count(), 
         ], 200);
     }
 
+    // ==========================================
     // 2. MANAJEMEN PRODUK (CRUD)
+    // ==========================================
     public function getProducts()
     {
+        $products = Product::with(['category', 'brand', 'variations'])
+                    ->where('user_id', auth()->id())
+                    ->latest()
+                    ->get();
+
+        foreach ($products as $product) {
+            $product->images = \Illuminate\Support\Facades\DB::table('product_images')
+                                ->where('product_id', $product->id)
+                                ->get();
+        }
+
         return response()->json([
             'status' => 'success', 
-            // Tambahkan 'variations' ke dalam with() agar form edit bisa membacanya
-            'data' => Product::with(['category', 'brand', 'variations'])->where('user_id', auth()->id())->latest()->get()
+            'data' => $products
         ], 200);
     }
 
     public function storeProduct(Request $request)
     {
-        // --- PROSES SIMPAN / UPDATE VARIASI PRODUK ---
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'regular_price' => 'required|numeric',
+            'category_id' => 'required|exists:categories,id',
+            'brand_id' => 'required|exists:brands,id',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', 
+        ]);
+
+        $product = new Product();
+        $product->user_id = auth()->id();
+        $product->name = $request->name;
+        $product->slug = \Illuminate\Support\Str::slug($request->name);
+        $product->short_description = $request->short_description;
+        $product->description = $request->description;
+        $product->regular_price = $request->regular_price;
+        $product->sale_price = $request->sale_price;
+        $product->SKU = 'PRD' . time();
+        $product->stock_status = $request->stock_status;
+        $product->quantity = $request->quantity ?? '0'; 
+        $product->weight = $request->weight ?? '0'; 
+        $product->exp_date = $request->exp_date;
+        $product->category_id = $request->category_id;
+        $product->brand_id = $request->brand_id;
+
+        if ($request->hasFile('image')) {
+            $imageName = time() . '.' . $request->image->extension();
+            $request->image->move(public_path('uploads/products'), $imageName);
+            $product->image = $imageName;
+        }
+
+        $product->save();
+
         if ($request->has('variation_names')) {
-            // JIKA UPDATE: Hapus variasi lama terlebih dahulu
-            if (isset($id)) {
-                \App\Models\ProductVariation::where('product_id', $product->id)->delete();
-            }
+            $names = $request->variation_names;
+            $regularPrices = $request->variation_regular_prices ?? [];
+            $salePrices = $request->variation_sale_prices ?? [];
+            $weights = $request->variation_weights ?? [];
+            $quantities = $request->variation_quantities ?? [];
 
-            $variationNames = $request->input('variation_names');
-            $variationDescriptions = $request->input('variation_descriptions');
-            $variationPrices = $request->input('variation_prices');
-            $variationImages = $request->file('variation_images');
+            foreach ($names as $index => $name) {
+                if (empty($name)) continue;
 
-            foreach ($variationNames as $index => $varName) {
-                if (!empty($varName)) {
-                    $variation = new \App\Models\ProductVariation();
-                    $variation->product_id = $product->id;
-                    $variation->name = $varName;
-                    $variation->description = $variationDescriptions[$index] ?? null;
-                    // Pastikan harga tersimpan, jika kosong default ke 0
-                    $variation->price = isset($variationPrices[$index]) ? (float)$variationPrices[$index] : 0;
+                $variation = new ProductVariation();
+                $variation->product_id = $product->id;
+                $variation->name = $name;
+                $variation->regular_price = isset($regularPrices[$index]) && $regularPrices[$index] !== '' ? $regularPrices[$index] : 0;
+                $variation->sale_price = isset($salePrices[$index]) && $salePrices[$index] !== '' ? $salePrices[$index] : null;
+                $variation->weight = isset($weights[$index]) && $weights[$index] !== '' ? $weights[$index] : 0;
+                $variation->quantity = isset($quantities[$index]) && $quantities[$index] !== '' ? $quantities[$index] : 0;
 
-                    if (isset($variationImages[$index])) {
-                        $vImage = $variationImages[$index];
-                        $vFileName = time() . '-var-' . uniqid() . '.' . $vImage->extension();
-                        $vImage->move(public_path('uploads/products'), $vFileName);
-                        $variation->image = $vFileName;
-                    }
-                    $variation->save();
+                if ($request->hasFile("variation_images.$index")) {
+                    $varImage = $request->file("variation_images.$index");
+                    $varImageName = time() . "_var_$index." . $varImage->extension();
+                    $varImage->move(public_path('uploads/products'), $varImageName);
+                    $variation->image = $varImageName;
                 }
+                $variation->save();
             }
         }
 
-        return response()->json(['status' => 'success', 'message' => 'Produk berhasil ditambahkan', 'data' => $product], 201);
+        if ($request->hasFile('images')) {
+            foreach ($request->file('images') as $file) {
+                $galleryImageName = time() . '_' . uniqid() . '.' . $file->extension();
+                $file->move(public_path('uploads/products'), $galleryImageName);
+
+                \Illuminate\Support\Facades\DB::table('product_images')->insert([
+                    'product_id' => $product->id,
+                    'image' => $galleryImageName,
+                ]);
+            }
+        }
+
+        return response()->json(['message' => 'Product created successfully!', 'data' => $product], 201);
     }
 
     public function updateProduct(Request $request, $id)
     {
-        // --- PROSES SIMPAN / UPDATE VARIASI PRODUK ---
-        if ($request->has('variation_names')) {
-            // JIKA UPDATE: Hapus variasi lama terlebih dahulu
-            if (isset($id)) {
-                \App\Models\ProductVariation::where('product_id', $product->id)->delete();
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'regular_price' => 'required|numeric',
+            'category_id' => 'required|exists:categories,id',
+            'brand_id' => 'required|exists:brands,id',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', 
+        ]);
+
+        $product = Product::findOrFail($id);
+
+        $product->name = $request->name;
+        $product->slug = \Illuminate\Support\Str::slug($request->name);
+        $product->short_description = $request->short_description;
+        $product->description = $request->description;
+        $product->regular_price = $request->regular_price;
+        $product->sale_price = $request->sale_price;
+        $product->SKU = 'PRD' . time();
+        $product->stock_status = $request->stock_status;
+        $product->quantity = $request->quantity ?? '0'; 
+        $product->weight = $request->weight ?? '0'; 
+        $product->exp_date = $request->exp_date;
+        $product->category_id = $request->category_id;
+        $product->brand_id = $request->brand_id;
+
+        if ($request->hasFile('image')) {
+            if ($product->image && \Illuminate\Support\Facades\File::exists(public_path('uploads/products/' . $product->image))) {
+                \Illuminate\Support\Facades\File::delete(public_path('uploads/products/' . $product->image));
             }
+            $imageName = time() . '.' . $request->image->extension();
+            $request->image->move(public_path('uploads/products'), $imageName);
+            $product->image = $imageName;
+        }
 
-            $variationNames = $request->input('variation_names');
-            $variationDescriptions = $request->input('variation_descriptions');
-            $variationPrices = $request->input('variation_prices');
-            $variationImages = $request->file('variation_images');
+        $product->save();
 
-            foreach ($variationNames as $index => $varName) {
-                if (!empty($varName)) {
-                    $variation = new \App\Models\ProductVariation();
+        if ($request->has('variation_names')) {
+            $names = $request->variation_names;
+            $ids = $request->variation_ids ?? [];
+            $regularPrices = $request->variation_regular_prices ?? [];
+            $salePrices = $request->variation_sale_prices ?? [];
+            $weights = $request->variation_weights ?? [];
+            $quantities = $request->variation_quantities ?? [];
+
+            $receivedVariationIds = array_filter($ids); 
+
+            $product->variations()->whereNotIn('id', $receivedVariationIds)->delete();
+
+            foreach ($names as $index => $name) {
+                if (empty($name)) continue;
+
+                $variationId = $ids[$index] ?? null;
+
+                if ($variationId) {
+                    $variation = ProductVariation::find($variationId);
+                } else {
+                    $variation = new ProductVariation();
                     $variation->product_id = $product->id;
-                    $variation->name = $varName;
-                    $variation->description = $variationDescriptions[$index] ?? null;
-                    // Pastikan harga tersimpan, jika kosong default ke 0
-                    $variation->price = isset($variationPrices[$index]) ? (float)$variationPrices[$index] : 0;
+                }
 
-                    if (isset($variationImages[$index])) {
-                        $vImage = $variationImages[$index];
-                        $vFileName = time() . '-var-' . uniqid() . '.' . $vImage->extension();
-                        $vImage->move(public_path('uploads/products'), $vFileName);
-                        $variation->image = $vFileName;
+                if ($variation) {
+                    $variation->name = $name;
+                    $variation->regular_price = isset($regularPrices[$index]) && $regularPrices[$index] !== '' ? $regularPrices[$index] : 0;
+                    $variation->sale_price = isset($salePrices[$index]) && $salePrices[$index] !== '' ? $salePrices[$index] : null;
+                    $variation->weight = isset($weights[$index]) && $weights[$index] !== '' ? $weights[$index] : 0;
+                    $variation->quantity = isset($quantities[$index]) && $quantities[$index] !== '' ? $quantities[$index] : 0;
+
+                    if ($request->hasFile("variation_images.$index")) {
+                        if ($variation->image && \Illuminate\Support\Facades\File::exists(public_path('uploads/products/' . $variation->image))) {
+                            \Illuminate\Support\Facades\File::delete(public_path('uploads/products/' . $variation->image));
+                        }
+                        $varImage = $request->file("variation_images.$index");
+                        $varImageName = time() . "_var_$index." . $varImage->extension();
+                        $varImage->move(public_path('uploads/products'), $varImageName);
+                        $variation->image = $varImageName;
                     }
+
                     $variation->save();
                 }
             }
+        } else {
+            $product->variations()->delete();
         }
 
-        return response()->json(['status' => 'success', 'message' => 'Produk berhasil diperbarui', 'data' => $product], 200);
+        // ===============================================
+        // MENGHAPUS GAMBAR GALERI LAMA YANG DI-X OLEH USER
+        // ===============================================
+        if ($request->has('kept_gallery_ids')) {
+            $keptIds = $request->kept_gallery_ids;
+            $imagesToDelete = \Illuminate\Support\Facades\DB::table('product_images')
+                ->where('product_id', $product->id)
+                ->whereNotIn('id', $keptIds)
+                ->get();
+        } else if ($request->has('kept_gallery_ids_empty')) {
+            $imagesToDelete = \Illuminate\Support\Facades\DB::table('product_images')
+                ->where('product_id', $product->id)
+                ->get();
+        } else {
+            $imagesToDelete = []; 
+        }
+
+        if (!empty($imagesToDelete)) {
+            foreach($imagesToDelete as $img) {
+                if (\Illuminate\Support\Facades\File::exists(public_path('uploads/products/' . $img->image))) {
+                    \Illuminate\Support\Facades\File::delete(public_path('uploads/products/' . $img->image));
+                }
+                \Illuminate\Support\Facades\DB::table('product_images')->where('id', $img->id)->delete();
+            }
+        }
+
+        if ($request->hasFile('images')) {
+            foreach ($request->file('images') as $file) {
+                $galleryImageName = time() . '_' . uniqid() . '.' . $file->extension();
+                $file->move(public_path('uploads/products'), $galleryImageName);
+
+                \Illuminate\Support\Facades\DB::table('product_images')->insert([
+                    'product_id' => $product->id,
+                    'image' => $galleryImageName,
+                ]);
+            }
+        }
+
+        return response()->json(['message' => 'Product updated successfully!', 'data' => $product]);
     }
 
     public function deleteProduct($id)
@@ -124,7 +267,9 @@ class ApiAdminController extends Controller
         return response()->json(['status' => 'success', 'message' => 'Produk berhasil dihapus'], 200);
     }
 
+    // ==========================================
     // 3. KATEGORI & BRAND
+    // ==========================================
     public function getCategories() 
     { 
         return response()->json(['data' => Category::where('user_id', auth()->id())->latest()->get()], 200); 
@@ -134,7 +279,7 @@ class ApiAdminController extends Controller
     {
         $request->validate(['name' => 'required|string']);
         $category = new Category();
-        $category->user_id = auth()->id(); // Tautkan ke admin
+        $category->user_id = auth()->id();
         $category->name = $request->name;
         $category->slug = Str::slug($request->name);
         
@@ -188,7 +333,7 @@ class ApiAdminController extends Controller
     {
         $request->validate(['name' => 'required|string']);
         $brand = new Brand();
-        $brand->user_id = auth()->id(); // Tautkan ke admin
+        $brand->user_id = auth()->id();
         $brand->name = $request->name;
         $brand->slug = Str::slug($request->name);
         
@@ -241,7 +386,9 @@ class ApiAdminController extends Controller
         return response()->json(['status' => 'success', 'message' => 'Brand berhasil dihapus']);
     }
 
+    // ==========================================
     // 4. MANAJEMEN PESANAN
+    // ==========================================
     public function getOrders()
     {
         return response()->json(['status' => 'success', 'data' => Order::where('user_id', auth()->id())->latest()->get()], 200);
@@ -269,7 +416,9 @@ class ApiAdminController extends Controller
         return response()->json(['status' => 'success', 'message' => 'Status pesanan diperbarui'], 200);
     }
 
+    // ==========================================
     // 5. MANAJEMEN KUPON
+    // ==========================================
     public function getCoupons() 
     { 
         return response()->json(['data' => Coupon::all()], 200); 
@@ -287,7 +436,9 @@ class ApiAdminController extends Controller
         return response()->json(['status' => 'success'], 200);
     }
 
+    // ==========================================
     // 6. FITUR LAIN (SLIDE, KONTAK, SETTING WA)
+    // ==========================================
     public function getSlides() 
     { 
         return response()->json(['data' => Slide::all()], 200); 
@@ -311,7 +462,9 @@ class ApiAdminController extends Controller
         return response()->json(['data' => WhatsappSetting::first()], 200); 
     }
 
+    // ==========================================
     // 7. MANAJEMEN LOKASI TOKO (ORIGIN)
+    // ==========================================
     public function getStoreLocation()
     {
         $about = About::firstOrCreate(['user_id' => auth()->id()]);

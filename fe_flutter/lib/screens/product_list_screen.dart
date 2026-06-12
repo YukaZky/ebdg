@@ -59,7 +59,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
               contentPadding: EdgeInsets.symmetric(vertical: 12),
             ),
             onChanged: (value) {
-              // Fungsi pencarian
+              // TODO: Fungsi pencarian
             },
           ),
         ),
@@ -82,7 +82,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
           IconButton(
             icon: const Icon(Icons.notifications_none, color: Colors.white, size: 28),
             onPressed: () {
-              // Fungsi notifikasi
+              // TODO: Fungsi notifikasi
             },
           ),
           const SizedBox(width: 8), 
@@ -109,14 +109,13 @@ class _ProductListScreenState extends State<ProductListScreen> {
               padding: const EdgeInsets.all(16),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                childAspectRatio: 0.58, // Sedikit diperpanjang untuk memberi ruang variasi
+                childAspectRatio: 0.72, 
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
               ),
               itemCount: products.length,
               itemBuilder: (context, index) {
                 final product = products[index];
-                // Memanggil widget ProductCard terpisah di bawah
                 return ProductCard(product: product); 
               },
             );
@@ -128,33 +127,31 @@ class _ProductListScreenState extends State<ProductListScreen> {
 }
 
 // ==============================================================
-// WIDGET CARD PRODUK (Dinamis: Ganti gambar saat variasi diklik)
+// WIDGET CARD PRODUK (Khusus Beranda - Tanpa Variasi)
 // ==============================================================
-class ProductCard extends StatefulWidget {
+class ProductCard extends StatelessWidget {
   final Product product;
   const ProductCard({Key? key, required this.product}) : super(key: key);
 
   @override
-  State<ProductCard> createState() => _ProductCardState();
-}
-
-class _ProductCardState extends State<ProductCard> {
-  String? currentImageUrl;
-
-  @override
-  void initState() {
-    super.initState();
-    // Default gambar adalah gambar utama produk
-    currentImageUrl = widget.product.image; 
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // --- LOGIKA URL GAMBAR DINAMIS ---
+    // Mencegah hardcode IP dan otomatis menyelaraskan dengan ApiService
+    String? imageUrl;
+    if (product.image != null && product.image!.isNotEmpty) {
+      if (product.image!.startsWith('http')) {
+        imageUrl = product.image;
+      } else {
+        String base = ApiService.baseUrl.replaceAll('/api', '');
+        imageUrl = "$base/uploads/products/${product.image}";
+      }
+    }
+
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => ProductDetailScreen(product: widget.product)),
+          MaterialPageRoute(builder: (context) => ProductDetailScreen(product: product)),
         );
       },
       child: Container(
@@ -173,39 +170,40 @@ class _ProductCardState extends State<ProductCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- GAMBAR UTAMA ---
+            // --- GAMBAR UTAMA PRODUK ---
             Expanded(
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 child: Container(
                   width: double.infinity,
                   color: Colors.white,
-                  child: currentImageUrl != null
+                  child: imageUrl != null
                       ? Image.network(
-                          "http://127.0.0.1:8000/uploads/products/$currentImageUrl",
+                          imageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (c, e, s) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                          errorBuilder: (context, error, stackTrace) => 
+                              const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
                         )
                       : const Icon(Icons.image, size: 50, color: Colors.grey),
                 ),
               ),
             ),
             
-            // --- INFO PRODUK & VARIASI ---
+            // --- INFO PRODUK ---
             Padding(
               padding: const EdgeInsets.all(12.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    widget.product.name,
+                    product.name,
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    "Rp ${widget.product.price.toStringAsFixed(0)}",
+                    "Rp ${product.price.toStringAsFixed(0)}",
                     style: const TextStyle(color: Color(0xFFE65100), fontWeight: FontWeight.w800, fontSize: 14),
                   ),
                   const SizedBox(height: 4),
@@ -214,60 +212,18 @@ class _ProductCardState extends State<ProductCard> {
                       Icon(
                         Icons.check_circle,
                         size: 14,
-                        color: widget.product.stockStatus == 'instock' ? Colors.green : Colors.red,
+                        color: product.stockStatus == 'instock' && product.quantity > 0 ? Colors.green : Colors.red,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        widget.product.stockStatus == 'instock' ? "Stok Tersedia" : "Habis",
+                        product.stockStatus == 'instock' && product.quantity > 0 ? "Stok Tersedia" : "Habis",
                         style: TextStyle(
                           fontSize: 12,
-                          color: widget.product.stockStatus == 'instock' ? Colors.green : Colors.red,
+                          color: product.stockStatus == 'instock' && product.quantity > 0 ? Colors.green : Colors.red,
                         ),
                       ),
                     ],
                   ),
-                  
-                  // --- PILIHAN VARIASI WARNA/JENIS ---
-                  if (widget.product.variations != null && widget.product.variations!.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6, 
-                      runSpacing: 4, // Jarak vertikal jika variasi turun ke baris baru
-                      children: widget.product.variations!.map((variation) {
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              // Ubah gambar utama menjadi gambar variasi saat diklik
-                              currentImageUrl = variation.image ?? widget.product.image;
-                            });
-                          },
-                          child: Container(
-                            width: 26, 
-                            height: 26,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                // Highlight border jika variasi sedang dipilih
-                                color: currentImageUrl == (variation.image ?? widget.product.image) 
-                                    ? Colors.blue 
-                                    : Colors.grey.shade300, 
-                                width: 1.5
-                              ),
-                              image: variation.image != null
-                                  ? DecorationImage(
-                                      image: NetworkImage("http://127.0.0.1:8000/uploads/products/${variation.image}"),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : null, 
-                            ),
-                            child: variation.image == null 
-                                ? Center(child: Text(variation.name.isNotEmpty ? variation.name[0].toUpperCase() : '?', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)))
-                                : null,
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
                 ],
               ),
             ),

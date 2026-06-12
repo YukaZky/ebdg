@@ -1,5 +1,6 @@
+// ignore_for_file: avoid_print
+
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../models/product_model.dart';
@@ -393,6 +394,7 @@ class ApiService {
   static Future<bool> saveAdminProduct(Map<String, String> fields,
       {XFile? mainImage, 
        List<XFile>? galleryImages, 
+       List<String>? keptGalleryImageIds, // Instruksi DELETE/KEEP Galeri Gambar
        int? productId,
        List<String>? variationNames,
        List<XFile?>? variationImages,
@@ -420,6 +422,16 @@ class ApiService {
     }
 
     request.fields.addAll(fields);
+
+    // Meneruskan instruksi hapus gambar galeri lama ke Server
+    if (keptGalleryImageIds != null && keptGalleryImageIds.isNotEmpty) {
+      for (int i = 0; i < keptGalleryImageIds.length; i++) {
+        request.fields['kept_gallery_ids[$i]'] = keptGalleryImageIds[i];
+      }
+    } else if (productId != null) {
+      // Jika kosong tapi posisinya edit, tandanya semua gambar lama dihapus user
+      request.fields['kept_gallery_ids_empty'] = '1';
+    }
 
     if (mainImage != null) {
       request.files.add(http.MultipartFile.fromBytes(
@@ -483,7 +495,7 @@ class ApiService {
         return true;
       } else {
         final respStr = await response.stream.bytesToString();
-        print("Error API saveAdminProduct [${response.statusCode}]: $respStr"); // <- PESAN ERROR AKAN MUNCUL DI TERMINAL DEBUG
+        print("Error API saveAdminProduct [${response.statusCode}]: $respStr");
         return false;
       }
     } catch (e) {
