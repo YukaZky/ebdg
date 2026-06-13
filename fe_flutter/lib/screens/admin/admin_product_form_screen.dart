@@ -1,11 +1,24 @@
+// ignore_for_file: avoid_print
+
 import 'dart:io';
-import 'package:flutter/foundation.dart'; // Wajib untuk pengecekan kIsWeb
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 
+class VariationInput {
+  int? id; 
+  String name = '';
+  XFile? image;
+  String? existingImageUrl; 
+  String regularPrice = '';
+  String salePrice = '';
+  String weight = '';
+  String quantity = '';
+}
+
 class AdminProductFormScreen extends StatefulWidget {
-  final Map<String, dynamic>? product; // Jika null = Tambah, Jika ada isi = Edit
+  final Map<String, dynamic>? product;
 
   const AdminProductFormScreen({Key? key, this.product}) : super(key: key);
 
@@ -21,23 +34,24 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
   List<dynamic> categories = [];
   List<dynamic> brands = [];
 
-  // Controllers
   final _nameCtrl = TextEditingController();
   final _shortDescCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _salePriceCtrl = TextEditingController();
   final _qtyCtrl = TextEditingController();
-  final _weightCtrl = TextEditingController();
+  final _weightCtrl = TextEditingController(); 
   final _expDateCtrl = TextEditingController();
 
   String? _selectedCategory;
   String? _selectedBrand;
   String _stockStatus = 'instock';
 
-  // Image Upload Variables (Menggunakan XFile agar support Web & Mobile)
+  List<VariationInput> variations = [];
+  
   XFile? _mainImage;
-  List<XFile> _galleryImages = [];
+  List<XFile> _galleryImages = []; 
+  List<dynamic> _existingGalleryImages = []; 
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -60,59 +74,91 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     });
   }
 
+  String _cleanNumber(dynamic value) {
+    if (value == null || value.toString() == 'null' || value.toString().isEmpty) return '';
+    double? d = double.tryParse(value.toString());
+    return (d != null && d == d.toInt()) ? d.toInt().toString() : value.toString();
+  }
+
   void _setupEditData() {
     final p = widget.product!;
     _nameCtrl.text = p['name'] ?? '';
-    _shortDescCtrl.text = p['short_description'] ?? '';
-    _descCtrl.text = p['description'] ?? '';
-    _priceCtrl.text = p['regular_price']?.toString() ?? '';
-    _salePriceCtrl.text = p['sale_price']?.toString() ?? '';
-    _qtyCtrl.text = p['quantity']?.toString() ?? '';
-    _weightCtrl.text = p['weight']?.toString() ?? '';
+    _shortDescCtrl.text = p['short_description']?.toString() == 'null' ? '' : (p['short_description'] ?? '');
+    _descCtrl.text = p['description']?.toString() == 'null' ? '' : (p['description'] ?? '');
     
-    // Format Tanggal Kadaluarsa
-    if (p['exp_date'] != null) {
+    _priceCtrl.text = _cleanNumber(p['regular_price']);
+    _salePriceCtrl.text = _cleanNumber(p['sale_price']);
+    _qtyCtrl.text = _cleanNumber(p['quantity']);
+    _weightCtrl.text = _cleanNumber(p['weight']);
+    
+    if (p['exp_date'] != null && p['exp_date'].toString() != 'null') {
       _expDateCtrl.text = p['exp_date'].toString().split(' ')[0]; 
     }
     
     _stockStatus = p['stock_status'] ?? 'instock';
 
-    if (categories.any((c) => c['id'] == p['category_id'])) {
+    if (categories.any((c) => c['id'].toString() == p['category_id'].toString())) {
       _selectedCategory = p['category_id'].toString();
     }
-    if (brands.any((b) => b['id'] == p['brand_id'])) {
+    if (brands.any((b) => b['id'].toString() == p['brand_id'].toString())) {
       _selectedBrand = p['brand_id'].toString();
     }
+
+    if (p['images'] != null) {
+      _existingGalleryImages = List<dynamic>.from(p['images']);
+    } else if (p['product_images'] != null) {
+      _existingGalleryImages = List<dynamic>.from(p['product_images']);
+    }
+
+    if (p['variations'] != null) {
+      for (var v in p['variations']) {
+        final varInput = VariationInput();
+        varInput.id = v['id']; 
+        varInput.name = v['name'] ?? '';
+        varInput.existingImageUrl = v['image'];
+        varInput.regularPrice = _cleanNumber(v['regular_price']);
+        varInput.salePrice = _cleanNumber(v['sale_price']);
+        varInput.weight = _cleanNumber(v['weight']);
+        varInput.quantity = _cleanNumber(v['quantity']);
+        variations.add(varInput);
+      }
+    }
+    
     setState(() {});
   }
 
-  // --- Fungsi Pilih Gambar Utama ---
   Future<void> _pickMainImage() async {
     try {
       final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
-      if (picked != null) {
-        setState(() => _mainImage = picked);
-      }
+      if (picked != null) setState(() => _mainImage = picked);
     } catch (e) {
       print("Gagal mengambil gambar: $e");
     }
   }
 
-  // --- Fungsi Pilih Galeri Gambar ---
   Future<void> _pickGalleryImages() async {
     try {
       final List<XFile> picked = await _picker.pickMultiImage();
-      if (picked.isNotEmpty) {
-        setState(() {
-          _galleryImages.addAll(picked);
-        });
-      }
+      if (picked.isNotEmpty) setState(() => _galleryImages.addAll(picked));
     } catch (e) {
       print("Gagal mengambil galeri gambar: $e");
     }
   }
 
-  // --- Fungsi Pilih Tanggal ---
+  Future<void> _pickVariationImage(int index) async {
+    try {
+      final XFile? picked = await _picker.pickImage(source: ImageSource.gallery);
+      if (picked != null) {
+        setState(() {
+          variations[index].image = picked;
+          variations[index].existingImageUrl = null; 
+        });
+      }
+    } catch (e) {
+      print("Gagal mengambil gambar variasi: $e");
+    }
+  }
+
   Future<void> _pickExpDate() async {
     DateTime? picked = await showDatePicker(
       context: context,
@@ -127,42 +173,60 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     }
   }
 
-  // --- Fungsi Simpan ke Server ---
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) return;
+    
     if (_selectedCategory == null || _selectedBrand == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih Kategori dan Brand!')));
+      return;
+    }
+    
+    if (variations.any((v) => v.name.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Semua nama variasi wajib diisi!')));
       return;
     }
 
     setState(() => isSaving = true);
 
-    // Filter field untuk mencegah error 500 Laravel
     Map<String, String> productFields = {
       "name": _nameCtrl.text,
       "short_description": _shortDescCtrl.text,
       "description": _descCtrl.text,
-      "regular_price": _priceCtrl.text,
+      "regular_price": _priceCtrl.text.isEmpty ? "0" : _priceCtrl.text,
       "weight": _weightCtrl.text.isEmpty ? "0" : _weightCtrl.text,
       "stock_status": _stockStatus,
-      "quantity": _qtyCtrl.text,
-      "category_id": _selectedCategory!,
-      "brand_id": _selectedBrand!,
+      "quantity": _qtyCtrl.text.isEmpty ? "0" : _qtyCtrl.text,
+      "category_id": _selectedCategory ?? "",
+      "brand_id": _selectedBrand ?? "",
     };
 
-    // Hanya kirim field harga promo dan expired date jika tidak kosong
-    if (_salePriceCtrl.text.isNotEmpty) {
-      productFields["sale_price"] = _salePriceCtrl.text;
-    }
-    if (_expDateCtrl.text.isNotEmpty) {
-      productFields["exp_date"] = _expDateCtrl.text;
-    }
+    if (_salePriceCtrl.text.isNotEmpty) productFields["sale_price"] = _salePriceCtrl.text;
+    if (_expDateCtrl.text.isNotEmpty) productFields["exp_date"] = _expDateCtrl.text;
+
+    List<String> variationNames = variations.map((v) => v.name).toList();
+    List<XFile?> variationImages = variations.map((v) => v.image).toList();
+    List<String> variationIds = variations.map((v) => v.id?.toString() ?? '').toList();
+    List<String> variationRegularPrices = variations.map((v) => v.regularPrice).toList();
+    List<String> variationSalePrices = variations.map((v) => v.salePrice).toList();
+    List<String> variationWeights = variations.map((v) => v.weight).toList();
+    List<String> variationQuantities = variations.map((v) => v.quantity).toList();
+
+    // Merekam ID Gambar Galeri yang TIDAK Dihapus oleh User
+    List<String> keptGalleryIds = _existingGalleryImages.map((img) => img['id'].toString()).toList();
 
     bool success = await ApiService.saveAdminProduct(
       productFields,
       mainImage: _mainImage,
       galleryImages: _galleryImages,
+      keptGalleryImageIds: keptGalleryIds,
       productId: widget.product?['id'],
+      variationNames: variationNames,
+      variationImages: variationImages,
+      variationIds: variationIds,
+      variationRegularPrices: variationRegularPrices,
+      variationSalePrices: variationSalePrices,
+      variationWeights: variationWeights,
+      variationQuantities: variationQuantities,
     );
 
     setState(() => isSaving = false);
@@ -175,13 +239,9 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     }
   }
 
-  // --- Helper Widget Render Gambar (Web vs Mobile) ---
   Widget _buildImage(XFile file) {
-    if (kIsWeb) {
-      return Image.network(file.path, fit: BoxFit.cover); 
-    } else {
-      return Image.file(File(file.path), fit: BoxFit.cover);
-    }
+    if (kIsWeb) return Image.network(file.path, fit: BoxFit.cover); 
+    return Image.file(File(file.path), fit: BoxFit.cover);
   }
 
   @override
@@ -203,7 +263,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // --- SECTION UNGGAH GAMBAR UTAMA ---
                     const Text("Gambar Utama", style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     GestureDetector(
@@ -217,26 +276,51 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                         ),
                         child: _mainImage != null
                             ? ClipRRect(borderRadius: BorderRadius.circular(12), child: _buildImage(_mainImage!))
-                            : isEdit && widget.product!['image'] != null
+                            : isEdit && widget.product!['image'] != null && widget.product!['image'].toString().isNotEmpty
                                 ? ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
                                     child: Image.network("http://127.0.0.1:8000/uploads/products/${widget.product!['image']}", fit: BoxFit.cover),
                                   )
                                 : const Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [Icon(Icons.add_a_photo, size: 40, color: Colors.grey), Text("Ketuk untuk Unggah Gambar")],
+                                    children: [Icon(Icons.add_a_photo, size: 40, color: Colors.grey), Text("Ketuk untuk Unggah Gambar Utama")],
                                   ),
                       ),
                     ),
                     const SizedBox(height: 16),
 
-                    // --- SECTION GALERI GAMBAR ---
-                    const Text("Galeri Gambar", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text("Galeri Gambar (Opsional)", style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
+                        // Tampilkan Gambar Galeri Existing (Dengan Tombol Delete)
+                        ..._existingGalleryImages.map((imgData) {
+                          String imgUrl = imgData['image'] ?? '';
+                          return Stack(
+                            alignment: Alignment.topRight,
+                            children: [
+                              SizedBox(
+                                width: 80, height: 80, 
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8), 
+                                  child: Image.network(
+                                    "http://127.0.0.1:8000/uploads/products/$imgUrl", 
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (c, e, s) => Container(color: Colors.grey.shade300, child: const Icon(Icons.broken_image, color: Colors.grey)),
+                                  )
+                                )
+                              ),
+                              GestureDetector(
+                                onTap: () => setState(() => _existingGalleryImages.remove(imgData)),
+                                child: const CircleAvatar(radius: 12, backgroundColor: Colors.red, child: Icon(Icons.close, size: 14, color: Colors.white)),
+                              )
+                            ],
+                          );
+                        }),
+                        
+                        // Tampilkan Gambar Galeri Baru
                         ..._galleryImages.map((img) => Stack(
                               alignment: Alignment.topRight,
                               children: [
@@ -250,6 +334,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                                 )
                               ],
                             )),
+                        
                         GestureDetector(
                           onTap: _pickGalleryImages,
                           child: Container(
@@ -262,10 +347,9 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // --- SECTION FORM TEKS ---
                     _buildTextField("Nama Produk", _nameCtrl),
-                    _buildTextField("Deskripsi Singkat", _shortDescCtrl, maxLines: 2),
-                    _buildTextField("Deskripsi Lengkap", _descCtrl, maxLines: 4),
+                    _buildTextField("Deskripsi Singkat", _shortDescCtrl, maxLines: 2, isRequired: false),
+                    _buildTextField("Deskripsi Lengkap", _descCtrl, maxLines: 4, isRequired: false),
                     
                     Row(
                       children: [
@@ -279,11 +363,10 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                       children: [
                         Expanded(child: _buildTextField("Kuantitas Stok", _qtyCtrl, isNumber: true)),
                         const SizedBox(width: 16),
-                        Expanded(child: _buildTextField("Berat (Gram)", _weightCtrl, isNumber: true)),
+                        Expanded(child: _buildTextField("Berat Total (Gram)", _weightCtrl, isNumber: true)),
                       ],
                     ),
 
-                    // --- SECTION TANGGAL KADALUARSA ---
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _expDateCtrl,
@@ -297,7 +380,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // --- SECTION DROPDOWN KATEGORI, BRAND & STATUS ---
                     DropdownButtonFormField<String>(
                       decoration: const InputDecoration(labelText: "Kategori", border: OutlineInputBorder()),
                       value: _selectedCategory,
@@ -327,10 +409,153 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                       ],
                       onChanged: (val) => setState(() => _stockStatus = val!),
                     ),
-
                     const SizedBox(height: 32),
-                    
-                    // --- TOMBOL SIMPAN ---
+
+                    const Text("Variasi Warna / Jenis Produk", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blue.shade200),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ...variations.asMap().entries.map((entry) {
+                            int index = entry.key;
+                            VariationInput variation = entry.value;
+                            return Card(
+                              elevation: 1,
+                              margin: const EdgeInsets.only(bottom: 16.0),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        GestureDetector(
+                                          onTap: () => _pickVariationImage(index),
+                                          child: Container(
+                                            width: 55,
+                                            height: 55,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: Colors.grey.shade400),
+                                            ),
+                                            child: variation.image != null
+                                                ? ClipRRect(borderRadius: BorderRadius.circular(8), child: _buildImage(variation.image!))
+                                                : variation.existingImageUrl != null
+                                                    ? ClipRRect(
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        child: Image.network("http://127.0.0.1:8000/uploads/products/${variation.existingImageUrl}", fit: BoxFit.cover),
+                                                      )
+                                                    : const Icon(Icons.add_photo_alternate, color: Colors.grey, size: 22),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: TextFormField(
+                                            initialValue: variation.name,
+                                            onChanged: (val) => variation.name = val,
+                                            decoration: const InputDecoration(
+                                              labelText: "Nama Variasi (Misal: Merah / XL)",
+                                              border: OutlineInputBorder(),
+                                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            ),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                          onPressed: () => setState(() => variations.removeAt(index)),
+                                        )
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextFormField(
+                                            initialValue: variation.regularPrice,
+                                            keyboardType: TextInputType.number,
+                                            onChanged: (val) => variation.regularPrice = val,
+                                            decoration: const InputDecoration(
+                                              labelText: "Harga Reguler (Rp)",
+                                              border: OutlineInputBorder(),
+                                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: TextFormField(
+                                            initialValue: variation.salePrice,
+                                            keyboardType: TextInputType.number,
+                                            onChanged: (val) => variation.salePrice = val,
+                                            decoration: const InputDecoration(
+                                              labelText: "Harga Promo (Rp)",
+                                              border: OutlineInputBorder(),
+                                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextFormField(
+                                            initialValue: variation.weight,
+                                            keyboardType: TextInputType.number,
+                                            onChanged: (val) => variation.weight = val,
+                                            decoration: const InputDecoration(
+                                              labelText: "Berat (Gram)",
+                                              border: OutlineInputBorder(),
+                                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: TextFormField(
+                                            initialValue: variation.quantity,
+                                            keyboardType: TextInputType.number,
+                                            onChanged: (val) => variation.quantity = val,
+                                            decoration: const InputDecoration(
+                                              labelText: "Stok Variasi",
+                                              border: OutlineInputBorder(),
+                                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.indigo,
+                              elevation: 0,
+                              side: const BorderSide(color: Colors.indigo),
+                            ),
+                            onPressed: () => setState(() => variations.add(VariationInput())),
+                            icon: const Icon(Icons.add),
+                            label: const Text("Tambah Variasi Baru"),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
                     isSaving
                         ? const Center(child: CircularProgressIndicator())
                         : ElevatedButton.icon(
