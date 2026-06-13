@@ -5,8 +5,8 @@ import 'product_detail_screen.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
-import 'wishlist_screen.dart'; // Import halaman Wishlist
-import 'admin/admin_store_location_screen.dart'; // Import halaman Alamat/Lokasi
+import 'wishlist_screen.dart';
+import 'admin/address_list_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(String?) onProfileUpdated;
@@ -368,7 +368,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     // Navigasi ke AdminStoreLocationScreen sesuai permintaan
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const AdminStoreLocationScreen()),
+                      MaterialPageRoute(builder: (context) => const AddressListScreen()),
                     );
                   });
                 }),

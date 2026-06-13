@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
-import '../map_picker_screen.dart'; // Sesuaikan lokasi path import-nya
+import '../map_picker_screen.dart';
 
-class AdminStoreLocationScreen extends StatefulWidget {
+class AddressFormScreen extends StatefulWidget {
   final Map<String, dynamic>? existingAddress; 
-  const AdminStoreLocationScreen({Key? key, this.existingAddress}) : super(key: key);
+  const AddressFormScreen({Key? key, this.existingAddress}) : super(key: key);
 
   @override
-  State<AdminStoreLocationScreen> createState() => _AdminStoreLocationScreenState();
+  State<AddressFormScreen> createState() => _AddressFormScreenState();
 }
 
-class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
+class _AddressFormScreenState extends State<AddressFormScreen> {
   List _provinces = [];
   List _cities = [];
   List _subdistricts = []; 
@@ -32,7 +32,7 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
   String _addressLabel = 'Rumah';
   bool _isMainAddress = false;
   bool _isStoreAddress = false;
-
+  
   double? _latitude;
   double? _longitude;
   String _mapAddressText = 'Pilih Titik Lokasi Pada Peta';
@@ -158,7 +158,7 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
       'kecamatan': subdistrictName,          
       'postal_code': _postalCodeController.text,
       'detail_address': _detailAddressController.text,
-      'landmark': _landmarkController.text, 
+      'landmark': _landmarkController.text,
       'note': _noteController.text,
       'label': _addressLabel,
       'is_main': _isMainAddress,
@@ -180,6 +180,7 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
     }
   }
 
+  // --- PEMBENTUKAN DROPDOWN ---
   List<DropdownMenuItem<String>> _buildProvinceItems() {
     final seen = <String>{};
     return _provinces.where((prov) {
@@ -232,7 +233,7 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text(widget.existingAddress != null ? 'Ubah Alamat Toko' : 'Pengaturan Alamat Toko', style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text(widget.existingAddress != null ? 'Ubah Alamat' : 'Tambah Alamat', style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 16)),
         backgroundColor: Colors.white,
         elevation: 0.5,
         iconTheme: const IconThemeData(color: Colors.black87),
@@ -359,6 +360,7 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
     );
   }
 
+  // --- KOMPONEN UI ---
   Widget _buildSectionContainer({required String title, required List<Widget> children}) {
     return Container(
       width: double.infinity, margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.all(16), color: Colors.white,

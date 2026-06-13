@@ -241,6 +241,66 @@ class ApiService {
   }
 
   // ==========================================
+  // FUNGSI BUKU ALAMAT PENGGUNA
+  // ==========================================
+
+  static Future<List<dynamic>> getUserAddresses() async {
+    if (_token == null) return [];
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/user/addresses"),
+        headers: {"Accept": "application/json", "Authorization": "Bearer $_token"},
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body)['data'] ?? [];
+      }
+    } catch (e) {
+      print("Error get addresses: $e");
+    }
+    return [];
+  }
+
+  static Future<bool> saveUserAddress(Map<String, dynamic> addressData) async {
+    if (_token == null) return false;
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/user/addresses"),
+        headers: {"Content-Type": "application/json", "Accept": "application/json", "Authorization": "Bearer $_token"},
+        body: jsonEncode(addressData),
+      );
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static Future<bool> setMainAddress(int id) async {
+    if (_token == null) return false;
+    try {
+      final response = await http.put(
+        Uri.parse("$baseUrl/user/addresses/$id/set-main"),
+        headers: {"Accept": "application/json", "Authorization": "Bearer $_token"},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static Future<bool> deleteUserAddress(int id) async {
+    if (_token == null) return false;
+    try {
+      final response = await http.delete(
+        Uri.parse("$baseUrl/user/addresses/$id"),
+        headers: {"Accept": "application/json", "Authorization": "Bearer $_token"},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ==========================================
   // FUNGSI RAJAONGKIR
   // ==========================================
   static Future<List<dynamic>> getProvinces() async {
@@ -263,6 +323,28 @@ class ApiService {
       "Authorization": "Bearer $_token"
     });
     return response.statusCode == 200 ? jsonDecode(response.body) : [];
+  }
+
+  static Future<List<dynamic>> getSubdistricts(String cityId) async {
+    if (_token == null) return [];
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/rajaongkir/subdistricts/$cityId"),
+        headers: {
+          "Accept": "application/json",
+          "Authorization": "Bearer $_token"
+        }
+      );
+      if (response.statusCode == 200) {
+        var data = jsonDecode(response.body);
+        if (data is Map && data.containsKey('data')) return data['data'];
+        if (data is List) return data;
+        return data;
+      }
+    } catch (e) {
+      print("Error get subdistricts: $e");
+    }
+    return [];
   }
 
   static Future<List<dynamic>> checkCost(
@@ -294,12 +376,10 @@ class ApiService {
       List<Map<String, dynamic>> cartItems) async {
     if (_token == null) throw Exception("Belum login");
 
-    // Format list item dari format lokal keranjang ke format yang diminta API laravel
     List<Map<String, dynamic>> formattedItems = cartItems.map((item) {
       return {
         "product_id": item['product']['id'],
         "quantity": item['quantity'],
-        // Tambahkan opsi variasi jika ada, contoh:
         "options": item['isChecked'] ?? null 
       };
     }).toList();
@@ -319,7 +399,7 @@ class ApiService {
           "city_name": cityName,
           "courier": courier,
           "shipping_cost": shippingCost,
-          "items": formattedItems // Kirim list item ke backend
+          "items": formattedItems 
         }),
       );
 
@@ -356,8 +436,7 @@ class ApiService {
     return null;
   }
 
-  static Future<bool> saveAdminStoreLocation(
-      String provinceId, String cityId) async {
+  static Future<bool> saveAdminStoreLocation(Map<String, dynamic> addressData) async {
     if (_token == null) return false;
     try {
       final response = await http.post(
@@ -367,12 +446,9 @@ class ApiService {
           "Accept": "application/json",
           "Authorization": "Bearer $_token"
         },
-        body: jsonEncode({
-          "province_id": provinceId,
-          "city_id": cityId,
-        }),
+        body: jsonEncode(addressData),
       );
-      return response.statusCode == 200;
+      return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       print("Admin Error: $e");
       return false;
@@ -406,13 +482,10 @@ class ApiService {
     return [];
   }
 
-  // ==============================================================
-  // UPDATE: Simpan / Update Produk Beserta Semua Field Variasinya
-  // ==============================================================
   static Future<bool> saveAdminProduct(Map<String, String> fields,
       {XFile? mainImage, 
        List<XFile>? galleryImages, 
-       List<String>? keptGalleryImageIds, // Instruksi DELETE/KEEP Galeri Gambar
+       List<String>? keptGalleryImageIds, 
        int? productId,
        List<String>? variationNames,
        List<XFile?>? variationImages,
@@ -441,13 +514,11 @@ class ApiService {
 
     request.fields.addAll(fields);
 
-    // Meneruskan instruksi hapus gambar galeri lama ke Server
     if (keptGalleryImageIds != null && keptGalleryImageIds.isNotEmpty) {
       for (int i = 0; i < keptGalleryImageIds.length; i++) {
         request.fields['kept_gallery_ids[$i]'] = keptGalleryImageIds[i];
       }
     } else if (productId != null) {
-      // Jika kosong tapi posisinya edit, tandanya semua gambar lama dihapus user
       request.fields['kept_gallery_ids_empty'] = '1';
     }
 
@@ -469,13 +540,10 @@ class ApiService {
       }
     }
 
-    // --- MENGEMAS ARRAY VARIASI DENGAN AMAN UNTUK BACKEND ---
     if (variationNames != null && variationNames.isNotEmpty) {
       for (int i = 0; i < variationNames.length; i++) {
-        // Nama wajib ada
         request.fields['variation_names[$i]'] = variationNames[i];
         
-        // Pastikan indeks array tetap sinkron agar backend tidak Undefined Array Key
         if (variationIds != null && i < variationIds.length) {
           request.fields['variation_ids[$i]'] = variationIds[i];
         }
@@ -485,7 +553,7 @@ class ApiService {
         }
         
         if (variationSalePrices != null && i < variationSalePrices.length) {
-          request.fields['variation_sale_prices[$i]'] = variationSalePrices[i]; // Kirim meski nilainya kosong
+          request.fields['variation_sale_prices[$i]'] = variationSalePrices[i]; 
         }
         
         if (variationWeights != null && i < variationWeights.length) {
@@ -496,7 +564,6 @@ class ApiService {
           request.fields['variation_quantities[$i]'] = variationQuantities[i].isEmpty ? '0' : variationQuantities[i];
         }
 
-        // Gambar (Opsional)
         if (variationImages != null && i < variationImages.length && variationImages[i] != null) {
           request.files.add(http.MultipartFile.fromBytes(
             'variation_images[$i]',

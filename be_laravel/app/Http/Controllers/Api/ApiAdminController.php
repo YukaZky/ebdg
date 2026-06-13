@@ -463,33 +463,218 @@ class ApiAdminController extends Controller
     }
 
     // ==========================================
-    // 7. MANAJEMEN LOKASI TOKO (ORIGIN)
+    // MANAJEMEN LOKASI TOKO DAN ALAMAT
     // ==========================================
-    public function getStoreLocation()
+
+    public function getStoreLocation() 
     {
-        $about = About::firstOrCreate(['user_id' => auth()->id()]);
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'province_id' => $about->province_id,
-                'city_id' => $about->city_id,
-            ]
-        ], 200);
+        try {
+            // Cari alamat dengan prioritas: 1. Alamat Toko -> 2. Alamat Utama -> 3. Alamat Pertama yang Dibuat
+            $location = \App\Models\Address::where('user_id', \Illuminate\Support\Facades\Auth::id())
+                               ->orderBy('is_store_address', 'desc') 
+                               ->orderBy('isdefault', 'desc')        
+                               ->first();
+
+            if ($location) {
+                return response()->json([
+                    'success' => true,
+                    'data' => $location
+                ], 200);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Alamat belum diatur',
+                'data' => null
+            ], 200);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error GET API: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
-    public function saveStoreLocation(Request $request)
+    public function saveStoreLocation(\Illuminate\Http\Request $request) 
     {
-        $request->validate([
-            'province_id' => 'required',
-            'city_id' => 'required',
-        ]);
+        try {
+            // Validasi data krusial untuk RajaOngkir
+            $request->validate([
+                'province_id' => 'required',
+                'city_id' => 'required',
+            ]);
 
-        $about = About::firstOrCreate(['user_id' => auth()->id()]);
-        $about->province_id = $request->province_id;
-        $about->city_id = $request->city_id;
-        $about->district_id = null; // Reset jika lokasi berubah
-        $about->save();
+            $isStore = filter_var($request->is_store, FILTER_VALIDATE_BOOLEAN) ?? true;
+            $isMain = filter_var($request->is_main, FILTER_VALIDATE_BOOLEAN) ?? false;
 
-        return response()->json(['status' => 'success', 'message' => 'Lokasi toko berhasil diperbarui'], 200);
+            // Cari alamat milik user
+            $address = \App\Models\Address::where('user_id', \Illuminate\Support\Facades\Auth::id())
+                               ->orderBy('is_store_address', 'desc')
+                               ->orderBy('isdefault', 'desc')
+                               ->first();
+
+            if (!$address) {
+                $address = new \App\Models\Address();
+                $address->user_id = \Illuminate\Support\Facades\Auth::id();
+            }
+
+            // Data utama dari Flutter
+            $address->name = $request->name ?? 'Admin';
+            $address->phone = $request->phone ?? '0000000000';
+            $address->province_id = $request->province_id;
+            $address->city_id = $request->city_id;
+            $address->address = $request->detail_address ?? '-';
+            $address->locality = $request->kecamatan ?? '-';
+            $address->postal_code = $request->postal_code ?? '00000';
+            $address->zip = $request->postal_code ?? '00000';
+            
+            // --- SOLUSI EROR 1364 MYSQL ---
+            $address->city = '-';
+            $address->state = '-';
+            $address->country = 'Indonesia';
+            $address->type = 'home';
+            $address->landmark = '-';
+            $address->province_name = '-';
+            $address->city_name = '-';
+            $address->district_name = '-';
+            $address->district_id = '0'; // <--- INI TAMBAHAN BARUNYA
+            // ------------------------------
+            
+            $address->note = $request->note;
+            $address->label = $request->label ?? 'Rumah';
+            $address->isdefault = $isMain;
+            $address->is_store_address = $isStore;
+            
+            $address->save();
+
+            return response()->json([
+                'success' => true, 
+                'message' => 'Alamat berhasil disimpan.',
+                'data' => $address
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error POST API: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    // ==========================================
+    // MANAJEMEN BUKU ALAMAT PENGGUNA
+    // ==========================================
+
+    public function getSubdistricts($cityId)
+    {
+        try {
+            // Sesuaikan endpoint ini dengan vendor RajaOngkir yang kamu gunakan (Pro / Komerce)
+            // Umumnya RajaOngkir PRO menggunakan endpoint /subdistrict
+            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                'key' => env('RAJAONGKIR_API_KEY') // Sesuaikan penarikan key kamu
+            ])->get('https://pro.rajaongkir.com/api/subdistrict', [
+                'city' => $cityId
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                return response()->json($data['rajaongkir']['results'] ?? $data['data'] ?? $data, 200);
+            }
+            return response()->json(['success' => false, 'message' => 'Gagal mengambil data kecamatan'], 500);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function getUserAddresses() 
+    {
+        // Menampilkan semua alamat user, diurutkan dari yang Utama ke Bawah
+        $addresses = \App\Models\Address::where('user_id', \Illuminate\Support\Facades\Auth::id())
+                            ->orderBy('isdefault', 'desc')
+                            ->orderBy('created_at', 'desc')
+                            ->get();
+
+        return response()->json(['success' => true, 'data' => $addresses], 200);
+    }
+
+    public function saveUserAddress(\Illuminate\Http\Request $request) 
+    {
+        $request->validate(['province_id' => 'required', 'city_id' => 'required']);
+
+        $isStore = filter_var($request->is_store, FILTER_VALIDATE_BOOLEAN) ?? false;
+        $isMain = filter_var($request->is_main, FILTER_VALIDATE_BOOLEAN) ?? false;
+
+        if ($isMain) {
+            \App\Models\Address::where('user_id', \Illuminate\Support\Facades\Auth::id())->update(['isdefault' => false]);
+        }
+        if ($isStore) {
+            \App\Models\Address::where('user_id', \Illuminate\Support\Facades\Auth::id())->update(['is_store_address' => false]);
+        }
+
+        if ($request->address_id) {
+            $address = \App\Models\Address::where('user_id', \Illuminate\Support\Facades\Auth::id())->findOrFail($request->address_id);
+        } else {
+            $address = new \App\Models\Address();
+            $address->user_id = \Illuminate\Support\Facades\Auth::id();
+        }
+
+        // --- PENYELARASAN 100% DENGAN VERSI WEB ---
+        $address->name = $request->name ?? 'User';
+        $address->phone = $request->phone ?? '0';
+        $address->province_id = $request->province_id;
+        $address->city_id = $request->city_id;
+        $address->district_id = $request->district_id ?? '0'; // Tangkap District ID dengan benar
+        
+        $address->province_name = $request->province_name ?? '-'; 
+        $address->city_name = $request->city_name ?? '-'; 
+        $address->district_name = $request->kecamatan ?? '-';
+        
+        $address->address = $request->detail_address ?? '-';
+        $address->locality = $request->kecamatan ?? '-';
+        $address->landmark = $request->landmark ?? '-'; // Menangkap Patokan
+        
+        $address->postal_code = $request->postal_code ?? '00000';
+        $address->zip = $request->postal_code ?? '00000';
+        
+        $address->city = $request->city_name ?? '-';
+        $address->state = $request->province_name ?? '-'; 
+        $address->country = 'Indonesia'; 
+        $address->type = 'home'; 
+        $address->latitude = $request->latitude;
+        $address->longitude = $request->longitude;
+        // -----------------------------------------
+        
+        $address->note = $request->note;
+        $address->label = $request->label ?? 'Rumah';
+        $address->isdefault = $isMain;
+        $address->is_store_address = $isStore;
+        
+        $address->save();
+
+        if (\App\Models\Address::where('user_id', \Illuminate\Support\Facades\Auth::id())->count() == 1) {
+            $address->isdefault = true;
+            $address->save();
+        }
+
+        return response()->json(['success' => true, 'message' => 'Alamat disimpan.', 'data' => $address], 200);
+    }
+
+    public function setMainAddress($id) 
+    {
+        $userId = \Illuminate\Support\Facades\Auth::id();
+        // Reset seluruh alamat jadi non-utama
+        \App\Models\Address::where('user_id', $userId)->update(['isdefault' => false]);
+        // Set ID alamat yang diklik menjadi utama
+        $address = \App\Models\Address::where('user_id', $userId)->findOrFail($id);
+        $address->isdefault = true;
+        $address->save();
+
+        return response()->json(['success' => true, 'message' => 'Alamat utama diubah.'], 200);
+    }
+
+    public function deleteUserAddress($id) 
+    {
+        \App\Models\Address::where('user_id', \Illuminate\Support\Facades\Auth::id())->findOrFail($id)->delete();
+        return response()->json(['success' => true, 'message' => 'Alamat dihapus.'], 200);
     }
 }
