@@ -10,12 +10,15 @@ use App\Models\OrderItem;
 use Illuminate\Support\Str;
 use Midtrans\Config;
 use Midtrans\Snap;
+use App\Models\Product;
+use App\Models\Transaction;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class ApiCheckoutController extends Controller
 {
-    public function process(Request $request)
+    public function checkout(Request $request)
     {
-        // Validasi data pengiriman dari Flutter termasuk data RajaOngkir
         $request->validate([
             'address' => 'required|string',
             'phone' => 'required|string',
@@ -23,94 +26,123 @@ class ApiCheckoutController extends Controller
             'city_name' => 'required|string',
             'courier' => 'required|string',
             'shipping_cost' => 'required|numeric',
+            'items' => 'required|array',
         ]);
 
-        $user = $request->user();
-        
-        // 1. Ambil data keranjang
-        $cartItems = CartItem::with('product')->where('user_id', $user->id)->get();
-        
-        if ($cartItems->isEmpty()) {
-            return response()->json(['success' => false, 'message' => 'Keranjang kosong'], 400);
-        }
+        $user = Auth::user();
+        $cartItems = $request->items;
 
-        // 2. Hitung Total Harga Keranjang (Subtotal)
-        $totalPrice = 0;
+        // 1. Hitung Subtotal dari items yang dikirim Flutter
+        $subtotal = 0;
         foreach ($cartItems as $item) {
-            $totalPrice += $item->product->regular_price * $item->quantity;
+            $product = Product::find($item['product_id']);
+            if ($product) {
+                $subtotal += ($product->regular_price * $item['quantity']);
+            }
         }
 
-        // Total Akhir = Subtotal Barang + Ongkos Kirim
-        $grandTotal = $totalPrice + $request->shipping_cost;
+        $discount = 0; // Sesuaikan jika ada sistem kupon nanti
+        $tax = 0;
+        $total = $subtotal + $request->shipping_cost - $discount;
 
-        // 3. Buat Data Pesanan (Order)
-        $order = Order::create([
-            'user_id' => $user->id,
-            'subtotal' => $totalPrice,
-            'discount' => 0,
-            'tax' => 0,
-            'total' => $grandTotal, // Menyimpan total keseluruhan beserta ongkos kirim
-            'name' => $user->name,
-            'phone' => $request->phone,
-            'locality' => $request->courier, // Menyimpan nama kurir (jne, pos, tiki)
-            'address' => $request->address,
-            'city' => $request->city_name, // Menyimpan nama kota dari RajaOngkir
-            'state' => $request->province_name, // Menyimpan nama provinsi dari RajaOngkir
-            'country' => 'Indonesia',
-            'landmark' => '',
-            'zip' => '',
-            'type' => 'home',
-            'status' => 'ordered',
-            'is_shipping_different' => false,
-        ]);
+        // Pecah kurir dan layanan (Contoh input dari Flutter: "JNE - REG")
+        $courierParts = explode(' - ', $request->courier);
+        $modePengiriman = $courierParts[0] ?? 'Tidak Diketahui';
+        $jenisPengiriman = $courierParts[1] ?? '-';
 
-        // 4. Pindahkan Item dari Keranjang ke Order Items
-        foreach ($cartItems as $item) {
-            OrderItem::create([
-                'product_id' => $item->product_id,
-                'order_id' => $order->id,
-                'price' => $item->product->regular_price,
-                'quantity' => $item->quantity,
-                'options' => '',
-            ]);
-        }
-
-        // Hapus keranjang setelah dipindah ke order
-        CartItem::where('user_id', $user->id)->delete();
-
-        // 5. Konfigurasi Midtrans
-        Config::$serverKey = config('midtrans.server_key'); // Pastikan server_key ada di .env
-        Config::$isProduction = config('midtrans.is_production', false);
-        Config::$isSanitized = true;
-        Config::$is3ds = true;
-
-        // 6. Siapkan Parameter untuk Midtrans
-        $params = [
-            'transaction_details' => [
-                'order_id' => 'ORD-' . $order->id . '-' . time(),
-                'gross_amount' => $grandTotal, // Midtrans akan menagih sejumlah Harga Barang + Ongkir
-            ],
-            'customer_details' => [
-                'first_name' => $user->name,
-                'email' => $user->email,
-                'phone' => $request->phone,
-            ],
-        ];
+        DB::beginTransaction();
 
         try {
-            // Minta Snap URL Pembayaran ke Midtrans
-            $paymentUrl = Snap::createTransaction($params)->redirect_url;
-            
+            // 2. Simpan ke Tabel Orders
+            $order = new Order();
+            $order->user_id = $user->id;
+            $order->subtotal = $subtotal;
+            $order->discount = $discount;
+            $order->tax = $tax;
+            $order->total = $total;
+            $order->mode_pengiriman = $modePengiriman;
+            $order->jenis_pengiriman = $jenisPengiriman;
+            $order->ongkir = $request->shipping_cost;
+            $order->name = $user->name;
+            $order->phone = $request->phone;
+            $order->address = $request->address;
+            $order->city = $request->city_name;
+            $order->state = $request->province_name;
+            $order->country = 'Indonesia';
+            $order->locality = '-';
+            $order->zip = '-';
+            $order->status = 'ordered';
+            $order->save();
+
+            // 3. Simpan ke Tabel Order Items
+            foreach ($cartItems as $item) {
+                $product = Product::find($item['product_id']);
+
+                $orderItem = new OrderItem();
+                $orderItem->order_id = $order->id;
+                $orderItem->product_id = $item['product_id'];
+                $orderItem->price = $product->regular_price;
+                $orderItem->quantity = $item['quantity'];
+                $orderItem->option = json_encode($item['options'] ?? null); // Menyimpan variasi jika ada
+                $orderItem->save();
+
+                // Opsional: Kurangi stok produk di sini jika diperlukan
+                // $product->decrement('quantity', $item['quantity']);
+            }
+
+            // 4. Konfigurasi Midtrans & Generate Snap Token/URL
+            \Midtrans\Config::$serverKey = config('midtrans.server_key', env('MIDTRANS_SERVER_KEY'));
+            \Midtrans\Config::$isProduction = config('midtrans.is_production', env('MIDTRANS_IS_PRODUCTION', false));
+            \Midtrans\Config::$isSanitized = true;
+            \Midtrans\Config::$is3ds = true;
+
+            // PERBAIKAN: Cara yang benar untuk mematikan verifikasi SSL khusus internal cURL Midtrans
+            \Midtrans\Config::$curlOptions = [
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false,
+                CURLOPT_HTTPHEADER => [],
+            ];
+
+            $params = [
+                'transaction_details' => [
+                    'order_id' => 'ORDER-' . $order->id . '-' . time(),
+                    'gross_amount' => (int) $total,
+                ],
+                'customer_details' => [
+                    'first_name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $request->phone,
+                ],
+                
+            ];
+
+            // Generate payment URL
+            $paymentUrl = \Midtrans\Snap::createTransaction($params)->redirect_url;
+            $paymentToken = basename($paymentUrl);
+
+            // 5. Simpan ke Tabel Transactions
+            $transaction = new \App\Models\Transaction();
+            $transaction->user_id = $user->id;
+            $transaction->order_id = $order->id;
+            $transaction->mode = 'transfer';
+            $transaction->status = 'pending';
+            $transaction->payment_token = $paymentToken;
+            $transaction->payment_url = $paymentUrl;
+            $transaction->save();
+
+            DB::commit();
+
             return response()->json([
                 'success' => true,
-                'message' => 'Pesanan berhasil dibuat',
-                'payment_url' => $paymentUrl
+                'message' => 'Order berhasil dibuat',
+                'payment_url' => $paymentUrl,
+                'order' => $order->load('items.product')
             ], 200);
-
         } catch (\Exception $e) {
+            DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat pembayaran Midtrans: ' . $e->getMessage()
+                'message' => 'Gagal memproses checkout: ' . $e->getMessage()
             ], 500);
         }
     }
