@@ -35,7 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/cart/add', [ApiCartController::class, 'add']);
     Route::delete('/cart/remove/{id}', [ApiCartController::class, 'remove']);
 
-    Route::post('/checkout', [ApiCheckoutController::class, 'process']);
+    Route::post('/checkout', [ApiCheckoutController::class, 'checkout']);
     Route::get('/orders', [ApiOrderController::class, 'index']);
 
     // RUTE WISHLIST API

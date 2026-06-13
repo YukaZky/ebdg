@@ -283,39 +283,57 @@ class ApiService {
     return response.statusCode == 200 ? jsonDecode(response.body) : [];
   }
 
-  static Future<String?> checkout(
+  static Future<Map<String, dynamic>?> checkout(
       String address,
       String phone,
       String provinceName,
       String cityName,
       String courier,
-      double shippingCost) async {
+      double shippingCost,
+      List<Map<String, dynamic>> cartItems) async {
     if (_token == null) throw Exception("Belum login");
 
-    final response = await http.post(
-      Uri.parse("$baseUrl/checkout"),
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $_token"
-      },
-      body: jsonEncode({
-        "address": address,
-        "phone": phone,
-        "province_name": provinceName,
-        "city_name": cityName,
-        "courier": courier,
-        "shipping_cost": shippingCost
-      }),
-    );
+    // Format list item dari format lokal keranjang ke format yang diminta API laravel
+    List<Map<String, dynamic>> formattedItems = cartItems.map((item) {
+      return {
+        "product_id": item['product']['id'],
+        "quantity": item['quantity'],
+        // Tambahkan opsi variasi jika ada, contoh:
+        "options": item['isChecked'] ?? null 
+      };
+    }).toList();
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body)['payment_url'];
-    } else {
-      print("Gagal Checkout: ${response.body}");
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/checkout"),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer $_token"
+        },
+        body: jsonEncode({
+          "address": address,
+          "phone": phone,
+          "province_name": provinceName,
+          "city_name": cityName,
+          "courier": courier,
+          "shipping_cost": shippingCost,
+          "items": formattedItems // Kirim list item ke backend
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        print("Gagal Checkout: ${response.body}");
+        return null;
+      }
+    } catch (e) {
+      print("Error Checkout: $e");
       return null;
     }
   }
-
+  
   // ==========================================
   // FUNGSI ADMIN PANEL (TOKO SAYA)
   // ==========================================
