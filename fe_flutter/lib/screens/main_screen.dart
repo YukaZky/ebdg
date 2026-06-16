@@ -44,23 +44,21 @@ class _MainScreenState extends State<MainScreen> {
 
   void _onItemTapped(int index) {
     setState(() => _selectedIndex = index);
-    if (index == 1) {
-      CartBadgeService.refresh();
-    }
+    if (index == 1) CartBadgeService.refresh();
   }
 
-  Widget _cartIconWithBadge() {
+  Widget _cartIconWithBadge({required bool active}) {
     return ValueListenableBuilder<int>(
       valueListenable: CartBadgeService.count,
       builder: (context, count, child) {
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            const Icon(Icons.shopping_cart),
+            Icon(Icons.shopping_cart, size: 24, color: active ? const Color(0xFFF7B602) : const Color(0xFF05254F)),
             if (count > 0)
               Positioned(
-                right: -8,
-                top: -8,
+                right: -9,
+                top: -9,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                   decoration: BoxDecoration(
@@ -82,36 +80,89 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  Widget _navIcon(int index, IconData icon) {
+    final active = _selectedIndex == index;
+    return Icon(icon, size: 24, color: active ? const Color(0xFFF7B602) : const Color(0xFF05254F));
+  }
+
+  Widget _navItem({required int index, required String label, required Widget icon}) {
+    final active = _selectedIndex == index;
+
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _onItemTapped(index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          transform: Matrix4.translationValues(0, active ? -10 : 0, 0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                width: active ? 38 : 0,
+                height: 3,
+                margin: const EdgeInsets.only(bottom: 7),
+                decoration: BoxDecoration(color: const Color(0xFFF7B602), borderRadius: BorderRadius.circular(99)),
+              ),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                padding: EdgeInsets.symmetric(horizontal: active ? 13 : 0, vertical: active ? 7 : 0),
+                decoration: BoxDecoration(
+                  color: active ? const Color(0xFFFFF7D6) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: active ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4))] : [],
+                ),
+                child: icon,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: active ? const Color(0xFFF7B602) : const Color(0xFF05254F),
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _bottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.grey.shade200)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 14, offset: const Offset(0, -5))],
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 72,
+          child: Row(
+            children: [
+              _navItem(index: 0, label: 'Beranda', icon: _navIcon(0, Icons.home)),
+              _navItem(index: 1, label: 'Keranjang', icon: _cartIconWithBadge(active: _selectedIndex == 1)),
+              _navItem(index: 2, label: 'Pesanan', icon: _navIcon(2, Icons.history)),
+              _navItem(index: 3, label: _accountLabel, icon: _navIcon(3, Icons.person)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: _screens[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        selectedItemColor: const Color(0xFFF7B602),
-        unselectedItemColor: const Color(0xFF05254F),
-        backgroundColor: Colors.white,
-        type: BottomNavigationBarType.fixed,
-        items: [
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Beranda',
-          ),
-          BottomNavigationBarItem(
-            icon: _cartIconWithBadge(),
-            label: 'Keranjang',
-          ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'Pesanan',
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.person),
-            label: _accountLabel,
-          ),
-        ],
-      ),
+      bottomNavigationBar: _bottomNav(),
     );
   }
 }
