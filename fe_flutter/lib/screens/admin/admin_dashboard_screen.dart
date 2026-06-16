@@ -5,7 +5,6 @@ import '../marketplace/toko_pesanan_screen.dart';
 import 'admin_brands_screen.dart';
 import 'admin_categories_screen.dart';
 import 'admin_products_screen.dart';
-import 'admin_store_location_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({Key? key}) : super(key: key);
@@ -99,7 +98,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           Container(
                             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade200)),
                             child: Column(children: [
-                              _buildListMenu(context, 'Informasi Toko', 'Nama, deskripsi, maps, dan sosial media', Icons.store_mall_directory_outlined, Colors.deepOrange, true, () {
+                              _buildListMenu(context, 'Informasi Toko', 'Nama, deskripsi, maps, alamat, dan sosial media', Icons.store_mall_directory_outlined, Colors.deepOrange, true, () {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => const StoreProfileScreen()));
                               }),
                               _buildListMenu(context, 'Kelola Produk', 'Tambah, edit, hapus barang', Icons.shopping_bag_outlined, Colors.teal, true, () {
@@ -110,15 +109,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               }),
                               _buildListMenu(context, 'Kelola Brand', 'Atur merek produk', Icons.branding_watermark_outlined, Colors.indigo, true, () {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => AdminBrandsScreen()));
-                              }),
-                              _buildListMenu(context, 'Lokasi Toko', 'Atur asal pengiriman', Icons.location_on_outlined, Colors.redAccent, true, () async {
-                                showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator(color: Colors.white)));
-                                final responseData = await ApiService.getAdminStoreLocation();
-                                if (!context.mounted) return;
-                                Navigator.pop(context);
-                                Map<String, dynamic>? storeData;
-                                if (responseData != null && responseData['data'] != null) storeData = responseData['data'];
-                                Navigator.push(context, MaterialPageRoute(builder: (_) => AdminStoreLocationScreen(existingAddress: storeData)));
                               }),
                               _buildListMenu(context, 'Slide Banner', 'Atur banner depan', Icons.view_carousel_outlined, Colors.blueAccent, false, () {}),
                             ]),
