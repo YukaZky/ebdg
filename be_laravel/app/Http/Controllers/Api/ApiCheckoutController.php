@@ -4,14 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\CartItem;
 use App\Models\Order;
 use App\Models\OrderItem;
-use Illuminate\Support\Str;
 use Midtrans\Config;
 use Midtrans\Snap;
 use App\Models\Product;
-use App\Models\Transaction;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -32,20 +29,22 @@ class ApiCheckoutController extends Controller
         $user = Auth::user();
         $cartItems = $request->items;
 
-        // 1. Hitung Subtotal dari items yang dikirim Flutter
         $subtotal = 0;
         foreach ($cartItems as $item) {
             $product = Product::find($item['product_id']);
             if ($product) {
-                $subtotal += ($product->regular_price * $item['quantity']);
+                $price = isset($item['price']) && is_numeric($item['price'])
+                    ? (float) $item['price']
+                    : (float) ($product->sale_price ?: $product->regular_price);
+
+                $subtotal += $price * (int) $item['quantity'];
             }
         }
 
-        $discount = 0; // Sesuaikan jika ada sistem kupon nanti
+        $discount = 0;
         $tax = 0;
         $total = $subtotal + $request->shipping_cost - $discount;
 
-        // Pecah kurir dan layanan (Contoh input dari Flutter: "JNE - REG")
         $courierParts = explode(' - ', $request->courier);
         $modePengiriman = $courierParts[0] ?? 'Tidak Diketahui';
         $jenisPengiriman = $courierParts[1] ?? '-';
@@ -53,7 +52,6 @@ class ApiCheckoutController extends Controller
         DB::beginTransaction();
 
         try {
-            // 2. Simpan ke Tabel Orders
             $order = new Order();
             $order->user_id = $user->id;
             $order->subtotal = $subtotal;
@@ -74,30 +72,35 @@ class ApiCheckoutController extends Controller
             $order->status = 'ordered';
             $order->save();
 
-            // 3. Simpan ke Tabel Order Items
             foreach ($cartItems as $item) {
                 $product = Product::find($item['product_id']);
+                if (! $product) continue;
+
+                $price = isset($item['price']) && is_numeric($item['price'])
+                    ? (float) $item['price']
+                    : (float) ($product->sale_price ?: $product->regular_price);
+
+                $options = [
+                    'variation_id' => $item['variation_id'] ?? null,
+                    'variation_name' => $item['variation_name'] ?? null,
+                    'selected_image' => $item['selected_image'] ?? null,
+                    'weight' => $item['weight'] ?? null,
+                ];
 
                 $orderItem = new OrderItem();
                 $orderItem->order_id = $order->id;
                 $orderItem->product_id = $item['product_id'];
-                $orderItem->price = $product->regular_price;
+                $orderItem->price = $price;
                 $orderItem->quantity = $item['quantity'];
-                $orderItem->option = json_encode($item['options'] ?? null); // Menyimpan variasi jika ada
+                $orderItem->option = json_encode($options);
                 $orderItem->save();
-
-                // Opsional: Kurangi stok produk di sini jika diperlukan
-                // $product->decrement('quantity', $item['quantity']);
             }
 
-            // 4. Konfigurasi Midtrans & Generate Snap Token/URL
-            \Midtrans\Config::$serverKey = config('midtrans.server_key', env('MIDTRANS_SERVER_KEY'));
-            \Midtrans\Config::$isProduction = config('midtrans.is_production', env('MIDTRANS_IS_PRODUCTION', false));
-            \Midtrans\Config::$isSanitized = true;
-            \Midtrans\Config::$is3ds = true;
-
-            // PERBAIKAN: Cara yang benar untuk mematikan verifikasi SSL khusus internal cURL Midtrans
-            \Midtrans\Config::$curlOptions = [
+            Config::$serverKey = config('midtrans.server_key', env('MIDTRANS_SERVER_KEY'));
+            Config::$isProduction = config('midtrans.is_production', env('MIDTRANS_IS_PRODUCTION', false));
+            Config::$isSanitized = true;
+            Config::$is3ds = true;
+            Config::$curlOptions = [
                 CURLOPT_SSL_VERIFYPEER => false,
                 CURLOPT_SSL_VERIFYHOST => false,
                 CURLOPT_HTTPHEADER => [],
@@ -113,14 +116,11 @@ class ApiCheckoutController extends Controller
                     'email' => $user->email,
                     'phone' => $request->phone,
                 ],
-                
             ];
 
-            // Generate payment URL
-            $paymentUrl = \Midtrans\Snap::createTransaction($params)->redirect_url;
+            $paymentUrl = Snap::createTransaction($params)->redirect_url;
             $paymentToken = basename($paymentUrl);
 
-            // 5. Simpan ke Tabel Transactions
             $transaction = new \App\Models\Transaction();
             $transaction->user_id = $user->id;
             $transaction->order_id = $order->id;
