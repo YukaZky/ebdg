@@ -51,7 +51,7 @@ class _CartScreenState extends State<CartScreen> {
         _isLoading = false;
       });
       _syncBadgeFromLocal();
-    } catch (e) {
+    } catch (_) {
       setState(() => _isLoading = false);
       CartBadgeService.clear();
     }
@@ -197,9 +197,7 @@ class _CartScreenState extends State<CartScreen> {
     final itemsToCheckout = _cartItems.where((item) => item['isChecked'] == true).toList();
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => CheckoutScreen(totalAmount: totalPrice, totalWeight: totalWeight, cartItems: itemsToCheckout),
-      ),
+      MaterialPageRoute(builder: (context) => CheckoutScreen(totalAmount: totalPrice, totalWeight: totalWeight, cartItems: itemsToCheckout)),
     );
   }
 
@@ -208,88 +206,96 @@ class _CartScreenState extends State<CartScreen> {
     return Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Colors.grey));
   }
 
-  Widget _storeHeader({
+  Widget _storeBar({
     required List<int> indexes,
     required bool checked,
     required bool partial,
     required String storeName,
     required int selectedInStore,
   }) {
-    return InkWell(
-      onTap: () => _toggleStore(indexes, !checked),
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(8, 12, 14, 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-          border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Checkbox(
-              value: partial ? null : checked,
-              tristate: true,
-              activeColor: Colors.blue[700],
-              onChanged: (value) => _toggleStore(indexes, value ?? false),
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(10)),
-              child: Icon(Icons.storefront_rounded, color: Colors.orange.shade700, size: 21),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Toko', style: TextStyle(color: Colors.grey.shade600, fontSize: 11, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text(
-                    storeName,
-                    style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w800, fontSize: 15),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+      child: Material(
+        color: const Color(0xFF0C2442),
+        borderRadius: BorderRadius.circular(14),
+        elevation: 1,
+        child: InkWell(
+          onTap: () => _toggleStore(indexes, !checked),
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(8, 10, 14, 10),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: partial ? null : checked,
+                  tristate: true,
+                  checkColor: const Color(0xFF0C2442),
+                  activeColor: Colors.white,
+                  side: const BorderSide(color: Colors.white, width: 1.6),
+                  onChanged: (value) => _toggleStore(indexes, value ?? false),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.14), borderRadius: BorderRadius.circular(10)),
+                  child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 21),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('TOKO PENJUAL', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                      const SizedBox(height: 3),
+                      Text(
+                        storeName,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text('$selectedInStore/${indexes.length} produk dipilih', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text('$selectedInStore/${indexes.length} produk dipilih', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
-                ],
-              ),
+                ),
+                const Icon(Icons.select_all_rounded, color: Colors.white, size: 20),
+              ],
             ),
-            Icon(Icons.checklist_rounded, color: Colors.grey.shade500, size: 20),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _storeGroupCard(MapEntry<String, List<int>> entry) {
+  Widget _storeGroupBlock(MapEntry<String, List<int>> entry) {
     final indexes = entry.value;
     if (indexes.isEmpty) return const SizedBox.shrink();
+
     final firstItem = _cartItems[indexes.first];
     final checked = _isStoreChecked(indexes);
     final partial = _isStorePartialChecked(indexes);
     final storeName = _storeName(firstItem);
     final selectedInStore = indexes.where((index) => _cartItems[index]['isChecked'] == true).length;
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.035), blurRadius: 10, offset: const Offset(0, 4))],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _storeHeader(indexes: indexes, checked: checked, partial: partial, storeName: storeName, selectedInStore: selectedInStore),
-          ...indexes.map((index) => _cartItemTile(index, isLast: index == indexes.last)),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _storeBar(indexes: indexes, checked: checked, partial: partial, storeName: storeName, selectedInStore: selectedInStore),
+        Container(
+          margin: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.035), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: indexes.map((index) => _cartItemTile(index, isLast: index == indexes.last)).toList(),
+          ),
+        ),
+      ],
     );
   }
 
@@ -376,9 +382,9 @@ class _CartScreenState extends State<CartScreen> {
           : _cartItems.isEmpty
               ? const Center(child: Text('Keranjang belanja Anda kosong.', style: TextStyle(fontSize: 16, color: Colors.grey)))
               : ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.only(top: 4, bottom: 8),
                   itemCount: storeGroups.length,
-                  itemBuilder: (context, index) => _storeGroupCard(storeGroups[index]),
+                  itemBuilder: (context, index) => _storeGroupBlock(storeGroups[index]),
                 ),
       bottomNavigationBar: _isLoading
           ? const SizedBox.shrink()
