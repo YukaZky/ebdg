@@ -8,7 +8,6 @@ import 'admin/address_list_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
-import 'wishlist_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(String?) onProfileUpdated;
@@ -257,19 +256,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildAktifitasSaya(bool isLoggedIn) {
-    final menu = <Widget>[];
-
-    if (!isLoggedIn) {
-      menu.add(_buildBoxMenu('Favorit Saya', Icons.favorite, const Color(0xFF0C2442), () {
-        _handleFeatureTap(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WishlistScreen())));
-      }));
-      menu.add(_buildBoxMenu('Chat Penjual', Icons.chat_bubble, const Color(0xFF0C2442), () => _handleFeatureTap(isLoggedIn, () {})));
-    }
-
-    menu.add(_buildBoxMenu('Alamat Anda', Icons.location_on, const Color(0xFF0C2442), () {
-      _handleFeatureTap(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AddressListScreen())));
-    }));
-    menu.add(_buildBoxMenu('Kupon', Icons.local_activity, const Color(0xFF0C2442), () => _handleFeatureTap(isLoggedIn, () {})));
+    final menu = <Widget>[
+      _buildBoxMenu('Alamat Anda', Icons.location_on, const Color(0xFF0C2442), () {
+        _handleFeatureTap(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AddressListScreen())));
+      }),
+      _buildBoxMenu('Kupon', Icons.local_activity, const Color(0xFF0C2442), () => _handleFeatureTap(isLoggedIn, () {})),
+    ];
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
