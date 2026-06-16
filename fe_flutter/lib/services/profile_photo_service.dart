@@ -11,7 +11,9 @@ class ProfilePhotoService {
       'Accept': 'application/json',
       'Authorization': 'Bearer ${ApiService.token}',
     });
-    request.files.add(await http.MultipartFile.fromPath('avatar', file.path));
+
+    final bytes = await file.readAsBytes();
+    request.files.add(http.MultipartFile.fromBytes('avatar', bytes, filename: file.name.isEmpty ? 'profile.jpg' : file.name));
 
     final response = await request.send();
     if (response.statusCode == 200 || response.statusCode == 201) {
