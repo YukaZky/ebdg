@@ -271,7 +271,7 @@ class _CartScreenState extends State<CartScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 3),
-                      Text('${indexes.length} produk di toko ini', style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+                      Text('$selectedInStore/${indexes.length} produk dipilih', style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
                     ],
                   ),
                 ),
