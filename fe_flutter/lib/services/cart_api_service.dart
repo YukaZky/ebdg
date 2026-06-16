@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'api_service.dart';
+import 'cart_badge_service.dart';
 
 class CartApiService {
   static Future<bool> addSelectedProductToCart({
@@ -30,6 +31,10 @@ class CartApiService {
       body: jsonEncode(body),
     );
 
-    return response.statusCode == 200 || response.statusCode == 201;
+    final success = response.statusCode == 200 || response.statusCode == 201;
+    if (success) {
+      await CartBadgeService.refresh();
+    }
+    return success;
   }
 }
