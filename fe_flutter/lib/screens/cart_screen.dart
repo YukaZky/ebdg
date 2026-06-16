@@ -61,7 +61,7 @@ class _CartScreenState extends State<CartScreen> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(price);
   }
 
-  String _imageUrl(dynamic image) {
+  String _assetUrl(dynamic image, {String folder = 'products'}) {
     final value = image?.toString().trim() ?? '';
     if (value.isEmpty || value == 'null') return '';
     if (value.startsWith('http://') || value.startsWith('https://')) return value;
@@ -69,7 +69,15 @@ class _CartScreenState extends State<CartScreen> {
     final base = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
     final cleanValue = value.startsWith('/') ? value.substring(1) : value;
     if (cleanValue.startsWith('uploads/') || cleanValue.startsWith('storage/')) return '$base/$cleanValue';
-    return '$base/uploads/products/$cleanValue';
+    return '$base/uploads/$folder/$cleanValue';
+  }
+
+  String _imageUrl(dynamic image) => _assetUrl(image, folder: 'products');
+
+  String _storeLogoUrl(Map<String, dynamic> item) {
+    final product = item['product'] is Map ? Map<String, dynamic>.from(item['product']) : <String, dynamic>{};
+    final store = product['store'] is Map ? Map<String, dynamic>.from(product['store']) : <String, dynamic>{};
+    return _assetUrl(store['logo'], folder: 'stores');
   }
 
   String _cleanText(dynamic value) {
@@ -128,12 +136,7 @@ class _CartScreenState extends State<CartScreen> {
     final store = product['store'] is Map ? Map<String, dynamic>.from(product['store']) : <String, dynamic>{};
     final user = product['user'] is Map ? Map<String, dynamic>.from(product['user']) : <String, dynamic>{};
 
-    final candidates = [
-      product['store_name'],
-      store['name'],
-      product['seller_name'],
-      user['name'],
-    ];
+    final candidates = [product['store_name'], store['name'], product['seller_name'], user['name']];
 
     for (final candidate in candidates) {
       final value = _cleanText(candidate);
@@ -206,60 +209,72 @@ class _CartScreenState extends State<CartScreen> {
     return Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Colors.grey));
   }
 
+  Widget _storeLogo(String logoUrl) {
+    return Container(
+      width: 42,
+      height: 42,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: logoUrl.isNotEmpty
+          ? Image.network(logoUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.storefront_rounded, color: Color(0xFF64748B), size: 22))
+          : const Icon(Icons.storefront_rounded, color: Color(0xFF64748B), size: 22),
+    );
+  }
+
   Widget _storeBar({
     required List<int> indexes,
     required bool checked,
     required bool partial,
     required String storeName,
     required int selectedInStore,
+    required String logoUrl,
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
       child: Material(
-        color: const Color(0xFF0C2442),
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(14),
-        elevation: 1,
+        elevation: 0,
         child: InkWell(
           onTap: () => _toggleStore(indexes, !checked),
           borderRadius: BorderRadius.circular(14),
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(8, 10, 14, 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+            ),
             child: Row(
               children: [
                 Checkbox(
                   value: partial ? null : checked,
                   tristate: true,
-                  checkColor: const Color(0xFF0C2442),
-                  activeColor: Colors.white,
-                  side: const BorderSide(color: Colors.white, width: 1.6),
+                  activeColor: Colors.blue[700],
                   onChanged: (value) => _toggleStore(indexes, value ?? false),
                 ),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.14), borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 21),
-                ),
-                const SizedBox(width: 10),
+                _storeLogo(logoUrl),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('TOKO PENJUAL', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-                      const SizedBox(height: 3),
                       Text(
                         storeName,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                        style: const TextStyle(color: Color(0xFF111827), fontWeight: FontWeight.w800, fontSize: 15),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 2),
-                      Text('$selectedInStore/${indexes.length} produk dipilih', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                      const SizedBox(height: 3),
+                      Text('${indexes.length} produk di toko ini', style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
                     ],
                   ),
                 ),
-                const Icon(Icons.select_all_rounded, color: Colors.white, size: 20),
               ],
             ),
           ),
@@ -277,11 +292,12 @@ class _CartScreenState extends State<CartScreen> {
     final partial = _isStorePartialChecked(indexes);
     final storeName = _storeName(firstItem);
     final selectedInStore = indexes.where((index) => _cartItems[index]['isChecked'] == true).length;
+    final logoUrl = _storeLogoUrl(firstItem);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _storeBar(indexes: indexes, checked: checked, partial: partial, storeName: storeName, selectedInStore: selectedInStore),
+        _storeBar(indexes: indexes, checked: checked, partial: partial, storeName: storeName, selectedInStore: selectedInStore, logoUrl: logoUrl),
         Container(
           margin: const EdgeInsets.fromLTRB(14, 8, 14, 10),
           decoration: BoxDecoration(
@@ -290,10 +306,7 @@ class _CartScreenState extends State<CartScreen> {
             border: Border.all(color: Colors.grey.shade200),
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.035), blurRadius: 10, offset: const Offset(0, 4))],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: indexes.map((index) => _cartItemTile(index, isLast: index == indexes.last)).toList(),
-          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: indexes.map((index) => _cartItemTile(index, isLast: index == indexes.last)).toList()),
         ),
       ],
     );
@@ -313,10 +326,7 @@ class _CartScreenState extends State<CartScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 16),
-            child: Checkbox(value: item['isChecked'], activeColor: Colors.blue[700], onChanged: (value) => _toggleCheckbox(index, value)),
-          ),
+          Padding(padding: const EdgeInsets.only(top: 16), child: Checkbox(value: item['isChecked'], activeColor: Colors.blue[700], onChanged: (value) => _toggleCheckbox(index, value))),
           const SizedBox(width: 6),
           Container(
             width: 72,
