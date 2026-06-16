@@ -21,6 +21,12 @@ class MarketplaceApiService {
     return null;
   }
 
+  static Future<Map<String, dynamic>?> storeDetail(String slug) async {
+    final response = await http.get(Uri.parse('${ApiService.baseUrl}/stores/$slug'), headers: {'Accept': 'application/json'});
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'];
+    return null;
+  }
+
   static Future<List<dynamic>> sellerOrders() async {
     final response = await http.get(Uri.parse('${ApiService.baseUrl}/marketplace/seller-orders'), headers: _headers);
     if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
