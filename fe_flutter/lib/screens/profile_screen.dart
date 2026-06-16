@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/product_model.dart';
 import '../services/api_service.dart';
+import '../services/profile_photo_service.dart';
 import '../widgets/marketplace_product_card.dart';
 import 'admin/address_list_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
@@ -20,7 +22,9 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? userProfile;
   bool isLoading = false;
+  bool isUploadingPhoto = false;
   late Future<List<Product>> _productsFuture;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -44,13 +48,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
         userProfile = data;
         isLoading = false;
       });
-      if (data != null && data['name'] != null) {
-        widget.onProfileUpdated(data['name'].toString());
-      }
+      if (data != null && data['name'] != null) widget.onProfileUpdated(data['name'].toString());
     } catch (_) {
       if (!mounted) return;
       setState(() => isLoading = false);
     }
+  }
+
+  Future<void> _changeProfilePhoto() async {
+    if (ApiService.token == null) return;
+
+    final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (picked == null) return;
+
+    setState(() => isUploadingPhoto = true);
+    final updatedProfile = await ProfilePhotoService.savePhoto(picked);
+    if (!mounted) return;
+    setState(() {
+      if (updatedProfile != null) userProfile = updatedProfile;
+      isUploadingPhoto = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(updatedProfile != null ? 'Foto profil berhasil diperbarui' : 'Gagal memperbarui foto profil')),
+    );
   }
 
   Future<void> _handleLogout() async {
@@ -62,25 +83,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (success) {
       setState(() => userProfile = null);
       widget.onProfileUpdated('Akun');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Berhasil keluar dari akun'), backgroundColor: Colors.green),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Berhasil keluar dari akun'), backgroundColor: Colors.green));
     }
   }
 
   void _handleFeatureTap(bool isLoggedIn, VoidCallback action) {
     if (!isLoggedIn) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Silakan login terlebih dahulu untuk mengakses fitur ini'),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Silakan login terlebih dahulu untuk mengakses fitur ini'), backgroundColor: Colors.redAccent, behavior: SnackBarBehavior.floating));
       Navigator.push(context, MaterialPageRoute(builder: (context) => const LoginScreen())).then((_) => _fetchProfile());
       return;
     }
-
     action();
   }
 
@@ -127,10 +139,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildHeader(bool isLoggedIn) {
     final name = isLoggedIn ? (userProfile?['name'] ?? 'User') : 'Tamu (Belum Login)';
     final email = isLoggedIn ? (userProfile?['email'] ?? '') : 'Silakan masuk ke akun Anda';
+    final avatarUrl = ProfilePhotoService.imageUrl(userProfile?['avatar']);
 
     return Container(
       width: double.infinity,
-      height: 220,
+      height: 230,
       decoration: const BoxDecoration(
         color: Color(0xFF0C2442),
         image: DecorationImage(image: AssetImage('assets/appbar.png'), fit: BoxFit.cover),
@@ -139,11 +152,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-              child: const Icon(Icons.person, size: 60, color: Color(0xFF0C2442)),
+            GestureDetector(
+              onTap: isLoggedIn ? _changeProfilePhoto : null,
+              child: Stack(
+                children: [
+                  Container(
+                    width: 88,
+                    height: 88,
+                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                    clipBehavior: Clip.antiAlias,
+                    child: avatarUrl.isNotEmpty
+                        ? Image.network(avatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 60, color: Color(0xFF0C2442)))
+                        : const Icon(Icons.person, size: 60, color: Color(0xFF0C2442)),
+                  ),
+                  if (isLoggedIn)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(color: Color(0xFFF39C12), shape: BoxShape.circle),
+                        child: isUploadingPhoto
+                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                      ),
+                    ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             if (!isLoggedIn)
@@ -151,12 +186,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8)),
                     onPressed: () async {
                       await Navigator.push(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
                       _fetchProfile();
@@ -165,15 +195,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(width: 16),
                   ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFF39C12),
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                    ),
-                    onPressed: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen())).then((_) => _fetchProfile());
-                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF39C12), foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8)),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen())).then((_) => _fetchProfile()),
                     child: const Text('Daftar', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ],
@@ -184,6 +207,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Text(name, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(email, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13)),
+                  const SizedBox(height: 6),
+                  const Text('Ketuk foto untuk mengubah profil', style: TextStyle(color: Colors.white70, fontSize: 11)),
                 ],
               ),
           ],
@@ -196,106 +221,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), spreadRadius: 1, blurRadius: 5, offset: const Offset(0, 2))],
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Pesanan Saya', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildPesananItem(Icons.account_balance_wallet_outlined, 'Belum Bayar', isLoggedIn),
-              _buildPesananItem(Icons.inventory_2_outlined, 'Dikemas', isLoggedIn),
-              _buildPesananItem(Icons.local_shipping_outlined, 'Dikirim', isLoggedIn),
-              _buildPesananItem(Icons.star_outline, 'Beri Penilaian', isLoggedIn),
-            ],
-          ),
-        ],
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), spreadRadius: 1, blurRadius: 5, offset: const Offset(0, 2))], border: Border.all(color: Colors.grey.shade200)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Pesanan Saya', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+        const SizedBox(height: 16),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          _buildPesananItem(Icons.account_balance_wallet_outlined, 'Belum Bayar', isLoggedIn),
+          _buildPesananItem(Icons.inventory_2_outlined, 'Dikemas', isLoggedIn),
+          _buildPesananItem(Icons.local_shipping_outlined, 'Dikirim', isLoggedIn),
+          _buildPesananItem(Icons.star_outline, 'Beri Penilaian', isLoggedIn),
+        ]),
+      ]),
     );
   }
 
   Widget _buildPesananItem(IconData icon, String title, bool isLoggedIn) {
     return InkWell(
       onTap: () => _handleFeatureTap(isLoggedIn, () {}),
-      child: Column(
-        children: [
-          Icon(icon, size: 32, color: Colors.black87),
-          const SizedBox(height: 8),
-          Text(title, style: const TextStyle(fontSize: 11, color: Colors.black54)),
-        ],
-      ),
+      child: Column(children: [Icon(icon, size: 32, color: Colors.black87), const SizedBox(height: 8), Text(title, style: const TextStyle(fontSize: 11, color: Colors.black54))]),
     );
   }
 
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(child: Divider(color: Colors.grey.shade400, thickness: 1)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(title, style: const TextStyle(fontSize: 14, color: Colors.black87)),
-          ),
-          Expanded(child: Divider(color: Colors.grey.shade400, thickness: 1)),
-        ],
-      ),
+      child: Row(children: [Expanded(child: Divider(color: Colors.grey.shade400, thickness: 1)), Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text(title, style: const TextStyle(fontSize: 14, color: Colors.black87))), Expanded(child: Divider(color: Colors.grey.shade400, thickness: 1))]),
     );
   }
 
   Widget _buildSectionTitleMungkinKamuSuka(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      child: Row(
-        children: [
-          Text(title, style: const TextStyle(fontSize: 14, color: Colors.black87)),
-          const SizedBox(width: 12),
-          Expanded(child: Divider(color: Colors.grey.shade400, thickness: 1)),
-        ],
-      ),
+      child: Row(children: [Text(title, style: const TextStyle(fontSize: 14, color: Colors.black87)), const SizedBox(width: 12), Expanded(child: Divider(color: Colors.grey.shade400, thickness: 1))]),
     );
   }
 
   Widget _buildAktifitasSaya(bool isLoggedIn) {
+    final menu = <Widget>[];
+
+    if (!isLoggedIn) {
+      menu.add(_buildBoxMenu('Favorit Saya', Icons.favorite, const Color(0xFF0C2442), () {
+        _handleFeatureTap(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WishlistScreen())));
+      }));
+      menu.add(_buildBoxMenu('Chat Penjual', Icons.chat_bubble, const Color(0xFF0C2442), () => _handleFeatureTap(isLoggedIn, () {})));
+    }
+
+    menu.add(_buildBoxMenu('Alamat Anda', Icons.location_on, const Color(0xFF0C2442), () {
+      _handleFeatureTap(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AddressListScreen())));
+    }));
+    menu.add(_buildBoxMenu('Kupon', Icons.local_activity, const Color(0xFF0C2442), () => _handleFeatureTap(isLoggedIn, () {})));
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildBoxMenu('Favorit Saya', Icons.favorite, const Color(0xFF0C2442), () {
-                  _handleFeatureTap(isLoggedIn, () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => const WishlistScreen()));
-                  });
-                }),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: _buildBoxMenu('Chat Penjual', Icons.chat_bubble, const Color(0xFF0C2442), () => _handleFeatureTap(isLoggedIn, () {}))),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildBoxMenu('Alamat Anda', Icons.location_on, const Color(0xFF0C2442), () {
-                  _handleFeatureTap(isLoggedIn, () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => const AddressListScreen()));
-                  });
-                }),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: _buildBoxMenu('Kupon', Icons.local_activity, const Color(0xFF0C2442), () => _handleFeatureTap(isLoggedIn, () {}))),
-            ],
-          ),
-        ],
+      child: GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 4,
+        children: menu,
       ),
     );
   }
@@ -305,19 +290,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFF39C12), width: 1.5),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.black87)),
-            Icon(icon, color: iconColor, size: 20),
-          ],
-        ),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFF39C12), width: 1.5)),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Expanded(child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.black87), overflow: TextOverflow.ellipsis)), Icon(icon, color: iconColor, size: 20)]),
       ),
     );
   }
@@ -326,27 +301,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: InkWell(
-        onTap: () {
-          _handleFeatureTap(isLoggedIn, () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminDashboardScreen()));
-          });
-        },
+        onTap: () => _handleFeatureTap(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminDashboardScreen()))),
         borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFF39C12), width: 1.5),
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(Icons.storefront, color: Color(0xFF0C2442), size: 24),
-              Text('T O K O   S A Y A', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.black87)),
-              Icon(Icons.storefront, color: Color(0xFF0C2442), size: 24),
-            ],
-          ),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFF39C12), width: 1.5)),
+          child: const Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Icon(Icons.storefront, color: Color(0xFF0C2442), size: 24), Text('T O K O   S A Y A', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.black87)), Icon(Icons.storefront, color: Color(0xFF0C2442), size: 24)]),
         ),
       ),
     );
@@ -358,32 +318,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: FutureBuilder<List<Product>>(
         future: _productsFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
-          }
-
-          if (snapshot.hasError) {
-            return Center(child: Text('Gagal memuat produk: ${snapshot.error}'));
-          }
-
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('Tidak ada produk tersedia')));
-          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
+          if (snapshot.hasError) return Center(child: Text('Gagal memuat produk: ${snapshot.error}'));
+          if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('Tidak ada produk tersedia')));
 
           final products = snapshot.data!;
           return GridView.builder(
             physics: const NeverScrollableScrollPhysics(),
             shrinkWrap: true,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.72,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.72, crossAxisSpacing: 12, mainAxisSpacing: 12),
             itemCount: products.length,
-            itemBuilder: (context, index) {
-              return MarketplaceProductCard(product: products[index]);
-            },
+            itemBuilder: (context, index) => MarketplaceProductCard(product: products[index]),
           );
         },
       ),

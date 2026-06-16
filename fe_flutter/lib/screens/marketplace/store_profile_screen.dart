@@ -14,8 +14,13 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
   final _phoneCtrl = TextEditingController();
   final _descriptionCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
+  final _mapsCtrl = TextEditingController();
   final _provinceCtrl = TextEditingController();
   final _cityCtrl = TextEditingController();
+  final _instagramCtrl = TextEditingController();
+  final _tiktokCtrl = TextEditingController();
+  final _facebookCtrl = TextEditingController();
+  final _websiteCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
 
@@ -33,8 +38,13 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
       _phoneCtrl.text = store['phone']?.toString() ?? '';
       _descriptionCtrl.text = store['description']?.toString() ?? '';
       _addressCtrl.text = store['address']?.toString() ?? '';
+      _mapsCtrl.text = store['maps_url']?.toString() ?? '';
       _provinceCtrl.text = store['province_name']?.toString() ?? '';
       _cityCtrl.text = store['city_name']?.toString() ?? '';
+      _instagramCtrl.text = store['instagram']?.toString() ?? '';
+      _tiktokCtrl.text = store['tiktok']?.toString() ?? '';
+      _facebookCtrl.text = store['facebook']?.toString() ?? '';
+      _websiteCtrl.text = store['website']?.toString() ?? '';
     }
     setState(() => _loading = false);
   }
@@ -47,8 +57,13 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
       'phone': _phoneCtrl.text,
       'description': _descriptionCtrl.text,
       'address': _addressCtrl.text,
+      'maps_url': _mapsCtrl.text,
       'province_name': _provinceCtrl.text,
       'city_name': _cityCtrl.text,
+      'instagram': _instagramCtrl.text,
+      'tiktok': _tiktokCtrl.text,
+      'facebook': _facebookCtrl.text,
+      'website': _websiteCtrl.text,
     });
     if (!mounted) return;
     setState(() => _saving = false);
@@ -67,33 +82,46 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
               child: Form(
                 key: _formKey,
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(color: Colors.deepOrange, borderRadius: BorderRadius.circular(18)),
-                      child: const Text('Atur toko agar lebih dipercaya pembeli. Profil ini akan muncul di detail produk.', style: TextStyle(color: Colors.white, height: 1.4)),
+                      child: const Text('Atur toko agar lebih dipercaya pembeli. Nama toko, alamat, maps, dan sosial media akan muncul di detail produk.', style: TextStyle(color: Colors.white, height: 1.4)),
                     ),
                     const SizedBox(height: 16),
+                    _section('Informasi Utama'),
                     _field('Nama Toko', _nameCtrl, required: true),
                     _field('Nomor HP Toko', _phoneCtrl),
+                    _field('Deskripsi Toko', _descriptionCtrl, maxLines: 4),
+                    _section('Lokasi Toko'),
                     _field('Kota', _cityCtrl),
                     _field('Provinsi', _provinceCtrl),
                     _field('Alamat Toko', _addressCtrl, maxLines: 3),
-                    _field('Deskripsi Toko', _descriptionCtrl, maxLines: 4),
+                    _field('Link Google Maps / Maps Toko', _mapsCtrl, maxLines: 2),
+                    _section('Sosial Media Toko'),
+                    _field('Instagram', _instagramCtrl),
+                    _field('TikTok', _tiktokCtrl),
+                    _field('Facebook', _facebookCtrl),
+                    _field('Website', _websiteCtrl),
                     const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _saving ? null : _save,
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)),
-                        child: Text(_saving ? 'Menyimpan...' : 'Simpan Profil Toko'),
-                      ),
+                    ElevatedButton(
+                      onPressed: _saving ? null : _save,
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)),
+                      child: Text(_saving ? 'Menyimpan...' : 'Simpan Profil Toko'),
                     ),
                   ],
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _section(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, top: 6),
+      child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
     );
   }
 

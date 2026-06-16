@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ApiRajaOngkirController;
 use App\Http\Controllers\Api\ApiWishlistController;
 use App\Http\Controllers\Api\ApiAdminController;
 use App\Http\Controllers\Api\ApiMarketplaceController;
+use App\Http\Controllers\Api\ApiUserProfileController;
 
 Route::post('/register', [ApiAuthController::class, 'register']);
 Route::post('/login', [ApiAuthController::class, 'login']);
@@ -25,6 +26,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user-profile', function (Request $request) {
         return response()->json($request->user());
     });
+    Route::post('/user-profile/photo', [ApiUserProfileController::class, 'updatePhoto']);
 
     Route::get('/cart', [ApiCartController::class, 'index']);
     Route::post('/cart/add', [ApiCartController::class, 'add']);
