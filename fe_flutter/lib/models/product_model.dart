@@ -44,6 +44,7 @@ class Product {
   final String SKU;
   final String stockStatus;
   final int quantity;
+  final int weight;
   final String? image;
   final List<dynamic> galleryImages;
   final List<ProductVariation>? variations;
@@ -59,6 +60,7 @@ class Product {
     required this.SKU,
     required this.stockStatus,
     required this.quantity,
+    required this.weight,
     this.image,
     this.galleryImages = const [],
     this.variations,
@@ -116,6 +118,7 @@ class Product {
       SKU: json['SKU'] ?? '',
       stockStatus: json['stock_status'] ?? 'instock',
       quantity: json['quantity'] != null ? int.tryParse(json['quantity'].toString()) ?? 0 : 0,
+      weight: json['weight'] != null ? int.tryParse(json['weight'].toString()) ?? 0 : 0,
       image: _coverImage(json, galleryImages),
       galleryImages: galleryImages,
       variations: json['variations'] != null

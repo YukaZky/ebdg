@@ -9,7 +9,16 @@ class ProductVariation extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['product_id', 'name', 'description', 'price', 'image'];
+    protected $fillable = [
+        'product_id',
+        'name',
+        'description',
+        'regular_price',
+        'sale_price',
+        'weight',
+        'quantity',
+        'image',
+    ];
 
     public function product()
     {
