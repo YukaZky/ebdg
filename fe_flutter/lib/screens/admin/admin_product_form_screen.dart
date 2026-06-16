@@ -1,7 +1,6 @@
 // ignore_for_file: avoid_print
 
-import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
@@ -53,6 +52,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
   final List<XFile> _galleryImages = [];
   List<dynamic> _existingGalleryImages = [];
   final ImagePicker _picker = ImagePicker();
+  final Map<String, Future<Uint8List>> _pickedImageBytesCache = {};
 
   @override
   void initState() {
@@ -98,6 +98,15 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     }
 
     return '$base/uploads/products/$cleanValue';
+  }
+
+  String _pickedImageCacheKey(XFile file) {
+    return '${file.name}_${file.path}_${file.mimeType ?? ''}';
+  }
+
+  Future<Uint8List> _readPickedImageBytes(XFile file) {
+    final key = _pickedImageCacheKey(file);
+    return _pickedImageBytesCache.putIfAbsent(key, () => file.readAsBytes());
   }
 
   void _setupEditData() {
@@ -260,8 +269,36 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
   }
 
   Widget _buildPickedImage(XFile file) {
-    if (kIsWeb) return Image.network(file.path, fit: BoxFit.cover);
-    return Image.file(File(file.path), fit: BoxFit.cover);
+    return FutureBuilder<Uint8List>(
+      future: _readPickedImageBytes(file),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+          return Container(
+            color: Colors.grey.shade200,
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasError || snapshot.data == null) {
+          return Container(
+            color: Colors.grey.shade300,
+            child: const Icon(Icons.broken_image, color: Colors.grey),
+          );
+        }
+
+        return Image.memory(
+          snapshot.data!,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+        );
+      },
+    );
   }
 
   Widget _buildNetworkProductImage(dynamic image, {double? width, double? height, BorderRadius? borderRadius}) {
