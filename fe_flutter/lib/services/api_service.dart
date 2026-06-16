@@ -26,7 +26,7 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse("$baseUrl/login"),
-        headers: {"Content-Type": "application/json"},
+        headers: _jsonHeaders,
         body: jsonEncode({"email": email, "password": password}),
       );
 
@@ -46,7 +46,7 @@ class ApiService {
     try {
       final response = await http.post(
         Uri.parse("$baseUrl/register"),
-        headers: {"Content-Type": "application/json"},
+        headers: _jsonHeaders,
         body: jsonEncode({
           "name": name,
           "email": email,
@@ -61,7 +61,10 @@ class ApiService {
   }
 
   static Future<List<Product>> getProducts() async {
-    final response = await http.get(Uri.parse("$baseUrl/products"));
+    final response = await http.get(
+      Uri.parse("$baseUrl/products"),
+      headers: {"Accept": "application/json"},
+    );
     if (response.statusCode == 200) {
       final Map<String, dynamic> responseData = jsonDecode(response.body);
       final List<dynamic> productsJson = responseData['data'] ?? [];
@@ -71,7 +74,10 @@ class ApiService {
   }
 
   static Future<Product?> getProductDetails(String slug) async {
-    final response = await http.get(Uri.parse("$baseUrl/products/$slug"));
+    final response = await http.get(
+      Uri.parse("$baseUrl/products/$slug"),
+      headers: {"Accept": "application/json"},
+    );
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = jsonDecode(response.body);
       return Product.fromJson(Map<String, dynamic>.from(data['data']));
