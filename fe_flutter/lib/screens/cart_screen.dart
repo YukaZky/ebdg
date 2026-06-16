@@ -72,6 +72,12 @@ class _CartScreenState extends State<CartScreen> {
     return '$base/uploads/products/$cleanValue';
   }
 
+  String _cleanText(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text == 'null') return '';
+    return text;
+  }
+
   int get _selectedCount => _cartItems.where((item) => item['isChecked'] == true).length;
   bool get _noneSelected => _selectedCount == 0;
 
@@ -111,15 +117,32 @@ class _CartScreenState extends State<CartScreen> {
   String _storeKey(Map<String, dynamic> item) {
     final product = item['product'] is Map ? Map<String, dynamic>.from(item['product']) : <String, dynamic>{};
     final store = product['store'] is Map ? Map<String, dynamic>.from(product['store']) : <String, dynamic>{};
-    final storeId = store['id'] ?? store['slug'] ?? product['user_id'] ?? 'unknown-store';
+    final storeId = _cleanText(product['store_key']).isNotEmpty
+        ? product['store_key']
+        : (store['id'] ?? store['slug'] ?? product['user_id'] ?? item['product_id'] ?? 'unknown-store');
     return storeId.toString();
   }
 
   String _storeName(Map<String, dynamic> item) {
     final product = item['product'] is Map ? Map<String, dynamic>.from(item['product']) : <String, dynamic>{};
     final store = product['store'] is Map ? Map<String, dynamic>.from(product['store']) : <String, dynamic>{};
-    final name = store['name']?.toString().trim() ?? '';
-    if (name.isNotEmpty && name != 'null') return name;
+    final user = product['user'] is Map ? Map<String, dynamic>.from(product['user']) : <String, dynamic>{};
+
+    final candidates = [
+      product['store_name'],
+      store['name'],
+      product['seller_name'],
+      user['name'],
+    ];
+
+    for (final candidate in candidates) {
+      final value = _cleanText(candidate);
+      if (value.isNotEmpty) {
+        if (candidate == user['name'] || candidate == product['seller_name']) return '$value Store';
+        return value;
+      }
+    }
+
     return 'Toko Penjual';
   }
 
