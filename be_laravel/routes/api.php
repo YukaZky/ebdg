@@ -26,6 +26,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user-profile', function (Request $request) {
         return response()->json($request->user());
     });
+    Route::put('/user-profile', [ApiUserProfileController::class, 'updateAccount']);
     Route::post('/user-profile/photo', [ApiUserProfileController::class, 'updatePhoto']);
 
     Route::get('/cart', [ApiCartController::class, 'index']);

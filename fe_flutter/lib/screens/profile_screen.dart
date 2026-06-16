@@ -4,6 +4,7 @@ import '../models/product_model.dart';
 import '../services/api_service.dart';
 import '../services/profile_photo_service.dart';
 import '../widgets/marketplace_product_card.dart';
+import 'account_settings_screen.dart';
 import 'admin/address_list_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
 import 'login_screen.dart';
@@ -51,6 +52,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => isLoading = false);
+    }
+  }
+
+  String _maskEmail(dynamic value) {
+    final email = value?.toString().trim() ?? '';
+    if (email.isEmpty || !email.contains('@')) return 'Email belum diatur';
+
+    final parts = email.split('@');
+    final name = parts.first;
+    final domain = parts.length > 1 ? parts.last : '';
+    final visible = name.length <= 2 ? name.substring(0, 1) : name.substring(0, 2);
+    return '$visible***@$domain';
+  }
+
+  String _maskPhone(dynamic value) {
+    final phone = value?.toString().trim() ?? '';
+    if (phone.isEmpty || phone == 'null') return 'Nomor HP belum diatur';
+    if (phone.length <= 4) return '****';
+
+    final start = phone.length >= 4 ? phone.substring(0, 4) : phone.substring(0, 1);
+    final end = phone.length >= 3 ? phone.substring(phone.length - 3) : '';
+    return '$start****$end';
+  }
+
+  Future<void> _openAccountSettings() async {
+    if (userProfile == null) return;
+
+    final updated = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(builder: (_) => AccountSettingsScreen(userProfile: userProfile!)),
+    );
+
+    if (!mounted) return;
+    if (updated != null) {
+      setState(() => userProfile = updated);
+      if (updated['name'] != null) widget.onProfileUpdated(updated['name'].toString());
+    } else {
+      _fetchProfile();
     }
   }
 
@@ -108,8 +147,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   _buildHeader(isLoggedIn),
                   _buildPesananSaya(isLoggedIn),
-                  _buildSectionTitle('Aktifitas Saya'),
-                  _buildAktifitasSaya(isLoggedIn),
+                  _buildSectionTitle('Layanan Akun'),
+                  _buildLayananAkun(isLoggedIn),
                   _buildSectionTitle('Mulai Kelola Bisnis Anda'),
                   _buildTokoSaya(isLoggedIn),
                   _buildSectionTitleMungkinKamuSuka('Mungkin Kamu Suka'),
@@ -137,12 +176,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildHeader(bool isLoggedIn) {
     final name = isLoggedIn ? (userProfile?['name'] ?? 'User') : 'Tamu (Belum Login)';
-    final email = isLoggedIn ? (userProfile?['email'] ?? '') : 'Silakan masuk ke akun Anda';
+    final email = isLoggedIn ? _maskEmail(userProfile?['email']) : 'Silakan masuk ke akun Anda';
+    final phone = isLoggedIn ? _maskPhone(userProfile?['phone']) : '';
     final avatarUrl = ProfilePhotoService.imageUrl(userProfile?['avatar']);
 
     return Container(
       width: double.infinity,
-      height: 230,
+      height: 250,
       decoration: const BoxDecoration(
         color: Color(0xFF0C2442),
         image: DecorationImage(image: AssetImage('assets/appbar.png'), fit: BoxFit.cover),
@@ -151,33 +191,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            GestureDetector(
-              onTap: isLoggedIn ? _changeProfilePhoto : null,
-              child: Stack(
-                children: [
-                  Container(
-                    width: 88,
-                    height: 88,
-                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                    clipBehavior: Clip.antiAlias,
-                    child: avatarUrl.isNotEmpty
-                        ? Image.network(avatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 60, color: Color(0xFF0C2442)))
-                        : const Icon(Icons.person, size: 60, color: Color(0xFF0C2442)),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                GestureDetector(
+                  onTap: isLoggedIn ? _changeProfilePhoto : null,
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 88,
+                        height: 88,
+                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                        clipBehavior: Clip.antiAlias,
+                        child: avatarUrl.isNotEmpty
+                            ? Image.network(avatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 60, color: Color(0xFF0C2442)))
+                            : const Icon(Icons.person, size: 60, color: Color(0xFF0C2442)),
+                      ),
+                      if (isLoggedIn)
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(color: Color(0xFFF39C12), shape: BoxShape.circle),
+                            child: isUploadingPhoto
+                                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                : const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                          ),
+                        ),
+                    ],
                   ),
-                  if (isLoggedIn)
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: const BoxDecoration(color: Color(0xFFF39C12), shape: BoxShape.circle),
-                        child: isUploadingPhoto
-                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                ),
+                if (isLoggedIn)
+                  Positioned(
+                    right: -10,
+                    top: -8,
+                    child: Material(
+                      color: Colors.white,
+                      shape: const CircleBorder(),
+                      elevation: 3,
+                      child: InkWell(
+                        onTap: _openAccountSettings,
+                        customBorder: const CircleBorder(),
+                        child: const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Icon(Icons.settings, color: Color(0xFF0C2442), size: 19),
+                        ),
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
             const SizedBox(height: 16),
             if (!isLoggedIn)
@@ -206,8 +269,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Text(name, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(email, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13)),
+                  const SizedBox(height: 3),
+                  Text(phone, style: TextStyle(color: Colors.white.withOpacity(0.82), fontSize: 12)),
                   const SizedBox(height: 6),
-                  const Text('Ketuk foto untuk mengubah profil', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                  const Text('Ketuk foto untuk ubah foto, ikon gear untuk pengaturan akun', style: TextStyle(color: Colors.white70, fontSize: 11)),
                 ],
               ),
           ],
@@ -255,12 +320,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildAktifitasSaya(bool isLoggedIn) {
+  Widget _buildLayananAkun(bool isLoggedIn) {
     final menu = <Widget>[
-      _buildBoxMenu('Alamat Anda', Icons.location_on, const Color(0xFF0C2442), () {
+      _buildBoxMenu('Alamat Saya', Icons.location_on, const Color(0xFF0C2442), () {
         _handleFeatureTap(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AddressListScreen())));
       }),
-      _buildBoxMenu('Kupon', Icons.local_activity, const Color(0xFF0C2442), () => _handleFeatureTap(isLoggedIn, () {})),
+      _buildBoxMenu('Kupon Saya', Icons.local_activity, const Color(0xFF0C2442), () => _handleFeatureTap(isLoggedIn, () {})),
     ];
 
     return Padding(
