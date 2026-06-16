@@ -63,6 +63,25 @@ class ApiMarketplaceController extends Controller
         return [$store, $address];
     }
 
+    private function verifiedReviewQuery($productId = null, $storeId = null)
+    {
+        $query = ProductReview::with(['user:id,name', 'product:id,name', 'order:id,status'])
+            ->where(function ($q) {
+                $q->whereNull('order_id')
+                    ->orWhereHas('order', fn ($order) => $order->whereIn('status', ['delivered', 'completed', 'selesai']));
+            });
+
+        if ($productId) {
+            $query->where('product_id', $productId);
+        }
+
+        if ($storeId) {
+            $query->where('store_id', $storeId);
+        }
+
+        return $query;
+    }
+
     public function myStore(Request $request)
     {
         $store = StoreProfile::firstOrCreate(
@@ -149,10 +168,7 @@ class ApiMarketplaceController extends Controller
             $this->attachGalleryImagesAndCover($product);
         }
 
-        $reviews = ProductReview::with(['user:id,name', 'product:id,name'])
-            ->where('store_id', $store->id)
-            ->latest()
-            ->get();
+        $reviews = $this->verifiedReviewQuery(storeId: $store->id)->latest()->get();
 
         return response()->json([
             'success' => true,
@@ -195,8 +211,8 @@ class ApiMarketplaceController extends Controller
 
     public function productReviews($productId)
     {
-        $reviews = ProductReview::with('user:id,name')->where('product_id', $productId)->latest()->get();
-        $average = round((float) ProductReview::where('product_id', $productId)->avg('rating'), 2);
+        $reviews = $this->verifiedReviewQuery(productId: $productId)->latest()->get();
+        $average = round((float) $this->verifiedReviewQuery(productId: $productId)->avg('rating'), 2);
 
         return response()->json(['success' => true, 'average' => $average, 'data' => $reviews]);
     }
