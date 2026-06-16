@@ -7,10 +7,10 @@ import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 
 class VariationInput {
-  int? id; 
+  int? id;
   String name = '';
   XFile? image;
-  String? existingImageUrl; 
+  String? existingImageUrl;
   String regularPrice = '';
   String salePrice = '';
   String weight = '';
@@ -40,7 +40,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
   final _priceCtrl = TextEditingController();
   final _salePriceCtrl = TextEditingController();
   final _qtyCtrl = TextEditingController();
-  final _weightCtrl = TextEditingController(); 
+  final _weightCtrl = TextEditingController();
   final _expDateCtrl = TextEditingController();
 
   String? _selectedCategory;
@@ -48,10 +48,10 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
   String _stockStatus = 'instock';
 
   List<VariationInput> variations = [];
-  
+
   XFile? _mainImage;
-  List<XFile> _galleryImages = []; 
-  List<dynamic> _existingGalleryImages = []; 
+  final List<XFile> _galleryImages = [];
+  List<dynamic> _existingGalleryImages = [];
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -67,6 +67,8 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
   Future<void> _loadDropdownData() async {
     final fetchedCategories = await ApiService.getAdminCategories();
     final fetchedBrands = await ApiService.getAdminBrands();
+
+    if (!mounted) return;
     setState(() {
       categories = fetchedCategories;
       brands = fetchedBrands;
@@ -80,21 +82,39 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     return (d != null && d == d.toInt()) ? d.toInt().toString() : value.toString();
   }
 
+  String _productImageUrl(dynamic image) {
+    final value = image?.toString().trim() ?? '';
+    if (value.isEmpty || value == 'null') return '';
+
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+
+    final base = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+    final cleanValue = value.startsWith('/') ? value.substring(1) : value;
+
+    if (cleanValue.startsWith('uploads/') || cleanValue.startsWith('storage/')) {
+      return '$base/$cleanValue';
+    }
+
+    return '$base/uploads/products/$cleanValue';
+  }
+
   void _setupEditData() {
     final p = widget.product!;
     _nameCtrl.text = p['name'] ?? '';
     _shortDescCtrl.text = p['short_description']?.toString() == 'null' ? '' : (p['short_description'] ?? '');
     _descCtrl.text = p['description']?.toString() == 'null' ? '' : (p['description'] ?? '');
-    
+
     _priceCtrl.text = _cleanNumber(p['regular_price']);
     _salePriceCtrl.text = _cleanNumber(p['sale_price']);
     _qtyCtrl.text = _cleanNumber(p['quantity']);
     _weightCtrl.text = _cleanNumber(p['weight']);
-    
+
     if (p['exp_date'] != null && p['exp_date'].toString() != 'null') {
-      _expDateCtrl.text = p['exp_date'].toString().split(' ')[0]; 
+      _expDateCtrl.text = p['exp_date'].toString().split(' ')[0];
     }
-    
+
     _stockStatus = p['stock_status'] ?? 'instock';
 
     if (categories.any((c) => c['id'].toString() == p['category_id'].toString())) {
@@ -113,7 +133,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     if (p['variations'] != null) {
       for (var v in p['variations']) {
         final varInput = VariationInput();
-        varInput.id = v['id']; 
+        varInput.id = v['id'];
         varInput.name = v['name'] ?? '';
         varInput.existingImageUrl = v['image'];
         varInput.regularPrice = _cleanNumber(v['regular_price']);
@@ -123,7 +143,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
         variations.add(varInput);
       }
     }
-    
+
     setState(() {});
   }
 
@@ -151,7 +171,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
       if (picked != null) {
         setState(() {
           variations[index].image = picked;
-          variations[index].existingImageUrl = null; 
+          variations[index].existingImageUrl = null;
         });
       }
     } catch (e) {
@@ -175,12 +195,12 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
 
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     if (_selectedCategory == null || _selectedBrand == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih Kategori dan Brand!')));
       return;
     }
-    
+
     if (variations.any((v) => v.name.trim().isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Semua nama variasi wajib diisi!')));
       return;
@@ -211,7 +231,6 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     List<String> variationWeights = variations.map((v) => v.weight).toList();
     List<String> variationQuantities = variations.map((v) => v.quantity).toList();
 
-    // Merekam ID Gambar Galeri yang TIDAK Dihapus oleh User
     List<String> keptGalleryIds = _existingGalleryImages.map((img) => img['id'].toString()).toList();
 
     bool success = await ApiService.saveAdminProduct(
@@ -229,19 +248,48 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
       variationQuantities: variationQuantities,
     );
 
+    if (!mounted) return;
     setState(() => isSaving = false);
 
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.product == null ? "Produk berhasil ditambahkan!" : "Produk berhasil diperbarui!")));
-      Navigator.pop(context, true); 
+      Navigator.pop(context, true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menyimpan produk!")));
     }
   }
 
-  Widget _buildImage(XFile file) {
-    if (kIsWeb) return Image.network(file.path, fit: BoxFit.cover); 
+  Widget _buildPickedImage(XFile file) {
+    if (kIsWeb) return Image.network(file.path, fit: BoxFit.cover);
     return Image.file(File(file.path), fit: BoxFit.cover);
+  }
+
+  Widget _buildNetworkProductImage(dynamic image, {double? width, double? height, BorderRadius? borderRadius}) {
+    final imageUrl = _productImageUrl(image);
+    if (imageUrl.isEmpty) {
+      return Container(
+        width: width,
+        height: height,
+        color: Colors.grey.shade200,
+        child: const Icon(Icons.image_not_supported, color: Colors.grey),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: borderRadius ?? BorderRadius.zero,
+      child: Image.network(
+        imageUrl,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: width,
+          height: height,
+          color: Colors.grey.shade300,
+          child: const Icon(Icons.broken_image, color: Colors.grey),
+        ),
+      ),
+    );
   }
 
   @override
@@ -274,16 +322,17 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: Colors.grey),
                         ),
+                        clipBehavior: Clip.antiAlias,
                         child: _mainImage != null
-                            ? ClipRRect(borderRadius: BorderRadius.circular(12), child: _buildImage(_mainImage!))
-                            : isEdit && widget.product!['image'] != null && widget.product!['image'].toString().isNotEmpty
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Image.network("http://127.0.0.1:8000/uploads/products/${widget.product!['image']}", fit: BoxFit.cover),
-                                  )
+                            ? _buildPickedImage(_mainImage!)
+                            : isEdit && _productImageUrl(widget.product!['image']).isNotEmpty
+                                ? _buildNetworkProductImage(widget.product!['image'], borderRadius: BorderRadius.circular(12))
                                 : const Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [Icon(Icons.add_a_photo, size: 40, color: Colors.grey), Text("Ketuk untuk Unggah Gambar Utama")],
+                                    children: [
+                                      Icon(Icons.add_a_photo, size: 40, color: Colors.grey),
+                                      Text("Ketuk untuk Unggah Gambar Utama"),
+                                    ],
                                   ),
                       ),
                     ),
@@ -295,51 +344,60 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        // Tampilkan Gambar Galeri Existing (Dengan Tombol Delete)
                         ..._existingGalleryImages.map((imgData) {
-                          String imgUrl = imgData['image'] ?? '';
+                          final imgUrl = imgData['image'];
                           return Stack(
                             alignment: Alignment.topRight,
                             children: [
                               SizedBox(
-                                width: 80, height: 80, 
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8), 
-                                  child: Image.network(
-                                    "http://127.0.0.1:8000/uploads/products/$imgUrl", 
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (c, e, s) => Container(color: Colors.grey.shade300, child: const Icon(Icons.broken_image, color: Colors.grey)),
-                                  )
-                                )
+                                width: 80,
+                                height: 80,
+                                child: _buildNetworkProductImage(
+                                  imgUrl,
+                                  width: 80,
+                                  height: 80,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
                               ),
                               GestureDetector(
                                 onTap: () => setState(() => _existingGalleryImages.remove(imgData)),
-                                child: const CircleAvatar(radius: 12, backgroundColor: Colors.red, child: Icon(Icons.close, size: 14, color: Colors.white)),
+                                child: const CircleAvatar(
+                                  radius: 12,
+                                  backgroundColor: Colors.red,
+                                  child: Icon(Icons.close, size: 14, color: Colors.white),
+                                ),
                               )
                             ],
                           );
                         }),
-                        
-                        // Tampilkan Gambar Galeri Baru
                         ..._galleryImages.map((img) => Stack(
                               alignment: Alignment.topRight,
                               children: [
                                 SizedBox(
-                                  width: 80, height: 80, 
-                                  child: ClipRRect(borderRadius: BorderRadius.circular(8), child: _buildImage(img))
+                                  width: 80,
+                                  height: 80,
+                                  child: ClipRRect(borderRadius: BorderRadius.circular(8), child: _buildPickedImage(img)),
                                 ),
                                 GestureDetector(
                                   onTap: () => setState(() => _galleryImages.remove(img)),
-                                  child: const CircleAvatar(radius: 12, backgroundColor: Colors.red, child: Icon(Icons.close, size: 14, color: Colors.white)),
+                                  child: const CircleAvatar(
+                                    radius: 12,
+                                    backgroundColor: Colors.red,
+                                    child: Icon(Icons.close, size: 14, color: Colors.white),
+                                  ),
                                 )
                               ],
                             )),
-                        
                         GestureDetector(
                           onTap: _pickGalleryImages,
                           child: Container(
-                            width: 80, height: 80,
-                            decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey)),
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey),
+                            ),
                             child: const Icon(Icons.add_photo_alternate, color: Colors.grey),
                           ),
                         ),
@@ -350,7 +408,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                     _buildTextField("Nama Produk", _nameCtrl),
                     _buildTextField("Deskripsi Singkat", _shortDescCtrl, maxLines: 2, isRequired: false),
                     _buildTextField("Deskripsi Lengkap", _descCtrl, maxLines: 4, isRequired: false),
-                    
+
                     Row(
                       children: [
                         Expanded(child: _buildTextField("Harga Reguler (Rp)", _priceCtrl, isNumber: true)),
@@ -447,13 +505,11 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                                               borderRadius: BorderRadius.circular(8),
                                               border: Border.all(color: Colors.grey.shade400),
                                             ),
+                                            clipBehavior: Clip.antiAlias,
                                             child: variation.image != null
-                                                ? ClipRRect(borderRadius: BorderRadius.circular(8), child: _buildImage(variation.image!))
-                                                : variation.existingImageUrl != null
-                                                    ? ClipRRect(
-                                                        borderRadius: BorderRadius.circular(8),
-                                                        child: Image.network("http://127.0.0.1:8000/uploads/products/${variation.existingImageUrl}", fit: BoxFit.cover),
-                                                      )
+                                                ? _buildPickedImage(variation.image!)
+                                                : variation.existingImageUrl != null && _productImageUrl(variation.existingImageUrl).isNotEmpty
+                                                    ? _buildNetworkProductImage(variation.existingImageUrl, width: 55, height: 55)
                                                     : const Icon(Icons.add_photo_alternate, color: Colors.grey, size: 22),
                                           ),
                                         ),
@@ -559,7 +615,11 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                     isSaving
                         ? const Center(child: CircularProgressIndicator())
                         : ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.indigo,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                            ),
                             onPressed: _saveProduct,
                             icon: const Icon(Icons.save),
                             label: const Text("Simpan Produk", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -587,5 +647,18 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
         },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _shortDescCtrl.dispose();
+    _descCtrl.dispose();
+    _priceCtrl.dispose();
+    _salePriceCtrl.dispose();
+    _qtyCtrl.dispose();
+    _weightCtrl.dispose();
+    _expDateCtrl.dispose();
+    super.dispose();
   }
 }

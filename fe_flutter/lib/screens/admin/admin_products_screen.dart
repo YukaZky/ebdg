@@ -52,6 +52,24 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     });
   }
 
+  String _productImageUrl(dynamic image) {
+    final value = image?.toString().trim() ?? '';
+    if (value.isEmpty || value == 'null') return '';
+
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+
+    final base = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+    final cleanValue = value.startsWith('/') ? value.substring(1) : value;
+
+    if (cleanValue.startsWith('uploads/') || cleanValue.startsWith('storage/')) {
+      return '$base/$cleanValue';
+    }
+
+    return '$base/uploads/products/$cleanValue';
+  }
+
   void _showCustomSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -226,9 +244,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
         (context, index) {
           final item = filteredProducts[index];
           final int stock = int.tryParse(item['quantity'].toString()) ?? 0;
-          final String imageUrl = item['image'] != null
-              ? "http://127.0.0.1:8000/uploads/products/${item['image']}"
-              : '';
+          final String imageUrl = _productImageUrl(item['image']);
 
           return Container(
             margin: const EdgeInsets.only(bottom: 16),
