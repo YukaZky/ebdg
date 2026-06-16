@@ -10,7 +10,6 @@ use App\Models\Product;
 use App\Models\ProductReview;
 use App\Models\StoreProfile;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ApiMarketplaceController extends Controller
@@ -70,7 +69,7 @@ class ApiMarketplaceController extends Controller
 
     public function sellerOrders(Request $request)
     {
-        $orders = Order::with(['items.product', 'transaction'])
+        $orders = Order::with(['items.product'])
             ->where(function ($query) use ($request) {
                 $query->where('seller_id', $request->user()->id)
                     ->orWhereHas('items.product', fn ($q) => $q->where('user_id', $request->user()->id));
