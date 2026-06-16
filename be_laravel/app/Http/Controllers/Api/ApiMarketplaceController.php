@@ -10,10 +10,28 @@ use App\Models\Product;
 use App\Models\ProductReview;
 use App\Models\StoreProfile;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ApiMarketplaceController extends Controller
 {
+    private function attachGalleryImagesAndCover($product)
+    {
+        $galleryImages = DB::table('product_images')
+            ->where('product_id', $product->id)
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $product->images = $galleryImages;
+        $product->product_images = $galleryImages;
+
+        if ((empty($product->image) || $product->image === 'null') && $galleryImages->isNotEmpty()) {
+            $product->image = $galleryImages->first()->image;
+        }
+
+        return $product;
+    }
+
     public function myStore(Request $request)
     {
         $store = StoreProfile::firstOrCreate(
@@ -35,10 +53,27 @@ class ApiMarketplaceController extends Controller
             'phone' => 'nullable|string|max:30',
             'description' => 'nullable|string',
             'address' => 'nullable|string',
+            'maps_url' => 'nullable|string',
+            'instagram' => 'nullable|string|max:255',
+            'tiktok' => 'nullable|string|max:255',
+            'facebook' => 'nullable|string|max:255',
+            'website' => 'nullable|string|max:255',
         ]);
 
         $store = StoreProfile::firstOrNew(['user_id' => $request->user()->id]);
-        $store->fill($request->only(['name', 'phone', 'description', 'address', 'province_name', 'city_name']));
+        $store->fill($request->only([
+            'name',
+            'phone',
+            'description',
+            'address',
+            'maps_url',
+            'province_name',
+            'city_name',
+            'instagram',
+            'tiktok',
+            'facebook',
+            'website',
+        ]));
         $store->slug = $store->slug ?: Str::slug($request->name . '-' . $request->user()->id);
 
         if ($request->hasFile('logo')) {
@@ -62,9 +97,28 @@ class ApiMarketplaceController extends Controller
     public function storeDetail($slug)
     {
         $store = StoreProfile::withCount('products')->where('slug', $slug)->firstOrFail();
-        $products = Product::with(['category', 'brand', 'variations'])->where('user_id', $store->user_id)->latest()->get();
+        $products = Product::with(['category', 'brand', 'variations', 'reviews'])
+            ->where('user_id', $store->user_id)
+            ->latest()
+            ->get();
 
-        return response()->json(['success' => true, 'data' => ['store' => $store, 'products' => $products]]);
+        foreach ($products as $product) {
+            $this->attachGalleryImagesAndCover($product);
+        }
+
+        $reviews = ProductReview::with(['user:id,name', 'product:id,name'])
+            ->where('store_id', $store->id)
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'store' => $store,
+                'products' => $products,
+                'reviews' => $reviews,
+            ]
+        ]);
     }
 
     public function sellerOrders(Request $request)
