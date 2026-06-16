@@ -158,10 +158,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                   _buildListMenu(context, "Kelola Brand", "Atur merek produk", Icons.branding_watermark_outlined, Colors.indigo, true, () {
                                     Navigator.push(context, MaterialPageRoute(builder: (context) => AdminBrandsScreen()));
                                   }),
-                                  // --- MENU BARU ---
-                                  _buildListMenu(context, "Lokasi Toko", "Atur asal pengiriman", Icons.location_on_outlined, Colors.redAccent, true, () {
-                                    Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminStoreLocationScreen()));
+                                  
+                                  // --- PERBAIKAN LOGIKA LOKASI TOKO ---
+                                  _buildListMenu(context, "Lokasi Toko", "Atur asal pengiriman", Icons.location_on_outlined, Colors.redAccent, true, () async {
+                                    // Tampilkan loading sebentar saat mengambil data alamat
+                                    showDialog(
+                                      context: context,
+                                      barrierDismissible: false,
+                                      builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.white)),
+                                    );
+
+                                    // Panggil API untuk mendapatkan lokasi toko saat ini
+                                    final responseData = await ApiService.getAdminStoreLocation();
+                                    
+                                    if (!context.mounted) return;
+                                    Navigator.pop(context); // Tutup loading
+
+                                    // Ekstrak datanya jika berhasil
+                                    Map<String, dynamic>? storeData;
+                                    if (responseData != null && responseData['data'] != null) {
+                                      storeData = responseData['data'];
+                                    }
+
+                                    // Arahkan ke screen dengan membawa data
+                                    Navigator.push(context, MaterialPageRoute(
+                                      builder: (context) => AdminStoreLocationScreen(existingAddress: storeData)
+                                    ));
                                   }),
+                                  // ----------------------------------
+
                                   _buildListMenu(context, "Slide Banner", "Atur banner depan", Icons.view_carousel_outlined, Colors.blueAccent, false, () {}),
                                 ],
                               ),

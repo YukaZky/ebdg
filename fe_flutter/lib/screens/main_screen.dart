@@ -5,28 +5,40 @@ import 'order_history_screen.dart';
 import 'profile_screen.dart'; 
 
 class MainScreen extends StatefulWidget {
-  final int initialIndex; // 1. Tambahkan parameter indeks awal
-  const MainScreen({Key? key, this.initialIndex = 0}) : super(key: key); // 2. Set default ke 0 (Beranda)
+  final int initialIndex; 
+  const MainScreen({Key? key, this.initialIndex = 0}) : super(key: key); 
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  late int _selectedIndex; // 3. Ubah menjadi late variable
-
-  // Daftar halaman yang akan dipanggil oleh Bottom Navigation Bar
-  final List<Widget> _screens = [
-    const ProductListScreen(),
-    const CartScreen(),
-    const OrderHistoryScreen(),
-    const ProfileScreen(), // Indeks ke-3
-  ];
+  late int _selectedIndex; 
+  String _accountLabel = 'Akun';
+  late List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.initialIndex; // 4. Inisialisasi sesuai indeks yang dikirim
+    _selectedIndex = widget.initialIndex; 
+    _initScreens();
+  }
+
+  void _initScreens() {
+    _screens = [
+      const ProductListScreen(),
+      const CartScreen(),
+      const OrderHistoryScreen(),
+      ProfileScreen(
+        onProfileUpdated: (String? name) {
+          if (mounted) {
+            setState(() {
+              _accountLabel = name ?? 'Akun';
+            });
+          }
+        },
+      ), 
+    ];
   }
 
   void _onItemTapped(int index) {
@@ -46,22 +58,22 @@ class _MainScreenState extends State<MainScreen> {
         unselectedItemColor: const Color(0xFF05254F), 
         backgroundColor: Colors.white, 
         type: BottomNavigationBarType.fixed, 
-        items: const [
-          BottomNavigationBarItem(
+        items: [
+          const BottomNavigationBarItem(
             icon: Icon(Icons.home),
             label: 'Beranda',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart),
             label: 'Keranjang',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.history),
             label: 'Pesanan',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Akun',
+            icon: const Icon(Icons.person),
+            label: _accountLabel, 
           ),
         ],
       ),

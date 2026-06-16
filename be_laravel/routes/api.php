@@ -18,7 +18,7 @@ Route::post('/login', [ApiAuthController::class, 'login']);
 // RUTE PUBLIK (Untuk Pembeli / Halaman Depan Marketplace)
 // ==========================================
 // Rute ini tetap di luar middleware agar pembeli yang belum login bisa melihat produk
-Route::get('/products', [ApiProductController::class, 'index']); 
+Route::get('/products', [ApiProductController::class, 'index']);
 Route::get('/products/{slug}', [ApiProductController::class, 'show']);
 
 
@@ -35,7 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/cart/add', [ApiCartController::class, 'add']);
     Route::delete('/cart/remove/{id}', [ApiCartController::class, 'remove']);
 
-    Route::post('/checkout', [ApiCheckoutController::class, 'process']);
+    Route::post('/checkout', [ApiCheckoutController::class, 'checkout']);
     Route::get('/orders', [ApiOrderController::class, 'index']);
 
     // RUTE WISHLIST API
@@ -45,7 +45,16 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/rajaongkir/provinces', [ApiRajaOngkirController::class, 'getProvinces']);
     Route::get('/rajaongkir/cities/{provinceId}', [ApiRajaOngkirController::class, 'getCities']);
+    Route::get('/rajaongkir/subdistricts/{cityId}', [\App\Http\Controllers\Api\ApiRajaOngkirController::class, 'getSubdistricts']);
     Route::post('/rajaongkir/cost', [ApiRajaOngkirController::class, 'checkCost']);
+
+    Route::get('/admin/store-location', [ApiAdminController::class, 'getStoreLocation']);
+    Route::post('/admin/store-location', [ApiAdminController::class, 'saveStoreLocation']);
+
+    Route::get('/user/addresses', [\App\Http\Controllers\Api\ApiAdminController::class, 'getUserAddresses']);
+    Route::post('/user/addresses', [\App\Http\Controllers\Api\ApiAdminController::class, 'saveUserAddress']);
+    Route::put('/user/addresses/{id}/set-main', [\App\Http\Controllers\Api\ApiAdminController::class, 'setMainAddress']);
+    Route::delete('/user/addresses/{id}', [\App\Http\Controllers\Api\ApiAdminController::class, 'deleteUserAddress']);
 
     // ==========================================
     // RUTE ADMIN PANEL (Toko Saya) - LENGKAP
@@ -53,7 +62,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Rute ini menggunakan prefix '/admin'
     // Gunakan rute ini di Flutter HANYA SAAT memuat data untuk halaman Dashboard Admin!
     Route::middleware('admin')->prefix('admin')->group(function () {
-        
+
         Route::get('/dashboard', [ApiAdminController::class, 'dashboardStats']);
 
         // --- CRUD Produk (Khusus Toko Admin) ---
@@ -64,7 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/products/delete/{id}', [ApiAdminController::class, 'deleteProduct']);
 
         // ... (Sisa rute admin yang lain tetap sama) ...
-        
+
         Route::get('/categories', [ApiAdminController::class, 'getCategories']);
         Route::post('/categories/store', [ApiAdminController::class, 'storeCategory']);
         Route::put('/categories/update/{id}', [ApiAdminController::class, 'updateCategory']);
@@ -89,7 +98,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/settings/whatsapp', [ApiAdminController::class, 'getWhatsappSettings']);
         Route::put('/settings/whatsapp/update', [ApiAdminController::class, 'updateWhatsappSettings']);
     });
-    
+
     Route::get('/admin/store-location', [ApiAdminController::class, 'getStoreLocation']);
     Route::post('/admin/store-location', [ApiAdminController::class, 'saveStoreLocation']);
 });

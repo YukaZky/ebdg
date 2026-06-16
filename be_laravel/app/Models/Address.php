@@ -7,17 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 class Address extends Model
 {
     protected $fillable = [
-        'name',
+        'user_id',       
+        'name',    
         'phone',
-        'locality',
-        'address',
+        'locality',      
+        'address',    
         'city',
         'state',
         'country',
         'landmark',
         'zip',
         'type',
-        'isdefault',
+        'isdefault',     
         'province_id',
         'city_id',
         'district_id',
@@ -25,5 +26,16 @@ class Address extends Model
         'city_name',
         'district_name',
         'postal_code',
+        'label',
+        'note',              
+        'is_store_address',  
+        'latitude',  
+        'longitude',
     ];
+    
+    // Relasi ke User (Opsional tapi sangat disarankan)
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 }

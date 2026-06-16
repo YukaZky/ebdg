@@ -68,6 +68,35 @@ class ApiRajaOngkirController extends Controller
         }
     }
 
+    // FUNGSI KECAMATAN YANG DISAMAKAN PERSIS DENGAN VERSI WEB
+    public function getSubdistricts($cityId)
+    {
+        try {
+            // Menggunakan URL yang sama persis dengan fungsi getDistricts() di Web
+            $endpoint = rtrim($this->baseUrl, '/') . "/destination/district/{$cityId}";
+
+            $response = Http::withoutVerifying()->withHeaders([
+                'Accept' => 'application/json',
+                'key' => $this->apiKey
+            ])->get($endpoint);
+
+            if ($response->successful()) {
+                // Support Komerce API ['data'] ATAU RajaOngkir Starter ['rajaongkir']['results']
+                $data = $response->json()['data'] ?? $response->json()['rajaongkir']['results'] ?? [];
+                return response()->json($data);
+            }
+
+            return response()->json([
+                'error' => 'Gagal mengambil data kecamatan', 
+                'detail' => $response->json()
+            ], 502);
+
+        } catch (\Throwable $e) {
+            \Log::error("API Mobile Subdistricts Error: " . $e->getMessage());
+            return response()->json(['error' => 'Server Error: ' . $e->getMessage()], 500);
+        }
+    }
+
     public function checkCost(Request $request)
     {
         $request->validate([
