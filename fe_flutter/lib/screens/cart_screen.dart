@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import '../services/cart_badge_service.dart';
 import 'checkout_screen.dart';
 
 class CartScreen extends StatefulWidget {
@@ -18,6 +19,14 @@ class _CartScreenState extends State<CartScreen> {
   void initState() {
     super.initState();
     _loadCart();
+  }
+
+  void _syncBadgeFromLocal() {
+    int total = 0;
+    for (final item in _cartItems) {
+      total += int.tryParse((item['quantity'] ?? 1).toString()) ?? 1;
+    }
+    CartBadgeService.count.value = total;
   }
 
   Future<void> _loadCart() async {
@@ -41,8 +50,10 @@ class _CartScreenState extends State<CartScreen> {
         }).toList();
         _isLoading = false;
       });
+      _syncBadgeFromLocal();
     } catch (e) {
       setState(() => _isLoading = false);
+      CartBadgeService.clear();
     }
   }
 
@@ -90,7 +101,13 @@ class _CartScreenState extends State<CartScreen> {
   Future<void> _removeItem(int index) async {
     final id = _cartItems[index]['id'];
     setState(() => _cartItems.removeAt(index));
-    if (id != null) await ApiService.removeFromCart(int.parse(id.toString()));
+    _syncBadgeFromLocal();
+    if (id != null) {
+      final ok = await ApiService.removeFromCart(int.parse(id.toString()));
+      if (!ok) {
+        await _loadCart();
+      }
+    }
   }
 
   void _updateQuantity(int index, int change) {
@@ -99,6 +116,7 @@ class _CartScreenState extends State<CartScreen> {
       final newQuantity = currentQty + change;
       if (newQuantity > 0) _cartItems[index]['quantity'] = newQuantity;
     });
+    _syncBadgeFromLocal();
   }
 
   void _toggleCheckbox(int index, bool? value) {
