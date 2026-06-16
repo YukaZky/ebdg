@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/product_model.dart';
 import '../services/api_service.dart';
 import '../widgets/marketplace_product_card.dart';
+import 'marketplace/chat_list_screen.dart';
 import 'wishlist_screen.dart';
 
 class ProductListScreen extends StatefulWidget {
@@ -13,6 +14,8 @@ class ProductListScreen extends StatefulWidget {
 
 class _ProductListScreenState extends State<ProductListScreen> {
   late Future<List<Product>> _productsFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -20,10 +23,46 @@ class _ProductListScreenState extends State<ProductListScreen> {
     _loadData();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   void _loadData() {
     setState(() {
       _productsFuture = ApiService.getProducts();
     });
+  }
+
+  List<Product> _filterProducts(List<Product> products) {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return products;
+
+    return products.where((product) {
+      final name = product.name.toLowerCase();
+      final description = (product.description ?? '').toLowerCase();
+      final shortDescription = (product.shortDescription ?? '').toLowerCase();
+      final sku = product.SKU.toLowerCase();
+      final variations = (product.variations ?? []).map((item) => item.name.toLowerCase()).join(' ');
+
+      return name.contains(query) ||
+          description.contains(query) ||
+          shortDescription.contains(query) ||
+          sku.contains(query) ||
+          variations.contains(query);
+    }).toList();
+  }
+
+  void _openChat() {
+    if (ApiService.token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Silakan login terlebih dahulu untuk membuka chat')),
+      );
+      return;
+    }
+
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen()));
   }
 
   @override
@@ -48,37 +87,49 @@ class _ProductListScreenState extends State<ProductListScreen> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.grey.shade300),
           ),
-          child: const TextField(
+          child: TextField(
+            controller: _searchController,
+            onChanged: (value) => setState(() => _searchQuery = value),
             decoration: InputDecoration(
               hintText: 'Cari produk kesukaanmu...',
-              hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
-              prefixIcon: Icon(Icons.search, color: Colors.grey),
+              hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+              prefixIcon: const Icon(Icons.search, color: Colors.grey),
+              suffixIcon: _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.close, color: Colors.grey, size: 20),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    ),
               border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
             ),
           ),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.favorite_border, color: Colors.white, size: 28),
+            icon: const Icon(Icons.favorite_border, color: Colors.white, size: 27),
             onPressed: () {
               if (ApiService.token == null) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Silakan login di menu Akun terlebih dahulu')),
                 );
               } else {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const WishlistScreen()),
-                );
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const WishlistScreen()));
               }
             },
           ),
           IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.white, size: 28),
+            icon: const Icon(Icons.notifications_none, color: Colors.white, size: 27),
             onPressed: () {},
           ),
-          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 25),
+            onPressed: _openChat,
+          ),
+          const SizedBox(width: 6),
         ],
       ),
       body: RefreshIndicator(
@@ -101,7 +152,24 @@ class _ProductListScreenState extends State<ProductListScreen> {
               return const Center(child: Text('Tidak ada produk tersedia'));
             }
 
-            final products = snapshot.data!;
+            final products = _filterProducts(snapshot.data!);
+
+            if (products.isEmpty) {
+              return ListView(
+                children: [
+                  const SizedBox(height: 140),
+                  Icon(Icons.search_off, size: 72, color: Colors.grey.shade400),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Text(
+                      'Produk "$_searchQuery" tidak ditemukan',
+                      style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              );
+            }
+
             return GridView.builder(
               padding: const EdgeInsets.all(16),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
