@@ -6,18 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    
     public function up(): void
     {
-        Schema::table('product_variations', function (Blueprint $table) {
-            $table->text('description')->nullable()->after('name'); // Tambahkan kolom keterangan
-        });
+        if (! Schema::hasColumn('product_variations', 'description')) {
+            Schema::table('product_variations', function (Blueprint $table) {
+                $table->text('description')->nullable()->after('name');
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('product_variations', function (Blueprint $table) {
-            $table->dropColumn('description');
-        });
+        if (Schema::hasColumn('product_variations', 'description')) {
+            Schema::table('product_variations', function (Blueprint $table) {
+                $table->dropColumn('description');
+            });
+        }
     }
 };
