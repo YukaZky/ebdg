@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../services/api_service.dart';
 import '../../services/marketplace_api_service.dart';
 
 class StoreProfileScreen extends StatefulWidget {
@@ -21,6 +23,10 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
   final _tiktokCtrl = TextEditingController();
   final _facebookCtrl = TextEditingController();
   final _websiteCtrl = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
+
+  XFile? _logoFile;
+  String? _existingLogo;
   bool _loading = true;
   bool _saving = false;
 
@@ -30,10 +36,22 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
     _loadStore();
   }
 
+  String _storeMediaUrl(dynamic image) {
+    final value = image?.toString().trim() ?? '';
+    if (value.isEmpty || value == 'null') return '';
+    if (value.startsWith('http://') || value.startsWith('https://')) return value;
+
+    final base = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+    final clean = value.startsWith('/') ? value.substring(1) : value;
+    if (clean.startsWith('uploads/') || clean.startsWith('storage/')) return '$base/$clean';
+    return '$base/uploads/stores/$clean';
+  }
+
   Future<void> _loadStore() async {
     final store = await MarketplaceApiService.myStore();
     if (!mounted) return;
     if (store != null) {
+      _existingLogo = store['logo']?.toString();
       _nameCtrl.text = store['name']?.toString() ?? '';
       _phoneCtrl.text = store['phone']?.toString() ?? '';
       _descriptionCtrl.text = store['description']?.toString() ?? '';
@@ -47,6 +65,11 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
       _websiteCtrl.text = store['website']?.toString() ?? '';
     }
     setState(() => _loading = false);
+  }
+
+  Future<void> _pickLogo() async {
+    final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked != null) setState(() => _logoFile = picked);
   }
 
   Future<void> _save() async {
@@ -64,10 +87,56 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
       'tiktok': _tiktokCtrl.text,
       'facebook': _facebookCtrl.text,
       'website': _websiteCtrl.text,
-    });
+    }, logo: _logoFile);
     if (!mounted) return;
-    setState(() => _saving = false);
+    setState(() {
+      if (store != null) {
+        _existingLogo = store['logo']?.toString();
+        _logoFile = null;
+      }
+      _saving = false;
+    });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(store != null ? 'Profil toko berhasil disimpan' : 'Gagal menyimpan profil toko')));
+  }
+
+  Widget _logoPreview() {
+    final existingUrl = _storeMediaUrl(_existingLogo);
+    return InkWell(
+      onTap: _pickLogo,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.deepOrange.withOpacity(0.25))),
+        child: Row(children: [
+          Container(
+            width: 72,
+            height: 72,
+            clipBehavior: Clip.antiAlias,
+            decoration: const BoxDecoration(color: Color(0xFFFFF3E0), shape: BoxShape.circle),
+            child: _logoFile != null
+                ? FutureBuilder(
+                    future: _logoFile!.readAsBytes(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                      return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                    },
+                  )
+                : existingUrl.isNotEmpty
+                    ? Image.network(existingUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.storefront, color: Colors.deepOrange, size: 34))
+                    : const Icon(Icons.storefront, color: Colors.deepOrange, size: 34),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Logo / Foto Profil Toko', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              SizedBox(height: 4),
+              Text('Ketuk untuk upload logo toko. Logo ini akan muncul di detail produk dan halaman toko.', style: TextStyle(color: Colors.black54, fontSize: 12, height: 1.35)),
+            ]),
+          ),
+          const Icon(Icons.chevron_right, color: Colors.deepOrange),
+        ]),
+      ),
+    );
   }
 
   @override
@@ -88,8 +157,10 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(color: Colors.deepOrange, borderRadius: BorderRadius.circular(18)),
-                      child: const Text('Atur toko agar lebih dipercaya pembeli. Nama toko, alamat, maps, dan sosial media akan muncul di detail produk.', style: TextStyle(color: Colors.white, height: 1.4)),
+                      child: const Text('Atur toko agar lebih dipercaya pembeli. Nama toko, alamat, maps, logo, dan sosial media akan muncul di detail produk.', style: TextStyle(color: Colors.white, height: 1.4)),
                     ),
+                    const SizedBox(height: 16),
+                    _logoPreview(),
                     const SizedBox(height: 16),
                     _section('Informasi Utama'),
                     _field('Nama Toko', _nameCtrl, required: true),
