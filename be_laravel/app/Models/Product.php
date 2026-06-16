@@ -7,10 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
 {
-    use HasFactory; // (Dipindah ke atas agar lebih rapi sesuai standar Laravel)
+    use HasFactory;
 
     protected $fillable = [
-        'user_id', // ← TAMBAHAN WAJIB: Agar ID penjual bisa disimpan
+        'user_id',
         'name',
         'slug',
         'short_description',
@@ -29,6 +29,8 @@ class Product extends Model
         'brand_id'
     ];
 
+    protected $appends = ['active_price', 'discount_percentage', 'rating_average', 'rating_count'];
+
     public function category()
     {
         return $this->belongsTo(Category::class, 'category_id');
@@ -39,10 +41,24 @@ class Product extends Model
         return $this->belongsTo(Brand::class, 'brand_id');
     }
 
-    // ← TAMBAHAN WAJIB: Relasi ke tabel users (untuk memanggil data toko/penjual)
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function store()
+    {
+        return $this->hasOne(StoreProfile::class, 'user_id', 'user_id');
+    }
+
+    public function variations()
+    {
+        return $this->hasMany(ProductVariation::class);
+    }
+
+    public function reviews()
+    {
+        return $this->hasMany(ProductReview::class);
     }
 
     public function getActivePriceAttribute()
@@ -61,8 +77,13 @@ class Product extends Model
         return 0;
     }
 
-    public function variations()
+    public function getRatingAverageAttribute()
     {
-        return $this->hasMany(ProductVariation::class);
+        return round((float) $this->reviews()->avg('rating'), 2);
+    }
+
+    public function getRatingCountAttribute()
+    {
+        return $this->reviews()->count();
     }
 }
