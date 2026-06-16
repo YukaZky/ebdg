@@ -27,7 +27,7 @@ class ApiCartController extends Controller
 
     public function index(Request $request)
     {
-        $cartItems = CartItem::with(['product.store', 'variation'])
+        $cartItems = CartItem::with(['product.store', 'product.user:id,name', 'variation'])
             ->where('user_id', $request->user()->id)
             ->latest()
             ->get();
@@ -35,6 +35,17 @@ class ApiCartController extends Controller
         $total = 0;
         foreach ($cartItems as $item) {
             $total += $item->price * $item->quantity;
+
+            if ($item->product) {
+                $store = $item->product->store;
+                $seller = $item->product->user;
+                $storeName = $store?->name ?: ($seller?->name ? $seller->name . ' Store' : 'Toko Penjual');
+                $storeId = $store?->id ?: 'seller_' . ($item->product->user_id ?? 'unknown');
+
+                $item->product->store_name = $storeName;
+                $item->product->store_key = (string) $storeId;
+                $item->product->seller_name = $seller?->name;
+            }
         }
 
         return response()->json(['success' => true, 'data' => $cartItems, 'total' => $total], 200);
