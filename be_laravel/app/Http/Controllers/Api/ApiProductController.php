@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class ApiProductController extends Controller
@@ -26,10 +25,10 @@ class ApiProductController extends Controller
         return $product;
     }
 
-    // UNTUK BERANDA (PUBLIK)
     public function index()
     {
-        $products = Product::with(['category', 'brand', 'variations'])
+        $products = Product::with(['category', 'brand', 'variations', 'store'])
+            ->withCount('reviews')
             ->orderBy('id', 'desc')
             ->get();
 
@@ -44,11 +43,16 @@ class ApiProductController extends Controller
         ], 200);
     }
 
-    // UNTUK HALAMAN DETAIL PRODUK (PUBLIK)
     public function show($slug)
     {
-        // HAPUS filter user_id agar pembeli bisa mengintip detail produk toko mana saja
-        $product = Product::with(['category', 'brand', 'user', 'variations'])
+        $product = Product::with([
+                'category',
+                'brand',
+                'user:id,name,email',
+                'store',
+                'variations',
+                'reviews.user:id,name',
+            ])
             ->where('slug', $slug)
             ->first();
 
