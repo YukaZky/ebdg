@@ -16,8 +16,10 @@ class StoreDetailScreen extends StatefulWidget {
 
 class _StoreDetailScreenState extends State<StoreDetailScreen> {
   Map<String, dynamic>? store;
+  Map<String, dynamic>? storeAddress;
   List<Product> products = [];
   List<dynamic> reviews = [];
+  Map<String, String> categoryImages = {};
   String selectedCategory = 'Semua';
   bool loading = true;
 
@@ -32,10 +34,23 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     if (!mounted) return;
     if (data != null) {
       final rawProducts = data['products'] as List? ?? [];
+      final imageMap = <String, String>{};
+
+      for (final item in rawProducts) {
+        if (item is Map && item['category'] is Map) {
+          final category = Map<String, dynamic>.from(item['category']);
+          final name = category['name']?.toString() ?? '';
+          final image = category['image']?.toString() ?? '';
+          if (name.isNotEmpty && image.isNotEmpty) imageMap[name] = image;
+        }
+      }
+
       setState(() {
         store = Map<String, dynamic>.from(data['store'] ?? {});
+        storeAddress = data['store_address'] is Map ? Map<String, dynamic>.from(data['store_address']) : null;
         products = rawProducts.map((item) => Product.fromJson(Map<String, dynamic>.from(item))).toList();
         reviews = data['reviews'] as List? ?? [];
+        categoryImages = imageMap;
         loading = false;
       });
     } else {
@@ -56,10 +71,41 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
 
   Future<void> _openUrl(String url) async {
     final value = url.trim();
-    if (value.isEmpty) return;
+    if (value.isEmpty || value == 'null') return;
     final uri = Uri.tryParse(value.startsWith('http') ? value : 'https://$value');
     if (uri == null) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  String _usernameFromLink(dynamic value) {
+    var text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text == 'null') return '';
+
+    try {
+      final uri = Uri.parse(text.startsWith('http') ? text : 'https://$text');
+      final segments = uri.pathSegments.where((segment) => segment.trim().isNotEmpty).toList();
+      if (segments.isNotEmpty) text = segments.last;
+    } catch (_) {
+      text = text.split('/').where((item) => item.trim().isNotEmpty).last;
+    }
+
+    text = text.replaceAll('@', '').split('?').first.trim();
+    return text.isEmpty ? '' : '@$text';
+  }
+
+  double? get _latitude => double.tryParse(storeAddress?['latitude']?.toString() ?? '');
+  double? get _longitude => double.tryParse(storeAddress?['longitude']?.toString() ?? '');
+
+  String get _mapsUrl {
+    if (_latitude != null && _longitude != null) {
+      return 'https://www.google.com/maps/search/?api=1&query=$_latitude,$_longitude';
+    }
+    return store?['maps_url']?.toString() ?? '';
+  }
+
+  String get _staticMapUrl {
+    if (_latitude == null || _longitude == null) return '';
+    return 'https://staticmap.openstreetmap.de/staticmap.php?center=$_latitude,$_longitude&zoom=15&size=640x260&markers=$_latitude,$_longitude,red-pushpin';
   }
 
   List<String> get categories {
@@ -77,9 +123,10 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
   }
 
   String _categoryImage(String category) {
-    final list = category == 'Semua'
-        ? products
-        : products.where((product) => product.categoryName == category).toList();
+    final categoryImage = categoryImages[category];
+    if (categoryImage != null && categoryImage.isNotEmpty) return _mediaUrl(categoryImage, folder: 'categories');
+
+    final list = category == 'Semua' ? products : products.where((product) => product.categoryName == category).toList();
     if (list.isEmpty) return '';
     final firstWithImage = list.firstWhere((product) => (product.image ?? '').isNotEmpty, orElse: () => list.first);
     return _mediaUrl(firstWithImage.image, folder: 'products');
@@ -98,9 +145,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
   Widget _stars(double rating, {double size = 16}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: List.generate(5, (index) {
-        return Icon(index < rating.round() ? Icons.star : Icons.star_border, color: Colors.amber, size: size);
-      }),
+      children: List.generate(5, (index) => Icon(index < rating.round() ? Icons.star : Icons.star_border, color: Colors.amber, size: size)),
     );
   }
 
@@ -121,22 +166,72 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     );
   }
 
-  Widget _infoRow(IconData icon, String label, dynamic value, {bool link = false}) {
-    final text = value?.toString().trim() ?? '';
-    if (text.isEmpty || text == 'null') return const SizedBox.shrink();
+  Widget _infoRow(IconData icon, String label, dynamic value, {bool link = false, String? displayText}) {
+    final raw = value?.toString().trim() ?? '';
+    final shown = displayText ?? raw;
+    if (raw.isEmpty || raw == 'null' || shown.isEmpty || shown == 'null') return const SizedBox.shrink();
 
     return InkWell(
-      onTap: link ? () => _openUrl(text) : null,
+      onTap: link ? () => _openUrl(raw) : null,
       borderRadius: BorderRadius.circular(10),
       child: Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Icon(icon, size: 18, color: Colors.deepOrange),
           const SizedBox(width: 8),
-          Expanded(child: Text('$label: $text', style: TextStyle(height: 1.35, color: link ? Colors.deepOrange : Colors.black87, fontWeight: link ? FontWeight.w600 : FontWeight.normal))),
+          Expanded(child: Text('$label: $shown', style: TextStyle(height: 1.35, color: link ? Colors.deepOrange : Colors.black87, fontWeight: link ? FontWeight.w600 : FontWeight.normal))),
           if (link) const Icon(Icons.open_in_new, size: 16, color: Colors.deepOrange),
         ]),
       ),
+    );
+  }
+
+  Widget _mapPreview() {
+    final url = _staticMapUrl;
+    if (url.isEmpty && _mapsUrl.trim().isEmpty) return const SizedBox.shrink();
+
+    return InkWell(
+      onTap: () => _openUrl(_mapsUrl),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.deepOrange.withOpacity(0.18))),
+        child: Stack(children: [
+          if (url.isNotEmpty)
+            Image.network(
+              url,
+              width: double.infinity,
+              height: 150,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _mapFallback(),
+            )
+          else
+            _mapFallback(),
+          Positioned(
+            right: 10,
+            top: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.92), borderRadius: BorderRadius.circular(999)),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('Buka Maps', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.deepOrange)),
+                SizedBox(width: 4),
+                Icon(Icons.open_in_new, size: 13, color: Colors.deepOrange),
+              ]),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _mapFallback() {
+    return Container(
+      width: double.infinity,
+      height: 150,
+      color: const Color(0xFFFFF3E0),
+      child: const Center(child: Icon(Icons.map, size: 46, color: Colors.deepOrange)),
     );
   }
 
@@ -180,13 +275,14 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Informasi Toko', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
+        _mapPreview(),
         _infoRow(Icons.phone, 'HP', store?['phone']),
         _infoRow(Icons.location_on, 'Alamat', store?['address']),
-        _infoRow(Icons.map, 'Google Maps', store?['maps_url'], link: true),
-        _infoRow(Icons.camera_alt, 'Instagram', store?['instagram'], link: true),
-        _infoRow(Icons.music_note, 'TikTok', store?['tiktok'], link: true),
-        _infoRow(Icons.facebook, 'Facebook', store?['facebook'], link: true),
-        _infoRow(Icons.public, 'Website', store?['website'], link: true),
+        _infoRow(Icons.map, 'Google Maps', _mapsUrl, link: true, displayText: 'Lihat lokasi toko'),
+        _infoRow(Icons.camera_alt, 'Instagram', store?['instagram'], link: true, displayText: _usernameFromLink(store?['instagram'])),
+        _infoRow(Icons.music_note, 'TikTok', store?['tiktok'], link: true, displayText: _usernameFromLink(store?['tiktok'])),
+        _infoRow(Icons.facebook, 'Facebook', store?['facebook'], link: true, displayText: _usernameFromLink(store?['facebook'])),
+        _infoRow(Icons.public, 'Website', store?['website'], link: true, displayText: _usernameFromLink(store?['website'])),
       ]),
     );
   }
@@ -250,10 +346,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
         if (categories.isEmpty)
           Text('Belum ada kategori produk.', style: TextStyle(color: Colors.grey.shade600))
         else
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: categories.map(_categoryCard).toList()),
-          ),
+          SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: categories.map(_categoryCard).toList())),
       ]),
     );
   }

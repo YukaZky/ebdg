@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Address;
 use App\Models\Conversation;
 use App\Models\ConversationMessage;
 use App\Models\Order;
@@ -32,6 +33,36 @@ class ApiMarketplaceController extends Controller
         return $product;
     }
 
+    private function storeAddress($userId)
+    {
+        return Address::where('user_id', $userId)
+            ->orderBy('is_store_address', 'desc')
+            ->orderBy('isdefault', 'desc')
+            ->latest()
+            ->first();
+    }
+
+    private function mergeStoreAddress($store)
+    {
+        $address = $this->storeAddress($store->user_id);
+        if (! $address) return [$store, null];
+
+        $area = collect([$address->locality, $address->city_name, $address->province_name])
+            ->filter(fn ($item) => ! empty($item) && $item !== '-')
+            ->implode(', ');
+
+        $store->address = trim($address->address . ($area ? ', ' . $area : '')) ?: $store->address;
+        $store->phone = $address->phone ?: $store->phone;
+        $store->province_name = $address->province_name ?: $store->province_name;
+        $store->city_name = $address->city_name ?: $store->city_name;
+
+        if ($address->latitude && $address->longitude) {
+            $store->maps_url = 'https://www.google.com/maps/search/?api=1&query=' . $address->latitude . ',' . $address->longitude;
+        }
+
+        return [$store, $address];
+    }
+
     public function myStore(Request $request)
     {
         $store = StoreProfile::firstOrCreate(
@@ -42,6 +73,9 @@ class ApiMarketplaceController extends Controller
                 'status' => 'active',
             ]
         );
+
+        [$store, $address] = $this->mergeStoreAddress($store);
+        $store->store_address = $address;
 
         return response()->json(['success' => true, 'data' => $store]);
     }
@@ -104,6 +138,8 @@ class ApiMarketplaceController extends Controller
     public function storeDetail($slug)
     {
         $store = StoreProfile::withCount('products')->where('slug', $slug)->firstOrFail();
+        [$store, $storeAddress] = $this->mergeStoreAddress($store);
+
         $products = Product::with(['category', 'brand', 'variations', 'reviews'])
             ->where('user_id', $store->user_id)
             ->latest()
@@ -122,6 +158,7 @@ class ApiMarketplaceController extends Controller
             'success' => true,
             'data' => [
                 'store' => $store,
+                'store_address' => $storeAddress,
                 'products' => $products,
                 'reviews' => $reviews,
             ]
