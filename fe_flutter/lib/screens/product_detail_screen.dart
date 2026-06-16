@@ -41,6 +41,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return '$base/uploads/products/$clean';
   }
 
+  String _storeMediaUrl(dynamic image) {
+    final value = image?.toString().trim() ?? '';
+    if (value.isEmpty || value == 'null') return '';
+    if (value.startsWith('http://') || value.startsWith('https://')) return value;
+
+    final base = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+    final clean = value.startsWith('/') ? value.substring(1) : value;
+    if (clean.startsWith('uploads/') || clean.startsWith('storage/')) return '$base/$clean';
+    return '$base/uploads/stores/$clean';
+  }
+
   String _galleryImage(dynamic data) {
     if (data is Map && data['image'] != null) return data['image'].toString();
     return data?.toString() ?? '';
@@ -220,32 +231,74 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
+  Widget _ratingStars(double rating) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(5, (index) {
+        final starValue = index + 1;
+        return Icon(
+          rating >= starValue ? Icons.star : Icons.star_border,
+          color: Colors.amber,
+          size: 15,
+        );
+      }),
+    );
+  }
+
+  Widget _storeAvatar(String logoUrl) {
+    return Container(
+      width: 58,
+      height: 58,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3E0),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.deepOrange.withOpacity(0.25), width: 1.4),
+      ),
+      child: logoUrl.isNotEmpty
+          ? Image.network(
+              logoUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(Icons.storefront, color: Colors.deepOrange, size: 30),
+            )
+          : const Icon(Icons.storefront, color: Colors.deepOrange, size: 30),
+    );
+  }
+
   Widget _storeSection() {
     final store = _store;
     if (store == null) return const SizedBox.shrink();
 
     final name = store['name']?.toString() ?? 'Toko';
     final city = store['city_name']?.toString() ?? '';
+    final province = store['province_name']?.toString() ?? '';
+    final location = [city, province].where((item) => item.isNotEmpty && item != 'null').join(', ');
     final rating = double.tryParse(store['rating_average']?.toString() ?? '0') ?? 0;
     final ratingCount = store['rating_count']?.toString() ?? '0';
+    final logoUrl = _storeMediaUrl(store['logo']);
 
     return Container(
       color: Colors.white,
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(18),
       child: Row(children: [
-        const CircleAvatar(radius: 26, backgroundColor: Color(0xFFFFF3E0), child: Icon(Icons.storefront, color: Colors.deepOrange)),
+        _storeAvatar(logoUrl),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 4),
-          Text(city.isEmpty || city == 'null' ? 'Toko resmi penjual produk ini' : city, style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
-          const SizedBox(height: 5),
-          Row(children: [const Icon(Icons.star, color: Colors.amber, size: 16), const SizedBox(width: 4), Text('${rating.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(fontSize: 12))]),
+          Text(location.isEmpty ? 'Toko resmi penjual produk ini' : location, style: TextStyle(color: Colors.grey.shade700, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 6),
+          Row(children: [
+            _ratingStars(rating),
+            const SizedBox(width: 6),
+            Text('${rating.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          ]),
         ])),
         if (_hasStore)
-          OutlinedButton(
+          ElevatedButton(
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999))),
             child: const Text('Lihat Toko'),
           ),
       ]),
@@ -277,7 +330,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         const Icon(Icons.reviews, color: Colors.deepOrange),
         const SizedBox(width: 10),
         Expanded(child: Text('Rating toko: ${rating.toStringAsFixed(1)} dari $count ulasan', style: const TextStyle(fontWeight: FontWeight.w600))),
-        const Icon(Icons.star, color: Colors.amber),
+        _ratingStars(rating),
       ]),
     );
   }
