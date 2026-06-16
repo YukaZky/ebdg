@@ -91,8 +91,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool get _emptyStock => _stock <= 0 || widget.product.stockStatus != 'instock';
 
   void _syncSlide(int index) {
-    final items = _slides;
-    final item = items[index];
+    final item = _slides[index];
     setState(() {
       _page = index;
       _variation = item.variation;
@@ -236,11 +235,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       mainAxisSize: MainAxisSize.min,
       children: List.generate(5, (index) {
         final starValue = index + 1;
-        return Icon(
-          rating >= starValue ? Icons.star : Icons.star_border,
-          color: Colors.amber,
-          size: 15,
-        );
+        return Icon(rating >= starValue ? Icons.star : Icons.star_border, color: Colors.amber, size: 15);
       }),
     );
   }
@@ -250,17 +245,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       width: 58,
       height: 58,
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.deepOrange.withOpacity(0.25), width: 1.4),
-      ),
+      decoration: BoxDecoration(color: const Color(0xFFFFF3E0), shape: BoxShape.circle, border: Border.all(color: Colors.deepOrange.withOpacity(0.25), width: 1.4)),
       child: logoUrl.isNotEmpty
-          ? Image.network(
-              logoUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(Icons.storefront, color: Colors.deepOrange, size: 30),
-            )
+          ? Image.network(logoUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.storefront, color: Colors.deepOrange, size: 30))
           : const Icon(Icons.storefront, color: Colors.deepOrange, size: 30),
     );
   }
@@ -289,17 +276,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           const SizedBox(height: 4),
           Text(location.isEmpty ? 'Toko resmi penjual produk ini' : location, style: TextStyle(color: Colors.grey.shade700, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 6),
-          Row(children: [
-            _ratingStars(rating),
-            const SizedBox(width: 6),
-            Text('${rating.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          ]),
+          Row(children: [_ratingStars(rating), const SizedBox(width: 6), Text('${rating.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))]),
         ])),
         if (_hasStore)
-          ElevatedButton(
+          OutlinedButton(
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999))),
-            child: const Text('Lihat Toko'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.deepOrange,
+              side: const BorderSide(color: Colors.deepOrange, width: 1),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              minimumSize: const Size(0, 34),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Lihat Toko', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
           ),
       ]),
     );
