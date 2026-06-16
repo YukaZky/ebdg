@@ -171,9 +171,7 @@ class _CartScreenState extends State<CartScreen> {
     _syncBadgeFromLocal();
     if (id != null) {
       final ok = await ApiService.removeFromCart(int.parse(id.toString()));
-      if (!ok) {
-        await _loadCart();
-      }
+      if (!ok) await _loadCart();
     }
   }
 
@@ -200,21 +198,71 @@ class _CartScreenState extends State<CartScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => CheckoutScreen(
-          totalAmount: totalPrice,
-          totalWeight: totalWeight,
-          cartItems: itemsToCheckout,
-        ),
+        builder: (context) => CheckoutScreen(totalAmount: totalPrice, totalWeight: totalWeight, cartItems: itemsToCheckout),
       ),
     );
   }
 
   Widget _productImage(String image) {
     if (image.isEmpty) return const Icon(Icons.image, color: Colors.grey, size: 40);
-    return Image.network(
-      image,
-      fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Colors.grey),
+    return Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Colors.grey));
+  }
+
+  Widget _storeHeader({
+    required List<int> indexes,
+    required bool checked,
+    required bool partial,
+    required String storeName,
+    required int selectedInStore,
+  }) {
+    return InkWell(
+      onTap: () => _toggleStore(indexes, !checked),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(8, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+          border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Checkbox(
+              value: partial ? null : checked,
+              tristate: true,
+              activeColor: Colors.blue[700],
+              onChanged: (value) => _toggleStore(indexes, value ?? false),
+            ),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(10)),
+              child: Icon(Icons.storefront_rounded, color: Colors.orange.shade700, size: 21),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Toko', style: TextStyle(color: Colors.grey.shade600, fontSize: 11, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(
+                    storeName,
+                    style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w800, fontSize: 15),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text('$selectedInStore/${indexes.length} produk dipilih', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+                ],
+              ),
+            ),
+            Icon(Icons.checklist_rounded, color: Colors.grey.shade500, size: 20),
+          ],
+        ),
+      ),
     );
   }
 
@@ -236,46 +284,9 @@ class _CartScreenState extends State<CartScreen> {
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.035), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          InkWell(
-            onTap: () => _toggleStore(indexes, !checked),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(10, 10, 14, 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-                border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
-              ),
-              child: Row(
-                children: [
-                  Checkbox(
-                    value: partial ? null : checked,
-                    tristate: true,
-                    activeColor: Colors.blue[700],
-                    onChanged: (value) => _toggleStore(indexes, value ?? false),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(10)),
-                    child: Icon(Icons.storefront_rounded, color: Colors.orange.shade700, size: 20),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(storeName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 2),
-                        Text('$selectedInStore/${indexes.length} produk dipilih', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey),
-                ],
-              ),
-            ),
-          ),
+          _storeHeader(indexes: indexes, checked: checked, partial: partial, storeName: storeName, selectedInStore: selectedInStore),
           ...indexes.map((index) => _cartItemTile(index, isLast: index == indexes.last)),
         ],
       ),
