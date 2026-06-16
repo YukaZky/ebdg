@@ -58,6 +58,8 @@ class ApiMarketplaceController extends Controller
             'tiktok' => 'nullable|string|max:255',
             'facebook' => 'nullable|string|max:255',
             'website' => 'nullable|string|max:255',
+            'logo' => 'nullable|image|max:2048',
+            'banner' => 'nullable|image|max:4096',
         ]);
 
         $store = StoreProfile::firstOrNew(['user_id' => $request->user()->id]);
@@ -76,15 +78,20 @@ class ApiMarketplaceController extends Controller
         ]));
         $store->slug = $store->slug ?: Str::slug($request->name . '-' . $request->user()->id);
 
+        $directory = public_path('uploads/stores');
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
         if ($request->hasFile('logo')) {
-            $logoName = time() . '_store_logo.' . $request->logo->extension();
-            $request->logo->move(public_path('uploads/stores'), $logoName);
+            $logoName = time() . '_' . $request->user()->id . '_store_logo.' . $request->logo->extension();
+            $request->logo->move($directory, $logoName);
             $store->logo = $logoName;
         }
 
         if ($request->hasFile('banner')) {
-            $bannerName = time() . '_store_banner.' . $request->banner->extension();
-            $request->banner->move(public_path('uploads/stores'), $bannerName);
+            $bannerName = time() . '_' . $request->user()->id . '_store_banner.' . $request->banner->extension();
+            $request->banner->move($directory, $bannerName);
             $store->banner = $bannerName;
         }
 
