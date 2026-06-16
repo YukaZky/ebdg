@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'api_service.dart';
 
 class MarketplaceApiService {
@@ -15,9 +16,28 @@ class MarketplaceApiService {
     return null;
   }
 
-  static Future<Map<String, dynamic>?> saveStore(Map<String, dynamic> data) async {
-    final response = await http.post(Uri.parse('${ApiService.baseUrl}/marketplace/my-store'), headers: _headers, body: jsonEncode(data));
-    if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body)['data'];
+  static Future<Map<String, dynamic>?> saveStore(Map<String, dynamic> data, {XFile? logo, XFile? banner}) async {
+    final request = http.MultipartRequest('POST', Uri.parse('${ApiService.baseUrl}/marketplace/my-store'));
+    request.headers['Accept'] = 'application/json';
+    if (ApiService.token != null) request.headers['Authorization'] = 'Bearer ${ApiService.token}';
+
+    data.forEach((key, value) {
+      request.fields[key] = value?.toString() ?? '';
+    });
+
+    if (logo != null) {
+      final bytes = await logo.readAsBytes();
+      request.files.add(http.MultipartFile.fromBytes('logo', bytes, filename: logo.name.isEmpty ? 'store_logo.jpg' : logo.name));
+    }
+
+    if (banner != null) {
+      final bytes = await banner.readAsBytes();
+      request.files.add(http.MultipartFile.fromBytes('banner', bytes, filename: banner.name.isEmpty ? 'store_banner.jpg' : banner.name));
+    }
+
+    final response = await request.send();
+    final body = await response.stream.bytesToString();
+    if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(body)['data'];
     return null;
   }
 
