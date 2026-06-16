@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/product_model.dart';
 import '../services/api_service.dart';
 import '../services/cart_api_service.dart';
+import '../services/marketplace_api_service.dart';
+import '../widgets/marketplace_product_card.dart';
 import 'marketplace/store_detail_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
@@ -24,11 +26,51 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _page = 0;
   int _qty = 1;
   bool _saving = false;
+  bool _loadingReviews = true;
+  bool _loadingRecommendations = true;
+  List<dynamic> _productReviews = [];
+  List<Product> _recommendations = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProductReviews();
+    _loadRecommendations();
+  }
 
   @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadProductReviews() async {
+    final data = await MarketplaceApiService.productReviews(widget.product.id);
+    if (!mounted) return;
+    setState(() {
+      _productReviews = data;
+      _loadingReviews = false;
+    });
+  }
+
+  Future<void> _loadRecommendations() async {
+    try {
+      final products = await ApiService.getProducts();
+      if (!mounted) return;
+
+      final sameCategory = products
+          .where((item) => item.id != widget.product.id && widget.product.categoryId != null && item.categoryId == widget.product.categoryId)
+          .toList();
+      final others = products.where((item) => item.id != widget.product.id && !sameCategory.any((same) => same.id == item.id)).toList();
+
+      setState(() {
+        _recommendations = [...sameCategory, ...others].take(8).toList();
+        _loadingRecommendations = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingRecommendations = false);
+    }
   }
 
   String _url(String? image) {
@@ -230,12 +272,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _ratingStars(double rating) {
+  Widget _ratingStars(double rating, {double size = 15}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(5, (index) {
         final starValue = index + 1;
-        return Icon(rating >= starValue ? Icons.star : Icons.star_border, color: Colors.amber, size: 15);
+        return Icon(rating >= starValue ? Icons.star : Icons.star_border, color: Colors.amber, size: size);
       }),
     );
   }
@@ -325,6 +367,80 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
+  Widget _verifiedReviewsSection() {
+    return Container(
+      color: Colors.white,
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Expanded(child: Text('Ulasan Pembeli', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(999), border: Border.all(color: Colors.green.shade200)),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.verified, color: Colors.green, size: 14),
+              SizedBox(width: 4),
+              Text('Terima produk', style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        if (_loadingReviews)
+          const Center(child: Padding(padding: EdgeInsets.all(18), child: CircularProgressIndicator()))
+        else if (_productReviews.isEmpty)
+          Text('Belum ada testimoni dari pembeli yang sudah menerima produk ini.', style: TextStyle(color: Colors.grey.shade700, height: 1.4))
+        else
+          ..._productReviews.take(5).map((review) {
+            final user = review['user'] is Map ? review['user'] : {};
+            final name = user['name']?.toString() ?? 'Pembeli';
+            final rating = double.tryParse(review['rating']?.toString() ?? '0') ?? 0;
+            final text = review['review']?.toString() ?? '';
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.grey.shade200)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  CircleAvatar(radius: 18, backgroundColor: Colors.deepOrange.shade50, child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'P', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold))),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.bold))),
+                  _ratingStars(rating, size: 14),
+                ]),
+                const SizedBox(height: 8),
+                Text(text.isEmpty ? 'Pembeli tidak menulis komentar.' : text, style: const TextStyle(height: 1.4)),
+              ]),
+            );
+          }),
+      ]),
+    );
+  }
+
+  Widget _recommendationSection() {
+    return Container(
+      color: Colors.white,
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Mungkin Kamu Suka', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        if (_loadingRecommendations)
+          const Center(child: Padding(padding: EdgeInsets.all(18), child: CircularProgressIndicator()))
+        else if (_recommendations.isEmpty)
+          Text('Belum ada rekomendasi produk lain.', style: TextStyle(color: Colors.grey.shade700))
+        else
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.72, crossAxisSpacing: 12, mainAxisSpacing: 12),
+            itemCount: _recommendations.length,
+            itemBuilder: (context, index) => MarketplaceProductCard(product: _recommendations[index]),
+          ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -350,6 +466,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         _storeSection(),
         _reviewSummary(),
         _descriptionSection(),
+        _verifiedReviewsSection(),
+        _recommendationSection(),
       ]),
       bottomNavigationBar: SafeArea(
         child: Padding(
