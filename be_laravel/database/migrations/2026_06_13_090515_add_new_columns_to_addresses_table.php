@@ -6,26 +6,45 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
         Schema::table('addresses', function (Blueprint $table) {
-            $table->string('name')->nullable(); // Nama Penerima
-            $table->string('phone')->nullable(); // Nomor HP
-            $table->string('label')->default('Rumah'); // Label (Rumah/Kantor)
-            $table->text('note')->nullable(); // Catatan untuk Kurir
-            $table->boolean('is_store_address')->default(false); // Penanda apakah ini alamat toko
-            
-            // Note: Pastikan kolom province_id dan city_id sudah ada di tabel ini sebelumnya. 
-            // Jika belum ada, tambahkan juga di sini:
-            // $table->string('province_id')->nullable();
-            // $table->string('city_id')->nullable();
+            if (! Schema::hasColumn('addresses', 'name')) {
+                $table->string('name')->nullable(); // Nama Penerima
+            }
+
+            if (! Schema::hasColumn('addresses', 'phone')) {
+                $table->string('phone')->nullable(); // Nomor HP
+            }
+
+            if (! Schema::hasColumn('addresses', 'label')) {
+                $table->string('label')->default('Rumah'); // Label (Rumah/Kantor)
+            }
+
+            if (! Schema::hasColumn('addresses', 'note')) {
+                $table->text('note')->nullable(); // Catatan untuk Kurir
+            }
+
+            if (! Schema::hasColumn('addresses', 'is_store_address')) {
+                $table->boolean('is_store_address')->default(false); // Penanda apakah ini alamat toko
+            }
         });
     }
 
-    public function down()
+    public function down(): void
     {
         Schema::table('addresses', function (Blueprint $table) {
-            $table->dropColumn(['name', 'phone', 'label', 'note', 'is_store_address']);
+            if (Schema::hasColumn('addresses', 'label')) {
+                $table->dropColumn('label');
+            }
+
+            if (Schema::hasColumn('addresses', 'note')) {
+                $table->dropColumn('note');
+            }
+
+            if (Schema::hasColumn('addresses', 'is_store_address')) {
+                $table->dropColumn('is_store_address');
+            }
         });
     }
 };
