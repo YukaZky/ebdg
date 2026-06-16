@@ -13,11 +13,22 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  
+  final FocusNode _passwordFocus = FocusNode();
+
   bool isLoggingIn = false;
   bool _isPasswordVisible = false;
 
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _passwordFocus.dispose();
+    super.dispose();
+  }
+
   Future<void> _handleLogin() async {
+    if (isLoggingIn) return;
+
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -31,6 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => isLoggingIn = true);
     bool success = await ApiService.login(_emailController.text, _passwordController.text);
+    if (!mounted) return;
     setState(() => isLoggingIn = false);
 
     if (success) {
@@ -41,12 +53,11 @@ class _LoginScreenState extends State<LoginScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-      
-      // Mengarahkan kembali ke MainScreen dengan tab indeks ke-3 (Akun/Profil)
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => const MainScreen(initialIndex: 3), // DIUBAH DI SINI
+          builder: (context) => const MainScreen(initialIndex: 3),
         ),
       );
     } else {
@@ -89,7 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     Image.asset(
                       'assets/logonobg.png',
-                      height: 40, 
+                      height: 40,
                       fit: BoxFit.contain,
                     ),
                     const SizedBox(height: 16),
@@ -127,6 +138,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           TextField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            onSubmitted: (_) => FocusScope.of(context).requestFocus(_passwordFocus),
                             decoration: const InputDecoration(
                               labelText: "Alamat Email",
                               prefixIcon: Icon(Icons.email_outlined),
@@ -136,7 +149,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 20),
                           TextField(
                             controller: _passwordController,
+                            focusNode: _passwordFocus,
                             obscureText: !_isPasswordVisible,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => _handleLogin(),
                             decoration: InputDecoration(
                               labelText: "Password",
                               prefixIcon: const Icon(Icons.lock_outline_rounded),
