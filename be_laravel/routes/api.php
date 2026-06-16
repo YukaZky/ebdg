@@ -10,21 +10,16 @@ use App\Http\Controllers\Api\ApiOrderController;
 use App\Http\Controllers\Api\ApiRajaOngkirController;
 use App\Http\Controllers\Api\ApiWishlistController;
 use App\Http\Controllers\Api\ApiAdminController;
+use App\Http\Controllers\Api\ApiMarketplaceController;
 
 Route::post('/register', [ApiAuthController::class, 'register']);
 Route::post('/login', [ApiAuthController::class, 'login']);
 
-// ==========================================
-// RUTE PUBLIK (Untuk Pembeli / Halaman Depan Marketplace)
-// ==========================================
-// Rute ini tetap di luar middleware agar pembeli yang belum login bisa melihat produk
 Route::get('/products', [ApiProductController::class, 'index']);
 Route::get('/products/{slug}', [ApiProductController::class, 'show']);
+Route::get('/stores/{slug}', [ApiMarketplaceController::class, 'storeDetail']);
+Route::get('/products/{productId}/reviews', [ApiMarketplaceController::class, 'productReviews']);
 
-
-// ==========================================
-// RUTE PRIVAT (Wajib Login dengan Token)
-// ==========================================
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [ApiAuthController::class, 'logout']);
     Route::get('/user-profile', function (Request $request) {
@@ -38,41 +33,39 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/checkout', [ApiCheckoutController::class, 'checkout']);
     Route::get('/orders', [ApiOrderController::class, 'index']);
 
-    // RUTE WISHLIST API
+    Route::get('/marketplace/my-store', [ApiMarketplaceController::class, 'myStore']);
+    Route::post('/marketplace/my-store', [ApiMarketplaceController::class, 'saveStore']);
+    Route::get('/marketplace/seller-orders', [ApiMarketplaceController::class, 'sellerOrders']);
+    Route::put('/marketplace/seller-orders/{id}/status', [ApiMarketplaceController::class, 'updateSellerOrderStatus']);
+    Route::post('/marketplace/reviews', [ApiMarketplaceController::class, 'addReview']);
+    Route::get('/marketplace/chats', [ApiMarketplaceController::class, 'conversations']);
+    Route::post('/marketplace/chats/start', [ApiMarketplaceController::class, 'startConversation']);
+    Route::get('/marketplace/chats/{conversationId}/messages', [ApiMarketplaceController::class, 'messages']);
+    Route::post('/marketplace/chats/{conversationId}/messages', [ApiMarketplaceController::class, 'sendMessage']);
+
     Route::get('/wishlist', [ApiWishlistController::class, 'index']);
     Route::post('/wishlist/add', [ApiWishlistController::class, 'add']);
     Route::delete('/wishlist/remove/{product_id}', [ApiWishlistController::class, 'remove']);
 
     Route::get('/rajaongkir/provinces', [ApiRajaOngkirController::class, 'getProvinces']);
     Route::get('/rajaongkir/cities/{provinceId}', [ApiRajaOngkirController::class, 'getCities']);
-    Route::get('/rajaongkir/subdistricts/{cityId}', [\App\Http\Controllers\Api\ApiRajaOngkirController::class, 'getSubdistricts']);
+    Route::get('/rajaongkir/subdistricts/{cityId}', [ApiRajaOngkirController::class, 'getSubdistricts']);
     Route::post('/rajaongkir/cost', [ApiRajaOngkirController::class, 'checkCost']);
 
     Route::get('/admin/store-location', [ApiAdminController::class, 'getStoreLocation']);
     Route::post('/admin/store-location', [ApiAdminController::class, 'saveStoreLocation']);
 
-    Route::get('/user/addresses', [\App\Http\Controllers\Api\ApiAdminController::class, 'getUserAddresses']);
-    Route::post('/user/addresses', [\App\Http\Controllers\Api\ApiAdminController::class, 'saveUserAddress']);
-    Route::put('/user/addresses/{id}/set-main', [\App\Http\Controllers\Api\ApiAdminController::class, 'setMainAddress']);
-    Route::delete('/user/addresses/{id}', [\App\Http\Controllers\Api\ApiAdminController::class, 'deleteUserAddress']);
+    Route::get('/user/addresses', [ApiAdminController::class, 'getUserAddresses']);
+    Route::post('/user/addresses', [ApiAdminController::class, 'saveUserAddress']);
+    Route::put('/user/addresses/{id}/set-main', [ApiAdminController::class, 'setMainAddress']);
+    Route::delete('/user/addresses/{id}', [ApiAdminController::class, 'deleteUserAddress']);
 
-    // ==========================================
-    // RUTE ADMIN PANEL (Toko Saya) - LENGKAP
-    // ==========================================
-    // Rute ini menggunakan prefix '/admin'
-    // Gunakan rute ini di Flutter HANYA SAAT memuat data untuk halaman Dashboard Admin!
     Route::middleware('admin')->prefix('admin')->group(function () {
-
         Route::get('/dashboard', [ApiAdminController::class, 'dashboardStats']);
-
-        // --- CRUD Produk (Khusus Toko Admin) ---
-        // PENTING: Arahkan pemanggilan dari panel admin Flutter ke '/api/admin/products'
         Route::get('/products', [ApiAdminController::class, 'getProducts']);
         Route::post('/products/store', [ApiAdminController::class, 'storeProduct']);
         Route::put('/products/update/{id}', [ApiAdminController::class, 'updateProduct']);
         Route::delete('/products/delete/{id}', [ApiAdminController::class, 'deleteProduct']);
-
-        // ... (Sisa rute admin yang lain tetap sama) ...
 
         Route::get('/categories', [ApiAdminController::class, 'getCategories']);
         Route::post('/categories/store', [ApiAdminController::class, 'storeCategory']);
@@ -98,7 +91,4 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/settings/whatsapp', [ApiAdminController::class, 'getWhatsappSettings']);
         Route::put('/settings/whatsapp/update', [ApiAdminController::class, 'updateWhatsappSettings']);
     });
-
-    Route::get('/admin/store-location', [ApiAdminController::class, 'getStoreLocation']);
-    Route::post('/admin/store-location', [ApiAdminController::class, 'saveStoreLocation']);
 });
