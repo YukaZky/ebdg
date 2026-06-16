@@ -14,8 +14,13 @@ class ApiUserProfileController extends Controller
         ]);
 
         $user = $request->user();
+        $directory = public_path('uploads/profiles');
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
         $avatarName = time() . '_' . $user->id . '_avatar.' . $request->avatar->extension();
-        $request->avatar->move(public_path('uploads/profiles'), $avatarName);
+        $request->avatar->move($directory, $avatarName);
 
         $user->avatar = $avatarName;
         $user->save();
