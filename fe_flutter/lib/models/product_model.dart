@@ -2,21 +2,21 @@ class ProductVariation {
   final int id;
   final String name;
   final String? description;
-  final double regularPrice; 
-  final double? salePrice;   
-  final int weight;          
-  final int quantity;        
+  final double regularPrice;
+  final double? salePrice;
+  final int weight;
+  final int quantity;
   final String? image;
 
   ProductVariation({
-    required this.id, 
-    required this.name, 
+    required this.id,
+    required this.name,
     this.description,
     required this.regularPrice,
     this.salePrice,
     required this.weight,
     required this.quantity,
-    this.image
+    this.image,
   });
 
   factory ProductVariation.fromJson(Map<String, dynamic> json) {
@@ -45,7 +45,8 @@ class Product {
   final String stockStatus;
   final int quantity;
   final String? image;
-  final List<ProductVariation>? variations; 
+  final List<dynamic> galleryImages;
+  final List<ProductVariation>? variations;
 
   Product({
     required this.id,
@@ -59,24 +60,66 @@ class Product {
     required this.stockStatus,
     required this.quantity,
     this.image,
+    this.galleryImages = const [],
     this.variations,
   });
 
+  static List<dynamic> _parseGalleryImages(Map<String, dynamic> json) {
+    if (json['images'] is List) {
+      return List<dynamic>.from(json['images']);
+    }
+
+    if (json['product_images'] is List) {
+      return List<dynamic>.from(json['product_images']);
+    }
+
+    return [];
+  }
+
+  static String? _firstGalleryImage(List<dynamic> galleryImages) {
+    if (galleryImages.isEmpty) return null;
+
+    final first = galleryImages.first;
+
+    if (first is Map && first['image'] != null && first['image'].toString().trim().isNotEmpty) {
+      return first['image'].toString();
+    }
+
+    if (first != null && first.toString().trim().isNotEmpty) {
+      return first.toString();
+    }
+
+    return null;
+  }
+
+  static String? _coverImage(Map<String, dynamic> json, List<dynamic> galleryImages) {
+    final mainImage = json['image']?.toString().trim();
+
+    if (mainImage != null && mainImage.isNotEmpty && mainImage != 'null') {
+      return mainImage;
+    }
+
+    return _firstGalleryImage(galleryImages);
+  }
+
   factory Product.fromJson(Map<String, dynamic> json) {
+    final galleryImages = _parseGalleryImages(json);
+
     return Product(
       id: json['id'],
-      name: json['name'],
-      slug: json['slug'],
+      name: json['name'] ?? '',
+      slug: json['slug'] ?? '',
       shortDescription: json['short_description'],
       description: json['description'],
-      price: double.parse(json['regular_price'].toString()),
-      salePrice: json['sale_price'] != null ? double.parse(json['sale_price'].toString()) : null,
+      price: double.tryParse(json['regular_price'].toString()) ?? 0.0,
+      salePrice: json['sale_price'] != null ? double.tryParse(json['sale_price'].toString()) : null,
       SKU: json['SKU'] ?? '',
       stockStatus: json['stock_status'] ?? 'instock',
-      quantity: json['quantity'] ?? 0,
-      image: json['image'],
-      variations: json['variations'] != null 
-          ? (json['variations'] as List).map((i) => ProductVariation.fromJson(i)).toList() 
+      quantity: json['quantity'] != null ? int.tryParse(json['quantity'].toString()) ?? 0 : 0,
+      image: _coverImage(json, galleryImages),
+      galleryImages: galleryImages,
+      variations: json['variations'] != null
+          ? (json['variations'] as List).map((i) => ProductVariation.fromJson(i)).toList()
           : [],
     );
   }
