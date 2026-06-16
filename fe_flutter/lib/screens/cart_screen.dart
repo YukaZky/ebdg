@@ -178,6 +178,60 @@ class _CartScreenState extends State<CartScreen> {
     }
   }
 
+  Future<void> _removeStoreItems(List<int> indexes, String storeName) async {
+    if (indexes.isEmpty) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus produk toko?'),
+        content: Text('Semua produk dari $storeName akan dihapus dari keranjang.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Hapus Semua'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    final ids = indexes
+        .where((index) => index >= 0 && index < _cartItems.length)
+        .map((index) => _cartItems[index]['id'])
+        .where((id) => id != null)
+        .map((id) => int.tryParse(id.toString()))
+        .whereType<int>()
+        .toList();
+
+    final sortedIndexes = indexes.toList()..sort((a, b) => b.compareTo(a));
+    setState(() {
+      for (final index in sortedIndexes) {
+        if (index >= 0 && index < _cartItems.length) {
+          _cartItems.removeAt(index);
+        }
+      }
+    });
+    _syncBadgeFromLocal();
+
+    var allOk = true;
+    for (final id in ids) {
+      final ok = await ApiService.removeFromCart(id);
+      if (!ok) allOk = false;
+    }
+
+    if (!mounted) return;
+    if (!allOk) {
+      await _loadCart();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sebagian produk gagal dihapus. Keranjang dimuat ulang.')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Semua produk dari $storeName berhasil dihapus.')));
+    }
+  }
+
   void _updateQuantity(int index, int change) {
     setState(() {
       final currentQty = int.tryParse(_cartItems[index]['quantity'].toString()) ?? 1;
@@ -239,27 +293,31 @@ class _CartScreenState extends State<CartScreen> {
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(14),
         elevation: 0,
-        child: InkWell(
-          onTap: () => _toggleStore(indexes, !checked),
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(8, 10, 14, 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-            ),
-            child: Row(
-              children: [
-                Checkbox(
-                  value: partial ? null : checked,
-                  tristate: true,
-                  activeColor: Colors.blue[700],
-                  onChanged: (value) => _toggleStore(indexes, value ?? false),
-                ),
-                _storeLogo(logoUrl),
-                const SizedBox(width: 12),
-                Expanded(
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
+          child: Row(
+            children: [
+              Checkbox(
+                value: partial ? null : checked,
+                tristate: true,
+                activeColor: Colors.blue[700],
+                onChanged: (value) => _toggleStore(indexes, value ?? false),
+              ),
+              InkWell(
+                onTap: () => _toggleStore(indexes, !checked),
+                borderRadius: BorderRadius.circular(12),
+                child: _storeLogo(logoUrl),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: InkWell(
+                  onTap: () => _toggleStore(indexes, !checked),
+                  borderRadius: BorderRadius.circular(10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -275,8 +333,13 @@ class _CartScreenState extends State<CartScreen> {
                     ],
                   ),
                 ),
-              ],
-            ),
+              ),
+              IconButton(
+                tooltip: 'Hapus semua produk toko ini',
+                onPressed: () => _removeStoreItems(List<int>.from(indexes), storeName),
+                icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 22),
+              ),
+            ],
           ),
         ),
       ),
