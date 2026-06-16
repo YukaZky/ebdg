@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/product_model.dart';
+import '../../services/api_service.dart';
 import '../../services/marketplace_api_service.dart';
 import '../../widgets/marketplace_product_card.dart';
 
@@ -41,13 +43,46 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     }
   }
 
+  String _mediaUrl(dynamic image, {String folder = 'stores'}) {
+    final value = image?.toString().trim() ?? '';
+    if (value.isEmpty || value == 'null') return '';
+    if (value.startsWith('http://') || value.startsWith('https://')) return value;
+
+    final base = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+    final clean = value.startsWith('/') ? value.substring(1) : value;
+    if (clean.startsWith('uploads/') || clean.startsWith('storage/')) return '$base/$clean';
+    return '$base/uploads/$folder/$clean';
+  }
+
+  Future<void> _openUrl(String url) async {
+    final value = url.trim();
+    if (value.isEmpty) return;
+    final uri = Uri.tryParse(value.startsWith('http') ? value : 'https://$value');
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   List<String> get categories {
-    final set = <String>{'Semua'};
+    final set = <String>{};
     for (final product in products) {
       final name = product.categoryName;
       if (name != null && name.isNotEmpty) set.add(name);
     }
     return set.toList();
+  }
+
+  int _categoryCount(String category) {
+    if (category == 'Semua') return products.length;
+    return products.where((product) => product.categoryName == category).length;
+  }
+
+  String _categoryImage(String category) {
+    final list = category == 'Semua'
+        ? products
+        : products.where((product) => product.categoryName == category).toList();
+    if (list.isEmpty) return '';
+    final firstWithImage = list.firstWhere((product) => (product.image ?? '').isNotEmpty, orElse: () => list.first);
+    return _mediaUrl(firstWithImage.image, folder: 'products');
   }
 
   List<Product> get filteredProducts {
@@ -69,16 +104,39 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     );
   }
 
-  Widget _infoRow(IconData icon, String label, dynamic value) {
+  Widget _logoAvatar({double radius = 34}) {
+    final logoUrl = _mediaUrl(store?['logo'], folder: 'stores');
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Colors.white,
+      child: ClipOval(
+        child: SizedBox(
+          width: radius * 2,
+          height: radius * 2,
+          child: logoUrl.isNotEmpty
+              ? Image.network(logoUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Icon(Icons.storefront, color: Colors.deepOrange, size: radius))
+              : Icon(Icons.storefront, color: Colors.deepOrange, size: radius),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, dynamic value, {bool link = false}) {
     final text = value?.toString().trim() ?? '';
     if (text.isEmpty || text == 'null') return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, size: 18, color: Colors.deepOrange),
-        const SizedBox(width: 8),
-        Expanded(child: Text('$label: $text', style: const TextStyle(height: 1.35))),
-      ]),
+
+    return InkWell(
+      onTap: link ? () => _openUrl(text) : null,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, size: 18, color: Colors.deepOrange),
+          const SizedBox(width: 8),
+          Expanded(child: Text('$label: $text', style: TextStyle(height: 1.35, color: link ? Colors.deepOrange : Colors.black87, fontWeight: link ? FontWeight.w600 : FontWeight.normal))),
+          if (link) const Icon(Icons.open_in_new, size: 16, color: Colors.deepOrange),
+        ]),
+      ),
     );
   }
 
@@ -97,10 +155,10 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
         bottom: false,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            const CircleAvatar(radius: 34, backgroundColor: Colors.white, child: Icon(Icons.storefront, color: Color(0xFFE65100), size: 36)),
+            _logoAvatar(radius: 34),
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+              Text(name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
               Text([city, province].where((e) => e.isNotEmpty && e != 'null').join(', '), style: const TextStyle(color: Colors.white70)),
               const SizedBox(height: 8),
@@ -124,11 +182,78 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
         const SizedBox(height: 12),
         _infoRow(Icons.phone, 'HP', store?['phone']),
         _infoRow(Icons.location_on, 'Alamat', store?['address']),
-        _infoRow(Icons.map, 'Maps', store?['maps_url']),
-        _infoRow(Icons.camera_alt, 'Instagram', store?['instagram']),
-        _infoRow(Icons.music_note, 'TikTok', store?['tiktok']),
-        _infoRow(Icons.facebook, 'Facebook', store?['facebook']),
-        _infoRow(Icons.public, 'Website', store?['website']),
+        _infoRow(Icons.map, 'Google Maps', store?['maps_url'], link: true),
+        _infoRow(Icons.camera_alt, 'Instagram', store?['instagram'], link: true),
+        _infoRow(Icons.music_note, 'TikTok', store?['tiktok'], link: true),
+        _infoRow(Icons.facebook, 'Facebook', store?['facebook'], link: true),
+        _infoRow(Icons.public, 'Website', store?['website'], link: true),
+      ]),
+    );
+  }
+
+  Widget _categoryCard(String category) {
+    final selected = selectedCategory == category;
+    final image = _categoryImage(category);
+    final count = _categoryCount(category);
+
+    return InkWell(
+      onTap: () => setState(() => selectedCategory = category),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 118,
+        margin: const EdgeInsets.only(right: 10),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: selected ? Colors.deepOrange.shade50 : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: selected ? Colors.deepOrange : Colors.grey.shade200, width: selected ? 1.4 : 1),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            height: 64,
+            width: double.infinity,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
+            child: image.isNotEmpty
+                ? Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.category, color: Colors.deepOrange))
+                : const Icon(Icons.category, color: Colors.deepOrange),
+          ),
+          const SizedBox(height: 8),
+          Text(category, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          const SizedBox(height: 2),
+          Text('$count produk', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _categorySection() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Filter Produk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: ChoiceChip(
+            label: Text('Semua Produk (${products.length})'),
+            selected: selectedCategory == 'Semua',
+            selectedColor: Colors.deepOrange.shade100,
+            onSelected: (_) => setState(() => selectedCategory = 'Semua'),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text('Kategori Produk', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        if (categories.isEmpty)
+          Text('Belum ada kategori produk.', style: TextStyle(color: Colors.grey.shade600))
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: categories.map(_categoryCard).toList()),
+          ),
       ]),
     );
   }
@@ -138,18 +263,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Produk Toko', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(children: categories.map((category) {
-            final selected = selectedCategory == category;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(label: Text(category), selected: selected, selectedColor: Colors.deepOrange.shade100, onSelected: (_) => setState(() => selectedCategory = category)),
-            );
-          }).toList()),
-        ),
+        Text(selectedCategory == 'Semua' ? 'Semua Produk Toko' : 'Produk $selectedCategory', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         if (items.isEmpty)
           const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('Belum ada produk di kategori ini.')))
@@ -208,7 +322,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
               ? const Center(child: Text('Toko tidak ditemukan.'))
               : RefreshIndicator(
                   onRefresh: loadStore,
-                  child: ListView(children: [_header(), _storeInfo(), _productSection(), _reviewsSection(), const SizedBox(height: 20)]),
+                  child: ListView(children: [_header(), _storeInfo(), _categorySection(), _productSection(), _reviewsSection(), const SizedBox(height: 20)]),
                 ),
     );
   }
