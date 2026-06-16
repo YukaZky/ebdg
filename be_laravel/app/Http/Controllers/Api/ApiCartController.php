@@ -27,8 +27,9 @@ class ApiCartController extends Controller
 
     public function index(Request $request)
     {
-        $cartItems = CartItem::with(['product', 'variation'])
+        $cartItems = CartItem::with(['product.store', 'variation'])
             ->where('user_id', $request->user()->id)
+            ->latest()
             ->get();
 
         $total = 0;
