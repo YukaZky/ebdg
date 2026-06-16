@@ -70,6 +70,26 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     return '$base/uploads/products/$cleanValue';
   }
 
+  String _productCoverImageUrl(dynamic item) {
+    if (item is! Map) return '';
+
+    final mainImageUrl = _productImageUrl(item['image']);
+    if (mainImageUrl.isNotEmpty) return mainImageUrl;
+
+    final galleryImages = item['images'] ?? item['product_images'];
+    if (galleryImages is List && galleryImages.isNotEmpty) {
+      final firstImage = galleryImages.first;
+
+      if (firstImage is Map) {
+        return _productImageUrl(firstImage['image']);
+      }
+
+      return _productImageUrl(firstImage);
+    }
+
+    return '';
+  }
+
   void _showCustomSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -244,7 +264,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
         (context, index) {
           final item = filteredProducts[index];
           final int stock = int.tryParse(item['quantity'].toString()) ?? 0;
-          final String imageUrl = _productImageUrl(item['image']);
+          final String imageUrl = _productCoverImageUrl(item);
 
           return Container(
             margin: const EdgeInsets.only(bottom: 16),
