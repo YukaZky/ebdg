@@ -66,11 +66,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return list;
   }
 
-  double get _price => _variation == null ? (widget.product.salePrice ?? widget.product.price) : (_variation!.salePrice ?? _variation!.regularPrice);
+  double get _regularPrice => _variation?.regularPrice ?? widget.product.price;
+  double? get _salePrice => _variation?.salePrice ?? widget.product.salePrice;
+  bool get _hasPromo => _salePrice != null && _salePrice! > 0 && _salePrice! < _regularPrice;
+  double get _activePrice => _hasPromo ? _salePrice! : _regularPrice;
   int get _stock => _variation?.quantity ?? widget.product.quantity;
   int get _weight => _variation?.weight ?? widget.product.weight;
   bool get _hasVariation => widget.product.variations != null && widget.product.variations!.isNotEmpty;
   bool get _emptyStock => _stock <= 0 || widget.product.stockStatus != 'instock';
+
+  void _syncSlide(int index) {
+    final items = _slides;
+    final item = items[index];
+    setState(() {
+      _page = index;
+      _variation = item.variation;
+      _qty = 1;
+    });
+  }
+
+  void _goSlide(int target) {
+    final items = _slides;
+    if (target < 0 || target >= items.length) return;
+    _pageController.animateToPage(target, duration: const Duration(milliseconds: 240), curve: Curves.easeOut);
+  }
 
   void _chooseVariation(ProductVariation? value) {
     setState(() {
@@ -79,9 +98,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     });
     if (value?.image == null) return;
     final index = _slides.indexWhere((item) => item.variation?.id == value!.id);
-    if (index >= 0) {
-      _pageController.animateToPage(index, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
-    }
+    if (index >= 0) _goSlide(index);
   }
 
   Future<void> _addCart() async {
@@ -101,6 +118,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (ok) Navigator.pop(context);
   }
 
+  Widget _priceView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_hasPromo)
+          Text(
+            'Rp ${_regularPrice.toStringAsFixed(0)}',
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade600, decoration: TextDecoration.lineThrough),
+          ),
+        Text(
+          'Rp ${_activePrice.toStringAsFixed(0)}',
+          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFFE65100)),
+        ),
+      ],
+    );
+  }
+
   Widget _imageArea() {
     final items = _slides;
     if (items.isEmpty) {
@@ -112,19 +146,43 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         children: [
           SizedBox(
             height: 300,
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: items.length,
-              onPageChanged: (index) {
-                setState(() {
-                  _page = index;
-                  if (items[index].variation != null) {
-                    _variation = items[index].variation;
-                    _qty = 1;
-                  }
-                });
-              },
-              itemBuilder: (context, index) => Image.network(_url(items[index].image), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, size: 90, color: Colors.grey)),
+            child: Stack(
+              children: [
+                PageView.builder(
+                  controller: _pageController,
+                  itemCount: items.length,
+                  onPageChanged: _syncSlide,
+                  itemBuilder: (context, index) => Image.network(_url(items[index].image), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, size: 90, color: Colors.grey)),
+                ),
+                if (items.length > 1) ...[
+                  Positioned(
+                    left: 10,
+                    top: 120,
+                    child: _slideButton(Icons.chevron_left, () => _goSlide(_page - 1)),
+                  ),
+                  Positioned(
+                    right: 10,
+                    top: 120,
+                    child: _slideButton(Icons.chevron_right, () => _goSlide(_page + 1)),
+                  ),
+                  Positioned(
+                    right: 14,
+                    bottom: 18,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.55), borderRadius: BorderRadius.circular(999)),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Geser gambar', style: TextStyle(color: Colors.white, fontSize: 11)),
+                          SizedBox(width: 4),
+                          Icon(Icons.swipe, color: Colors.white, size: 14),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           if (items.length > 1)
@@ -146,6 +204,101 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
+  Widget _slideButton(IconData icon, VoidCallback onTap) {
+    return Material(
+      color: Colors.white.withOpacity(0.85),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(padding: const EdgeInsets.all(7), child: Icon(icon, size: 25, color: Colors.black87)),
+      ),
+    );
+  }
+
+  List<ProductVariation> get _allVariations => widget.product.variations ?? <ProductVariation>[];
+
+  Widget _variationChip(ProductVariation item) {
+    final selected = _variation?.id == item.id;
+    return ChoiceChip(
+      label: Text(item.name, overflow: TextOverflow.ellipsis),
+      selected: selected,
+      selectedColor: Colors.deepOrange,
+      labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87, fontWeight: selected ? FontWeight.bold : FontWeight.w500),
+      onSelected: (value) => _chooseVariation(value ? item : null),
+    );
+  }
+
+  Widget _variationArea() {
+    final variations = _allVariations;
+    final visibleVariations = variations.length > 3 ? variations.take(3).toList() : variations;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(child: Text('Pilih Variasi Produk:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+            if (variations.length > 3)
+              TextButton.icon(
+                onPressed: _showVariationPopup,
+                icon: const Icon(Icons.keyboard_arrow_right),
+                label: const Text('Lainnya'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, children: visibleVariations.map(_variationChip).toList()),
+      ],
+    );
+  }
+
+  void _showVariationPopup() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(child: Text('Semua Variasi Produk', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                    IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: SingleChildScrollView(
+                    child: Wrap(spacing: 8, runSpacing: 8, children: _allVariations.map((item) {
+                      final selected = _variation?.id == item.id;
+                      return ChoiceChip(
+                        label: Text(item.name),
+                        selected: selected,
+                        selectedColor: Colors.deepOrange,
+                        labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87, fontWeight: selected ? FontWeight.bold : FontWeight.w500),
+                        onSelected: (value) {
+                          Navigator.pop(context);
+                          _chooseVariation(value ? item : null);
+                        },
+                      );
+                    }).toList()),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -161,23 +314,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(widget.product.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
-              Text('Rp ${_price.toStringAsFixed(0)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFFE65100))),
+              _priceView(),
               const SizedBox(height: 12),
               Text(_emptyStock ? 'Stok habis' : 'Tersedia: $_stock'),
               if (_weight > 0) Text('Berat: $_weight gram'),
               const Divider(height: 32),
               if (_hasVariation) ...[
-                const Text('Pilih Variasi Produk:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: widget.product.variations!.map((item) => ChoiceChip(
-                        label: Text(item.name),
-                        selected: _variation?.id == item.id,
-                        onSelected: (value) => _chooseVariation(value ? item : null),
-                      )).toList(),
-                ),
+                _variationArea(),
                 const Divider(height: 32),
               ],
               const Text('Deskripsi Produk', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
