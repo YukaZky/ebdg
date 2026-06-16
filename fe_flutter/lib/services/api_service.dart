@@ -166,6 +166,45 @@ class ApiService {
     return null;
   }
 
+  static Future<Map<String, dynamic>?> updateUserProfile({
+    required String name,
+    required String email,
+    String? phone,
+    String? currentPassword,
+    String? password,
+    String? passwordConfirmation,
+  }) async {
+    if (_token == null) return null;
+
+    final body = <String, dynamic>{
+      'name': name,
+      'email': email,
+      'phone': phone ?? '',
+    };
+
+    if (password != null && password.isNotEmpty) {
+      body['current_password'] = currentPassword ?? '';
+      body['password'] = password;
+      body['password_confirmation'] = passwordConfirmation ?? '';
+    }
+
+    final response = await http.put(
+      Uri.parse("$baseUrl/user-profile"),
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": "Bearer $_token"
+      },
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['data'];
+    }
+    return null;
+  }
+
   static Future<bool> logout() async {
     if (_token == null) return false;
 
@@ -419,306 +458,55 @@ class ApiService {
   // FUNGSI ADMIN PANEL (TOKO SAYA)
   // ==========================================
 
-  static Future<Map<String, dynamic>?> getAdminStoreLocation() async {
-    if (_token == null) return null;
-    try {
-      final response = await http.get(
-        Uri.parse("$baseUrl/admin/store-location"),
-        headers: {
-          "Accept": "application/json",
-          "Authorization": "Bearer $_token"
-        },
-      );
-      if (response.statusCode == 200) return jsonDecode(response.body);
-    } catch (e) {
-      print("Admin Error: $e");
-    }
-    return null;
-  }
-
-  static Future<bool> saveAdminStoreLocation(Map<String, dynamic> addressData) async {
-    if (_token == null) return false;
-    try {
-      final response = await http.post(
-        Uri.parse("$baseUrl/admin/store-location"),
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "Authorization": "Bearer $_token"
-        },
-        body: jsonEncode(addressData),
-      );
-      return response.statusCode == 200 || response.statusCode == 201;
-    } catch (e) {
-      print("Admin Error: $e");
-      return false;
-    }
-  }
-
   static Future<Map<String, dynamic>?> getAdminDashboardStats() async {
     if (_token == null) return null;
-    try {
-      final response = await http.get(
-        Uri.parse("$baseUrl/admin/dashboard"),
-        headers: {
-          "Accept": "application/json",
-          "Authorization": "Bearer $_token"
-        },
-      );
-      if (response.statusCode == 200) return jsonDecode(response.body);
-    } catch (e) {
-      print("Admin Error: $e");
-    }
-    return null;
+    final response = await http.get(Uri.parse("$baseUrl/admin/dashboard"), headers: {
+      "Accept": "application/json", "Authorization": "Bearer $_token"
+    });
+    return response.statusCode == 200 ? jsonDecode(response.body) : null;
   }
 
   static Future<List<dynamic>> getAdminProducts() async {
     if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/products"),
-        headers: {"Authorization": "Bearer $_token"});
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body)['data'] ?? [];
-    }
+    final response = await http.get(Uri.parse("$baseUrl/admin/products"), headers: {"Accept": "application/json", "Authorization": "Bearer $_token"});
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'];
     return [];
-  }
-
-  static Future<bool> saveAdminProduct(Map<String, String> fields,
-      {XFile? mainImage, 
-       List<XFile>? galleryImages, 
-       List<String>? keptGalleryImageIds, 
-       int? productId,
-       List<String>? variationNames,
-       List<XFile?>? variationImages,
-       List<String>? variationIds,
-       List<String>? variationRegularPrices,
-       List<String>? variationSalePrices,
-       List<String>? variationWeights,
-       List<String>? variationQuantities,
-      }) async {
-    if (_token == null) return false;
-
-    var uri = productId == null
-        ? Uri.parse("$baseUrl/admin/products/store")
-        : Uri.parse("$baseUrl/admin/products/update/$productId");
-
-    var request = http.MultipartRequest('POST', uri);
-
-    request.headers.addAll({
-      "Authorization": "Bearer $_token",
-      "Accept": "application/json",
-    });
-
-    if (productId != null) {
-      request.fields['_method'] = 'PUT';
-    }
-
-    request.fields.addAll(fields);
-
-    if (keptGalleryImageIds != null && keptGalleryImageIds.isNotEmpty) {
-      for (int i = 0; i < keptGalleryImageIds.length; i++) {
-        request.fields['kept_gallery_ids[$i]'] = keptGalleryImageIds[i];
-      }
-    } else if (productId != null) {
-      request.fields['kept_gallery_ids_empty'] = '1';
-    }
-
-    if (mainImage != null) {
-      request.files.add(http.MultipartFile.fromBytes(
-        'image',
-        await mainImage.readAsBytes(),
-        filename: mainImage.name,
-      ));
-    }
-
-    if (galleryImages != null && galleryImages.isNotEmpty) {
-      for (var file in galleryImages) {
-        request.files.add(http.MultipartFile.fromBytes(
-          'images[]',
-          await file.readAsBytes(),
-          filename: file.name,
-        ));
-      }
-    }
-
-    if (variationNames != null && variationNames.isNotEmpty) {
-      for (int i = 0; i < variationNames.length; i++) {
-        request.fields['variation_names[$i]'] = variationNames[i];
-        
-        if (variationIds != null && i < variationIds.length) {
-          request.fields['variation_ids[$i]'] = variationIds[i];
-        }
-        
-        if (variationRegularPrices != null && i < variationRegularPrices.length) {
-          request.fields['variation_regular_prices[$i]'] = variationRegularPrices[i].isEmpty ? '0' : variationRegularPrices[i];
-        }
-        
-        if (variationSalePrices != null && i < variationSalePrices.length) {
-          request.fields['variation_sale_prices[$i]'] = variationSalePrices[i]; 
-        }
-        
-        if (variationWeights != null && i < variationWeights.length) {
-          request.fields['variation_weights[$i]'] = variationWeights[i].isEmpty ? '0' : variationWeights[i];
-        }
-        
-        if (variationQuantities != null && i < variationQuantities.length) {
-          request.fields['variation_quantities[$i]'] = variationQuantities[i].isEmpty ? '0' : variationQuantities[i];
-        }
-
-        if (variationImages != null && i < variationImages.length && variationImages[i] != null) {
-          request.files.add(http.MultipartFile.fromBytes(
-            'variation_images[$i]',
-            await variationImages[i]!.readAsBytes(),
-            filename: variationImages[i]!.name,
-          ));
-        }
-      }
-    }
-
-    try {
-      final response = await request.send();
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return true;
-      } else {
-        final respStr = await response.stream.bytesToString();
-        print("Error API saveAdminProduct [${response.statusCode}]: $respStr");
-        return false;
-      }
-    } catch (e) {
-      print("Exception API saveAdminProduct: $e");
-      return false;
-    }
   }
 
   static Future<bool> deleteAdminProduct(int id) async {
     if (_token == null) return false;
-    final response = await http.delete(
-        Uri.parse("$baseUrl/admin/products/delete/$id"),
-        headers: {"Authorization": "Bearer $_token"});
+    final response = await http.delete(Uri.parse("$baseUrl/admin/products/delete/$id"), headers: {"Accept": "application/json", "Authorization": "Bearer $_token"});
     return response.statusCode == 200;
   }
 
   static Future<List<dynamic>> getAdminCategories() async {
     if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/categories"),
-        headers: {"Authorization": "Bearer $_token"});
-    return response.statusCode == 200
-        ? jsonDecode(response.body)['data'] ?? []
-        : [];
+    final response = await http.get(Uri.parse("$baseUrl/admin/categories"), headers: {"Accept": "application/json", "Authorization": "Bearer $_token"});
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'];
+    return [];
   }
 
   static Future<List<dynamic>> getAdminBrands() async {
     if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/brands"),
-        headers: {"Authorization": "Bearer $_token"});
-    return response.statusCode == 200
-        ? jsonDecode(response.body)['data'] ?? []
-        : [];
-  }
-
-  static Future<List<dynamic>> getAdminOrders() async {
-    if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/orders"),
-        headers: {"Authorization": "Bearer $_token"});
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body)['data'] ?? [];
-    }
+    final response = await http.get(Uri.parse("$baseUrl/admin/brands"), headers: {"Accept": "application/json", "Authorization": "Bearer $_token"});
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'];
     return [];
   }
 
-  static Future<bool> updateAdminOrderStatus(int orderId, String status) async {
+  static Future<bool> saveAdminProduct(Map<String, dynamic> data, {XFile? image, List<XFile>? variationImages}) async {
     if (_token == null) return false;
-    final response = await http.put(
-      Uri.parse("$baseUrl/admin/orders/update-status/$orderId"),
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $_token"
-      },
-      body: jsonEncode({"status": status}),
-    );
-    return response.statusCode == 200;
-  }
+    var request = http.MultipartRequest('POST', Uri.parse(data['id'] != null ? "$baseUrl/admin/products/update/${data['id']}" : "$baseUrl/admin/products/store"));
+    if (data['id'] != null) request.fields['_method'] = 'PUT';
+    request.headers['Authorization'] = "Bearer $_token";
 
-  static Future<List<dynamic>> getAdminCoupons() async {
-    if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/coupons"),
-        headers: {"Authorization": "Bearer $_token"});
-    return response.statusCode == 200 ? jsonDecode(response.body)['data'] : [];
-  }
-
-  static Future<List<dynamic>> getAdminContacts() async {
-    if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/contacts"),
-        headers: {"Authorization": "Bearer $_token"});
-    return response.statusCode == 200 ? jsonDecode(response.body)['data'] : [];
-  }
-
-  static Future<bool> saveAdminCategory(Map<String, String> fields,
-      {XFile? image, int? categoryId}) async {
-    if (_token == null) return false;
-
-    var uri = categoryId == null
-        ? Uri.parse("$baseUrl/admin/categories/store")
-        : Uri.parse("$baseUrl/admin/categories/update/$categoryId");
-
-    var request = http.MultipartRequest('POST', uri);
-    request.headers.addAll(
-        {"Authorization": "Bearer $_token", "Accept": "application/json"});
-
-    if (categoryId != null) request.fields['_method'] = 'PUT';
-    request.fields.addAll(fields);
-
-    if (image != null) {
-      request.files.add(http.MultipartFile.fromBytes(
-        'image',
-        await image.readAsBytes(),
-        filename: image.name,
-      ));
-    }
-
-    final response = await request.send();
-    return response.statusCode == 200 || response.statusCode == 201;
-  }
-
-  static Future<bool> deleteAdminCategory(int id) async {
-    if (_token == null) return false;
-    final response = await http.delete(
-        Uri.parse("$baseUrl/admin/categories/delete/$id"),
-        headers: {"Authorization": "Bearer $_token"});
-    return response.statusCode == 200;
-  }
-
-  static Future<bool> saveAdminBrand(Map<String, String> fields,
-      {XFile? image, int? brandId}) async {
-    if (_token == null) return false;
-
-    var uri = brandId == null
-        ? Uri.parse("$baseUrl/admin/brands/store")
-        : Uri.parse("$baseUrl/admin/brands/update/$brandId");
-
-    var request = http.MultipartRequest('POST', uri);
-    request.headers.addAll(
-        {"Authorization": "Bearer $_token", "Accept": "application/json"});
-
-    if (brandId != null) request.fields['_method'] = 'PUT';
-    request.fields.addAll(fields);
-
-    if (image != null) {
-      request.files.add(http.MultipartFile.fromBytes(
-        'image',
-        await image.readAsBytes(),
-        filename: image.name,
-      ));
-    }
-
-    final response = await request.send();
-    return response.statusCode == 200 || response.statusCode == 201;
-  }
-
-  static Future<bool> deleteAdminBrand(int id) async {
-    if (_token == null) return false;
-    final response = await http.delete(
-        Uri.parse("$baseUrl/admin/brands/delete/$id"),
-        headers: {"Authorization": "Bearer $_token"});
-    return response.statusCode == 200;
-  }
-}
+    data.forEach((key, value) {
+      if (value != null && key != 'id') {
+        if (value is List) {
+          for (var i = 0; i < value.length; i++) {
+            request.fields['${key}[$i]'] = value[i].toString();
+          }
+        } else {
+          request.fields[key] = value.toString();
+        }
+      }
+    });
