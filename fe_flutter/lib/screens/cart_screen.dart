@@ -45,7 +45,7 @@ class _CartScreenState extends State<CartScreen> {
           product['selected_variation_name'] = mutableItem['variation_name'];
 
           mutableItem['product'] = product;
-          mutableItem['isChecked'] = false;
+          mutableItem['isChecked'] = true;
           return mutableItem;
         }).toList();
         _isLoading = false;
@@ -72,12 +72,13 @@ class _CartScreenState extends State<CartScreen> {
     return '$base/uploads/products/$cleanValue';
   }
 
-  bool get _noneSelected => !_cartItems.any((item) => item['isChecked'] == true);
+  int get _selectedCount => _cartItems.where((item) => item['isChecked'] == true).length;
+  bool get _noneSelected => _selectedCount == 0;
 
   double get totalPrice {
     double total = 0;
     for (var item in _cartItems) {
-      if (_noneSelected || item['isChecked'] == true) {
+      if (item['isChecked'] == true) {
         final price = double.tryParse((item['price'] ?? item['product']?['regular_price'] ?? 0).toString()) ?? 0;
         final qty = int.tryParse(item['quantity'].toString()) ?? 1;
         total += price * qty;
@@ -89,13 +90,56 @@ class _CartScreenState extends State<CartScreen> {
   double get totalWeight {
     double weight = 0;
     for (var item in _cartItems) {
-      if (_noneSelected || item['isChecked'] == true) {
+      if (item['isChecked'] == true) {
         final itemWeight = double.tryParse((item['weight'] ?? item['product']?['weight'] ?? '0').toString()) ?? 0;
         final qty = int.tryParse(item['quantity'].toString()) ?? 1;
         weight += itemWeight * qty;
       }
     }
     return weight > 0 ? weight : 1000;
+  }
+
+  Map<String, List<int>> get _groupedStoreIndexes {
+    final grouped = <String, List<int>>{};
+    for (int i = 0; i < _cartItems.length; i++) {
+      final key = _storeKey(_cartItems[i]);
+      grouped.putIfAbsent(key, () => []).add(i);
+    }
+    return grouped;
+  }
+
+  String _storeKey(Map<String, dynamic> item) {
+    final product = item['product'] is Map ? Map<String, dynamic>.from(item['product']) : <String, dynamic>{};
+    final store = product['store'] is Map ? Map<String, dynamic>.from(product['store']) : <String, dynamic>{};
+    final storeId = store['id'] ?? store['slug'] ?? product['user_id'] ?? 'unknown-store';
+    return storeId.toString();
+  }
+
+  String _storeName(Map<String, dynamic> item) {
+    final product = item['product'] is Map ? Map<String, dynamic>.from(item['product']) : <String, dynamic>{};
+    final store = product['store'] is Map ? Map<String, dynamic>.from(product['store']) : <String, dynamic>{};
+    final name = store['name']?.toString().trim() ?? '';
+    if (name.isNotEmpty && name != 'null') return name;
+    return 'Toko Penjual';
+  }
+
+  bool _isStoreChecked(List<int> indexes) {
+    if (indexes.isEmpty) return false;
+    return indexes.every((index) => _cartItems[index]['isChecked'] == true);
+  }
+
+  bool _isStorePartialChecked(List<int> indexes) {
+    if (indexes.isEmpty) return false;
+    final selected = indexes.where((index) => _cartItems[index]['isChecked'] == true).length;
+    return selected > 0 && selected < indexes.length;
+  }
+
+  void _toggleStore(List<int> indexes, bool? value) {
+    setState(() {
+      for (final index in indexes) {
+        _cartItems[index]['isChecked'] = value ?? false;
+      }
+    });
   }
 
   Future<void> _removeItem(int index) async {
@@ -124,7 +168,12 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   void _checkout() {
-    final itemsToCheckout = _cartItems.where((item) => _noneSelected || item['isChecked'] == true).toList();
+    if (_noneSelected) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih produk yang ingin di-checkout dulu.')));
+      return;
+    }
+
+    final itemsToCheckout = _cartItems.where((item) => item['isChecked'] == true).toList();
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -146,8 +195,140 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
+  Widget _storeGroupCard(MapEntry<String, List<int>> entry) {
+    final indexes = entry.value;
+    if (indexes.isEmpty) return const SizedBox.shrink();
+    final firstItem = _cartItems[indexes.first];
+    final checked = _isStoreChecked(indexes);
+    final partial = _isStorePartialChecked(indexes);
+    final storeName = _storeName(firstItem);
+    final selectedInStore = indexes.where((index) => _cartItems[index]['isChecked'] == true).length;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.035), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => _toggleStore(indexes, !checked),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(10, 10, 14, 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+                border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+              ),
+              child: Row(
+                children: [
+                  Checkbox(
+                    value: partial ? null : checked,
+                    tristate: true,
+                    activeColor: Colors.blue[700],
+                    onChanged: (value) => _toggleStore(indexes, value ?? false),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(10)),
+                    child: Icon(Icons.storefront_rounded, color: Colors.orange.shade700, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(storeName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 2),
+                        Text('$selectedInStore/${indexes.length} produk dipilih', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey),
+                ],
+              ),
+            ),
+          ),
+          ...indexes.map((index) => _cartItemTile(index, isLast: index == indexes.last)),
+        ],
+      ),
+    );
+  }
+
+  Widget _cartItemTile(int index, {required bool isLast}) {
+    final item = _cartItems[index];
+    final product = item['product'] ?? {};
+    final image = _imageUrl(item['selected_image'] ?? product['image']);
+    final price = double.tryParse((item['price'] ?? product['regular_price'] ?? 0).toString()) ?? 0;
+    final qty = int.tryParse(item['quantity'].toString()) ?? 1;
+    final variationName = item['variation_name']?.toString() ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(border: isLast ? null : Border(bottom: BorderSide(color: Colors.grey.shade100))),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Checkbox(value: item['isChecked'], activeColor: Colors.blue[700], onChanged: (value) => _toggleCheckbox(index, value)),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade200)),
+            clipBehavior: Clip.antiAlias,
+            child: _productImage(image),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(product['name'] ?? 'Produk Tanpa Nama', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+                if (variationName.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                    child: Text('Variasi: $variationName', style: TextStyle(color: Colors.grey[700], fontSize: 11, fontWeight: FontWeight.w500)),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Text(formatCurrency(price), style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[700], fontSize: 14)),
+                const SizedBox(height: 4),
+                Text('Subtotal: ${formatCurrency(price * qty)}', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton(icon: Icon(Icons.delete_outline, color: Colors.grey[500], size: 21), onPressed: () => _removeItem(index), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  InkWell(onTap: () => _updateQuantity(index, -1), child: _qtyButton(Icons.remove)),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text('$qty', style: const TextStyle(fontWeight: FontWeight.w600))),
+                  InkWell(onTap: () => _updateQuantity(index, 1), child: _qtyButton(Icons.add)),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final storeGroups = _groupedStoreIndexes.entries.toList();
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
@@ -162,72 +343,8 @@ class _CartScreenState extends State<CartScreen> {
               ? const Center(child: Text('Keranjang belanja Anda kosong.', style: TextStyle(fontSize: 16, color: Colors.grey)))
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: _cartItems.length,
-                  itemBuilder: (context, index) {
-                    final item = _cartItems[index];
-                    final product = item['product'] ?? {};
-                    final image = _imageUrl(item['selected_image'] ?? product['image']);
-                    final price = double.tryParse((item['price'] ?? product['regular_price'] ?? 0).toString()) ?? 0;
-                    final qty = int.tryParse(item['quantity'].toString()) ?? 1;
-                    final variationName = item['variation_name']?.toString() ?? '';
-
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(top: 16),
-                              child: Checkbox(value: item['isChecked'], activeColor: Colors.blue, onChanged: (value) => _toggleCheckbox(index, value)),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              width: 70,
-                              height: 70,
-                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)),
-                              clipBehavior: Clip.antiAlias,
-                              child: _productImage(image),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(product['name'] ?? 'Produk Tanpa Nama', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                  if (variationName.isNotEmpty) ...[
-                                    const SizedBox(height: 4),
-                                    Text('Variasi: $variationName', style: TextStyle(color: Colors.grey[700], fontSize: 12, fontWeight: FontWeight.w500)),
-                                  ],
-                                  const SizedBox(height: 8),
-                                  Text(formatCurrency(price), style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[700], fontSize: 14)),
-                                  const SizedBox(height: 4),
-                                  Text('Subtotal: ${formatCurrency(price * qty)}', style: TextStyle(color: Colors.grey[700], fontSize: 12)),
-                                ],
-                              ),
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                IconButton(icon: Icon(Icons.delete, color: Colors.grey[400], size: 20), onPressed: () => _removeItem(index), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    InkWell(onTap: () => _updateQuantity(index, -1), child: _qtyButton(Icons.remove)),
-                                    Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text('$qty', style: const TextStyle(fontWeight: FontWeight.w600))),
-                                    InkWell(onTap: () => _updateQuantity(index, 1), child: _qtyButton(Icons.add)),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                  itemCount: storeGroups.length,
+                  itemBuilder: (context, index) => _storeGroupCard(storeGroups[index]),
                 ),
       bottomNavigationBar: _isLoading
           ? const SizedBox.shrink()
@@ -242,13 +359,13 @@ class _CartScreenState extends State<CartScreen> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Total (${_noneSelected ? _cartItems.length : _cartItems.where((i) => i['isChecked'] == true).length} produk)', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                        Text('Total ($_selectedCount produk)', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                         const SizedBox(height: 2),
                         Text(formatCurrency(totalPrice), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blue[700])),
                       ],
                     ),
                     ElevatedButton(
-                      onPressed: _cartItems.isEmpty ? null : _checkout,
+                      onPressed: _cartItems.isEmpty || _noneSelected ? null : _checkout,
                       style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14), backgroundColor: Colors.blue[700], elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                       child: const Text('Checkout', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
                     ),
