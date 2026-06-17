@@ -44,7 +44,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
       final description = (product.description ?? '').toLowerCase();
       final shortDescription = (product.shortDescription ?? '').toLowerCase();
       final sku = product.SKU.toLowerCase();
-      final variations = (product.variations ?? []).map((item) => item.name.toLowerCase()).join(' ');
+      final variations = (product.variations ?? [])
+          .map((item) => item.name.toLowerCase())
+          .join(' ');
 
       return name.contains(query) ||
           description.contains(query) ||
@@ -57,12 +59,14 @@ class _ProductListScreenState extends State<ProductListScreen> {
   void _openChat() {
     if (ApiService.token == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Silakan login terlebih dahulu untuk membuka chat')),
+        const SnackBar(
+            content: Text('Silakan login terlebih dahulu untuk membuka chat')),
       );
       return;
     }
 
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen()));
+    Navigator.push(
+        context, MaterialPageRoute(builder: (_) => const ChatListScreen()));
   }
 
   @override
@@ -97,7 +101,8 @@ class _ProductListScreenState extends State<ProductListScreen> {
               suffixIcon: _searchQuery.isEmpty
                   ? null
                   : IconButton(
-                      icon: const Icon(Icons.close, color: Colors.grey, size: 20),
+                      icon:
+                          const Icon(Icons.close, color: Colors.grey, size: 20),
                       onPressed: () {
                         _searchController.clear();
                         setState(() => _searchQuery = '');
@@ -110,23 +115,31 @@ class _ProductListScreenState extends State<ProductListScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.favorite_border, color: Colors.white, size: 27),
+            icon: const Icon(Icons.favorite_border,
+                color: Colors.white, size: 27),
             onPressed: () {
               if (ApiService.token == null) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Silakan login di menu Akun terlebih dahulu')),
+                  const SnackBar(
+                      content:
+                          Text('Silakan login di menu Akun terlebih dahulu')),
                 );
               } else {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const WishlistScreen()));
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const WishlistScreen()));
               }
             },
           ),
           IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.white, size: 27),
+            icon: const Icon(Icons.notifications_none,
+                color: Colors.white, size: 27),
             onPressed: () {},
           ),
           IconButton(
-            icon: const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 25),
+            icon: const Icon(Icons.chat_bubble_outline,
+                color: Colors.white, size: 25),
             onPressed: _openChat,
           ),
           const SizedBox(width: 6),
@@ -149,7 +162,19 @@ class _ProductListScreenState extends State<ProductListScreen> {
             }
 
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return const Center(child: Text('Tidak ada produk tersedia'));
+              return ListView(
+                physics:
+                    const AlwaysScrollableScrollPhysics(), // Memaksa agar layar selalu bisa di-scroll / di-refresh
+                children: [
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.35),
+                  const Center(
+                    child: Text(
+                      'Tidak ada produk tersedia',
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                  ),
+                ],
+              );
             }
 
             final products = _filterProducts(snapshot.data!);
@@ -163,7 +188,9 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   Center(
                     child: Text(
                       'Produk "$_searchQuery" tidak ditemukan',
-                      style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
