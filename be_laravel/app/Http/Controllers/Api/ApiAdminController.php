@@ -51,14 +51,37 @@ class ApiAdminController extends Controller
         $store->save();
     }
 
+    private function productPayload(Product $product): Product
+    {
+        $product->load(['category', 'brand', 'variations']);
+        $product->images = DB::table('product_images')
+            ->where('product_id', $product->id)
+            ->orderBy('id', 'asc')
+            ->get();
+
+        return $product;
+    }
+
+    private function normalizeArrayInput($value): array
+    {
+        if (is_array($value)) return $value;
+        if ($value === null) return [];
+        return [$value];
+    }
+
+    private function arrayValue(array $items, $index, $default = null)
+    {
+        return array_key_exists($index, $items) ? $items[$index] : $default;
+    }
+
     private function syncProductVariations(Request $request, Product $product): void
     {
-        $names = $request->input('variation_names', []);
-        $variationIds = $request->input('variation_ids', []);
-        $regularPrices = $request->input('variation_regular_prices', []);
-        $salePrices = $request->input('variation_sale_prices', []);
-        $weights = $request->input('variation_weights', []);
-        $quantities = $request->input('variation_quantities', []);
+        $names = $this->normalizeArrayInput($request->input('variation_names', []));
+        $variationIds = $this->normalizeArrayInput($request->input('variation_ids', []));
+        $regularPrices = $this->normalizeArrayInput($request->input('variation_regular_prices', []));
+        $salePrices = $this->normalizeArrayInput($request->input('variation_sale_prices', []));
+        $weights = $this->normalizeArrayInput($request->input('variation_weights', []));
+        $quantities = $this->normalizeArrayInput($request->input('variation_quantities', []));
 
         $savedIds = [];
 
@@ -66,11 +89,13 @@ class ApiAdminController extends Controller
             $name = trim((string) $name);
             if ($name === '') continue;
 
-            $variationId = $variationIds[$index] ?? null;
+            $variationId = $this->arrayValue($variationIds, $index);
             $variation = null;
 
-            if ($variationId) {
-                $variation = ProductVariation::where('product_id', $product->id)->where('id', $variationId)->first();
+            if (! empty($variationId)) {
+                $variation = ProductVariation::where('product_id', $product->id)
+                    ->where('id', $variationId)
+                    ->first();
             }
 
             if (! $variation) {
@@ -78,14 +103,19 @@ class ApiAdminController extends Controller
                 $variation->product_id = $product->id;
             }
 
-            $variation->name = $name;
-            $variation->regular_price = isset($regularPrices[$index]) && $regularPrices[$index] !== '' ? $regularPrices[$index] : 0;
-            $variation->sale_price = isset($salePrices[$index]) && $salePrices[$index] !== '' ? $salePrices[$index] : null;
-            $variation->weight = isset($weights[$index]) && $weights[$index] !== '' ? $weights[$index] : 0;
-            $variation->quantity = isset($quantities[$index]) && $quantities[$index] !== '' ? $quantities[$index] : 0;
+            $regularPrice = $this->arrayValue($regularPrices, $index, 0);
+            $salePrice = $this->arrayValue($salePrices, $index);
+            $weight = $this->arrayValue($weights, $index, 0);
+            $quantity = $this->arrayValue($quantities, $index, 0);
 
-            if ($request->hasFile("variation_images.$index")) {
-                $varImage = $request->file("variation_images.$index");
+            $variation->name = $name;
+            $variation->regular_price = $regularPrice !== null && $regularPrice !== '' ? $regularPrice : 0;
+            $variation->sale_price = $salePrice !== null && $salePrice !== '' && $salePrice !== 'null' ? $salePrice : null;
+            $variation->weight = $weight !== null && $weight !== '' ? $weight : 0;
+            $variation->quantity = $quantity !== null && $quantity !== '' ? $quantity : 0;
+
+            $varImage = $request->file("variation_images.$index");
+            if ($varImage) {
                 $varImageName = time() . "_var_{$product->id}_$index." . $varImage->extension();
                 $varImage->move(public_path('uploads/products'), $varImageName);
                 $variation->image = $varImageName;
@@ -95,9 +125,11 @@ class ApiAdminController extends Controller
             $savedIds[] = $variation->id;
         }
 
-        ProductVariation::where('product_id', $product->id)
-            ->when(! empty($savedIds), fn ($query) => $query->whereNotIn('id', $savedIds))
-            ->delete();
+        $deleteQuery = ProductVariation::where('product_id', $product->id);
+        if (! empty($savedIds)) {
+            $deleteQuery->whereNotIn('id', $savedIds);
+        }
+        $deleteQuery->delete();
     }
 
     public function dashboardStats()
@@ -118,17 +150,24 @@ class ApiAdminController extends Controller
     public function getProducts()
     {
         $products = Product::with(['category', 'brand', 'variations'])
-                    ->where('user_id', auth()->id())
-                    ->latest()
-                    ->get();
+            ->where('user_id', auth()->id())
+            ->latest()
+            ->get();
 
         foreach ($products as $product) {
             $product->images = DB::table('product_images')
-                                ->where('product_id', $product->id)
-                                ->get();
+                ->where('product_id', $product->id)
+                ->orderBy('id', 'asc')
+                ->get();
         }
 
         return response()->json(['status' => 'success', 'data' => $products], 200);
+    }
+
+    public function getProductDetail($id)
+    {
+        $product = Product::where('user_id', auth()->id())->findOrFail($id);
+        return response()->json(['status' => 'success', 'data' => $this->productPayload($product)], 200);
     }
 
     public function storeProduct(Request $request)
@@ -141,33 +180,43 @@ class ApiAdminController extends Controller
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
-        $product = new Product();
-        $product->user_id = auth()->id();
-        $product->name = $request->name;
-        $product->slug = Str::slug($request->name) . '-' . auth()->id();
-        $product->short_description = $request->short_description;
-        $product->description = $request->description;
-        $product->regular_price = $request->regular_price;
-        $product->sale_price = $request->sale_price;
-        $product->SKU = 'PRD' . time();
-        $product->stock_status = $request->stock_status;
-        $product->quantity = $request->quantity ?? '0';
-        $product->weight = $request->weight ?? '0';
-        $product->exp_date = $request->exp_date;
-        $product->category_id = $request->category_id;
-        $product->brand_id = $request->brand_id;
+        $product = DB::transaction(function () use ($request) {
+            $product = new Product();
+            $product->user_id = auth()->id();
+            $product->name = $request->name;
+            $product->slug = Str::slug($request->name) . '-' . auth()->id();
+            $product->short_description = $request->short_description;
+            $product->description = $request->description;
+            $product->regular_price = $request->regular_price;
+            $product->sale_price = $request->sale_price;
+            $product->SKU = 'PRD' . time();
+            $product->stock_status = $request->stock_status;
+            $product->quantity = $request->quantity ?? '0';
+            $product->weight = $request->weight ?? '0';
+            $product->exp_date = $request->exp_date;
+            $product->category_id = $request->category_id;
+            $product->brand_id = $request->brand_id;
 
-        if ($request->hasFile('image')) {
-            $imageName = time() . '.' . $request->image->extension();
-            $request->image->move(public_path('uploads/products'), $imageName);
-            $product->image = $imageName;
-        }
+            if ($request->hasFile('image')) {
+                $imageName = time() . '.' . $request->image->extension();
+                $request->image->move(public_path('uploads/products'), $imageName);
+                $product->image = $imageName;
+            }
 
-        $product->save();
-        $this->syncProductVariations($request, $product);
-        $product->load(['category', 'brand', 'variations']);
+            $product->save();
+            $this->syncProductVariations($request, $product);
 
-        return response()->json(['message' => 'Product created successfully!', 'data' => $product], 201);
+            return $product;
+        });
+
+        $product = $this->productPayload($product);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Product created successfully!',
+            'variation_count' => $product->variations->count(),
+            'data' => $product,
+        ], 201);
     }
 
     public function updateProduct(Request $request, $id)
@@ -181,31 +230,40 @@ class ApiAdminController extends Controller
         ]);
 
         $product = Product::where('user_id', auth()->id())->findOrFail($id);
-        $product->name = $request->name;
-        $product->slug = Str::slug($request->name) . '-' . auth()->id();
-        $product->short_description = $request->short_description;
-        $product->description = $request->description;
-        $product->regular_price = $request->regular_price;
-        $product->sale_price = $request->sale_price;
-        $product->SKU = $product->SKU ?: 'PRD' . time();
-        $product->stock_status = $request->stock_status;
-        $product->quantity = $request->quantity ?? '0';
-        $product->weight = $request->weight ?? '0';
-        $product->exp_date = $request->exp_date;
-        $product->category_id = $request->category_id;
-        $product->brand_id = $request->brand_id;
 
-        if ($request->hasFile('image')) {
-            $imageName = time() . '.' . $request->image->extension();
-            $request->image->move(public_path('uploads/products'), $imageName);
-            $product->image = $imageName;
-        }
+        DB::transaction(function () use ($request, $product) {
+            $product->name = $request->name;
+            $product->slug = Str::slug($request->name) . '-' . auth()->id();
+            $product->short_description = $request->short_description;
+            $product->description = $request->description;
+            $product->regular_price = $request->regular_price;
+            $product->sale_price = $request->sale_price;
+            $product->SKU = $product->SKU ?: 'PRD' . time();
+            $product->stock_status = $request->stock_status;
+            $product->quantity = $request->quantity ?? '0';
+            $product->weight = $request->weight ?? '0';
+            $product->exp_date = $request->exp_date;
+            $product->category_id = $request->category_id;
+            $product->brand_id = $request->brand_id;
 
-        $product->save();
-        $this->syncProductVariations($request, $product);
-        $product->load(['category', 'brand', 'variations']);
+            if ($request->hasFile('image')) {
+                $imageName = time() . '.' . $request->image->extension();
+                $request->image->move(public_path('uploads/products'), $imageName);
+                $product->image = $imageName;
+            }
 
-        return response()->json(['message' => 'Product updated successfully!', 'data' => $product]);
+            $product->save();
+            $this->syncProductVariations($request, $product);
+        });
+
+        $product = $this->productPayload($product->fresh());
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Product updated successfully!',
+            'variation_count' => $product->variations->count(),
+            'data' => $product,
+        ], 200);
     }
 
     public function deleteProduct($id)
@@ -362,6 +420,15 @@ class ApiAdminController extends Controller
     public function getWhatsappSettings()
     {
         return response()->json(['data' => WhatsappSetting::first()], 200);
+    }
+
+    public function updateWhatsappSettings(Request $request)
+    {
+        $setting = WhatsappSetting::first() ?? new WhatsappSetting();
+        $setting->fill($request->all());
+        $setting->save();
+
+        return response()->json(['status' => 'success', 'data' => $setting], 200);
     }
 
     public function getStoreLocation()
