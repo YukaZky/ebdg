@@ -113,6 +113,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _handleLogout() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Keluar Akun', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: const Text('Apakah Anda yakin ingin keluar dari akun saat ini?'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Ya, Keluar', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
     setState(() => isLoading = true);
     final success = await ApiService.logout();
     if (!mounted) return;
@@ -122,6 +145,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() => userProfile = null);
       widget.onProfileUpdated('Akun');
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Berhasil keluar dari akun'), backgroundColor: Colors.green));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal keluar, periksa koneksi Anda.'), backgroundColor: Colors.red));
     }
   }
 
@@ -154,15 +179,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildSectionTitleMungkinKamuSuka('Mungkin Kamu Suka'),
                   _buildProductKatalog(),
                   if (isLoggedIn) ...[
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 12)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red.shade50, 
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 14), 
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(color: Colors.red.shade200, width: 1)
+                            )
+                          ),
                           onPressed: _handleLogout,
-                          child: const Text('Keluar Akun', style: TextStyle(color: Colors.white)),
+                          child: const Text('Keluar Akun', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 15)),
                         ),
                       ),
                     ),
@@ -182,100 +215,113 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Container(
       width: double.infinity,
-      height: 250,
       decoration: const BoxDecoration(
         color: Color(0xFF0C2442),
         image: DecorationImage(image: AssetImage('assets/appbar.png'), fit: BoxFit.cover),
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                GestureDetector(
-                  onTap: isLoggedIn ? _changeProfilePhoto : null,
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: 88,
-                        height: 88,
-                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                        clipBehavior: Clip.antiAlias,
-                        child: avatarUrl.isNotEmpty
-                            ? Image.network(avatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 60, color: Color(0xFF0C2442)))
-                            : const Icon(Icons.person, size: 60, color: Color(0xFF0C2442)),
-                      ),
-                      if (isLoggedIn)
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(color: Color(0xFFF39C12), shape: BoxShape.circle),
-                            child: isUploadingPhoto
-                                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 20.0, right: 12.0, top: 16.0, bottom: 24.0),
+          child: !isLoggedIn
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      clipBehavior: Clip.antiAlias,
+                      child: const Icon(Icons.person, size: 50, color: Color(0xFF0C2442)),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8)),
+                          onPressed: () async {
+                            await Navigator.push(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
+                            _fetchProfile();
+                          },
+                          child: const Text('Login', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        const SizedBox(width: 16),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF39C12), foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8)),
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen())).then((_) => _fetchProfile()),
+                          child: const Text('Daftar', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    )
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // FOTO PROFIL (KIRI)
+                    GestureDetector(
+                      onTap: _changeProfilePhoto,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Container(
+                            width: 72,
+                            height: 72,
+                            decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
+                            clipBehavior: Clip.antiAlias,
+                            child: avatarUrl.isNotEmpty
+                                ? Image.network(avatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 50, color: Color(0xFF0C2442)))
+                                : const Icon(Icons.person, size: 50, color: Color(0xFF0C2442)),
                           ),
-                        ),
-                    ],
-                  ),
-                ),
-                if (isLoggedIn)
-                  Positioned(
-                    right: -10,
-                    top: -8,
-                    child: Material(
-                      color: Colors.white,
-                      shape: const CircleBorder(),
-                      elevation: 3,
-                      child: InkWell(
-                        onTap: _openAccountSettings,
-                        customBorder: const CircleBorder(),
-                        child: const Padding(
-                          padding: EdgeInsets.all(8),
-                          child: Icon(Icons.settings, color: Color(0xFF0C2442), size: 19),
-                        ),
+                          Positioned(
+                            right: -2,
+                            bottom: -2,
+                            child: Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: const BoxDecoration(color: Color(0xFFF39C12), shape: BoxShape.circle),
+                              child: isUploadingPhoto
+                                  ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.camera_alt, size: 14, color: Colors.white),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (!isLoggedIn)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8)),
-                    onPressed: () async {
-                      await Navigator.push(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
-                      _fetchProfile();
-                    },
-                    child: const Text('Login', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF39C12), foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8)),
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen())).then((_) => _fetchProfile()),
-                    child: const Text('Daftar', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              )
-            else
-              Column(
-                children: [
-                  Text(name, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text(email, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13)),
-                  const SizedBox(height: 3),
-                  Text(phone, style: TextStyle(color: Colors.white.withOpacity(0.82), fontSize: 12)),
-                  const SizedBox(height: 6),
-                  const Text('Ketuk foto untuk ubah foto, ikon gear untuk pengaturan akun', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                ],
-              ),
-          ],
+                    const SizedBox(width: 16),
+                    
+                    // DATA DIRI (TENGAH - EXPANDED)
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 4),
+                          Text(email, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 2),
+                          Text(phone, style: TextStyle(color: Colors.white.withOpacity(0.82), fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
+                    ),
+
+                    // IKON AKSI (KANAN)
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.settings, color: Colors.white, size: 24),
+                          tooltip: 'Pengaturan Akun',
+                          onPressed: _openAccountSettings,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.logout, color: Colors.redAccent, size: 24),
+                          tooltip: 'Keluar',
+                          onPressed: _handleLogout,
+                        ),
+                      ],
+                    )
+                  ],
+                ),
         ),
       ),
     );
@@ -285,16 +331,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), spreadRadius: 1, blurRadius: 5, offset: const Offset(0, 2))], border: Border.all(color: Colors.grey.shade200)),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.08), spreadRadius: 1, blurRadius: 8, offset: const Offset(0, 3))], border: Border.all(color: Colors.grey.shade200)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Pesanan Saya', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
         const SizedBox(height: 16),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          _buildPesananItem(Icons.account_balance_wallet_outlined, 'Belum Bayar', isLoggedIn),
-          _buildPesananItem(Icons.inventory_2_outlined, 'Dikemas', isLoggedIn),
-          _buildPesananItem(Icons.local_shipping_outlined, 'Dikirim', isLoggedIn),
-          _buildPesananItem(Icons.star_outline, 'Beri Penilaian', isLoggedIn),
-        ]),
+        Row(
+          children: [
+            Expanded(child: _buildPesananItem(Icons.account_balance_wallet_outlined, 'Belum Bayar', isLoggedIn)),
+            Expanded(child: _buildPesananItem(Icons.inventory_2_outlined, 'Dikemas', isLoggedIn)),
+            Expanded(child: _buildPesananItem(Icons.local_shipping_outlined, 'Dikirim', isLoggedIn)),
+            Expanded(child: _buildPesananItem(Icons.star_outline, 'Dinilai', isLoggedIn)),
+          ],
+        ),
       ]),
     );
   }
@@ -302,42 +350,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildPesananItem(IconData icon, String title, bool isLoggedIn) {
     return InkWell(
       onTap: () => _handleFeatureTap(isLoggedIn, () {}),
-      child: Column(children: [Icon(icon, size: 32, color: Colors.black87), const SizedBox(height: 8), Text(title, style: const TextStyle(fontSize: 11, color: Colors.black54))]),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 28, color: Colors.black87), 
+          const SizedBox(height: 8), 
+          Text(title, style: const TextStyle(fontSize: 11, color: Colors.black54), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis)
+        ]
+      ),
     );
   }
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(children: [Expanded(child: Divider(color: Colors.grey.shade400, thickness: 1)), Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text(title, style: const TextStyle(fontSize: 14, color: Colors.black87))), Expanded(child: Divider(color: Colors.grey.shade400, thickness: 1))]),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(children: [Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)), Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text(title, style: const TextStyle(fontSize: 13, color: Colors.black54, fontWeight: FontWeight.w600))), Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1))]),
     );
   }
 
   Widget _buildSectionTitleMungkinKamuSuka(String title) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      child: Row(children: [Text(title, style: const TextStyle(fontSize: 14, color: Colors.black87)), const SizedBox(width: 12), Expanded(child: Divider(color: Colors.grey.shade400, thickness: 1))]),
+      child: Row(children: [Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)), const SizedBox(width: 12), Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1))]),
     );
   }
 
   Widget _buildLayananAkun(bool isLoggedIn) {
-    final menu = <Widget>[
-      _buildBoxMenu('Alamat Saya', Icons.location_on, const Color(0xFF0C2442), () {
-        _handleFeatureTap(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AddressListScreen())));
-      }),
-      _buildBoxMenu('Kupon Saya', Icons.local_activity, const Color(0xFF0C2442), () => _handleFeatureTap(isLoggedIn, () {})),
-    ];
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 4,
-        children: menu,
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildBoxMenu('Alamat Saya', Icons.location_on, const Color(0xFF0C2442), () {
+              _handleFeatureTap(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AddressListScreen())));
+            }),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _buildBoxMenu('Kupon Saya', Icons.local_activity, const Color(0xFF0C2442), () => _handleFeatureTap(isLoggedIn, () {})),
+          ),
+        ],
       ),
     );
   }
@@ -348,8 +400,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFF39C12), width: 1.5)),
-        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Expanded(child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.black87), overflow: TextOverflow.ellipsis)), Icon(icon, color: iconColor, size: 20)]),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFF39C12), width: 1.2)),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Expanded(child: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis)), Icon(icon, color: iconColor, size: 20)]),
       ),
     );
   }
@@ -362,8 +414,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFF39C12), width: 1.5)),
-          child: const Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Icon(Icons.storefront, color: Color(0xFF0C2442), size: 24), Text('T O K O   S A Y A', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.black87)), Icon(Icons.storefront, color: Color(0xFF0C2442), size: 24)]),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFF39C12), width: 1.2)),
+          child: const Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Icon(Icons.storefront, color: Color(0xFF0C2442), size: 24), Text('T O K O   S A Y A', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 2, color: Colors.black87)), Icon(Icons.storefront, color: Color(0xFF0C2442), size: 24)]),
         ),
       ),
     );
