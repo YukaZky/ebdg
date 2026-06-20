@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\ApiAdminController;
 use App\Http\Controllers\Api\ApiMarketplaceController;
 use App\Http\Controllers\Api\ApiUserProfileController;
 use App\Http\Controllers\MidtransController;
+use App\Http\Controllers\Api\ApiPaymentMethodController;
 
 Route::post('/register', [ApiAuthController::class, 'register']);
 Route::post('/login', [ApiAuthController::class, 'login']);
@@ -22,6 +23,7 @@ Route::get('/products/{slug}', [ApiProductController::class, 'show']);
 Route::get('/stores/{slug}', [ApiMarketplaceController::class, 'storeDetail']);
 Route::get('/products/{productId}/reviews', [ApiMarketplaceController::class, 'productReviews']);
 Route::post('/midtrans/notification', [MidtransController::class, 'notificationHandler']);
+Route::get('/payment-methods', [ApiPaymentMethodController::class, 'index']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [ApiAuthController::class, 'logout']);

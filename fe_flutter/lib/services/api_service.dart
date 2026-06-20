@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../models/product_model.dart';
+import '../models/payment_method_model.dart';
 
 class ApiService {
   static const String baseUrl = "https://ebdg.sidome.id/api";
@@ -631,5 +632,22 @@ class ApiService {
         Uri.parse("$baseUrl/admin/brands/delete/$id"),
         headers: _authHeaders);
     return response.statusCode == 200;
+  }
+
+  Future<List<PaymentMethodModel>> getPaymentMethods() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/payment-methods'));
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        if (responseData['success'] == true) {
+          List<dynamic> data = responseData['data'];
+          return data.map((json) => PaymentMethodModel.fromJson(json)).toList();
+        }
+      }
+      throw Exception('Gagal memuat metode pembayaran');
+    } catch (e) {
+      throw Exception('Error jaringan: $e');
+    }
   }
 }
