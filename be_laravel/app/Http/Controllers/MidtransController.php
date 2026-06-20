@@ -15,49 +15,66 @@ class MidtransController extends Controller
         MidtransConfig::$serverKey = config('midtrans.server_key');
         MidtransConfig::$isProduction = config('midtrans.is_production');
 
-        // Buat instance notifikasi
+        // Buat instance notifikasi otomatis dari Midtrans
         $notification = new MidtransNotification();
 
-        // Pisahkan order_id asli dari timestamp
+        // =========================================================================
+        // PERBAIKAN BUG UTAMA:
+        // Format order_id dari checkout adalah: "ORDER-[ID_ORDER]-[TIMESTAMP]"
+        // Contoh: "ORDER-15-17187123"
+        // Hasil explode: index [0] = 'ORDER', index [1] = '15', index [2] = '17187123'
+        // =========================================================================
         $orderIdParts = explode('-', $notification->order_id);
-        $orderId = $orderIdParts[0];
+        $orderId = $orderIdParts[1] ?? null; // Diubah ke index 1 untuk mengambil ID numerik asli
 
         $status = $notification->transaction_status;
         $type = $notification->payment_type;
         $fraud = $notification->fraud_status;
 
+        // Cari data order berdasarkan ID asli
         $order = Order::find($orderId);
 
         if (!$order) {
             return response()->json(['message' => 'Order not found.'], 404);
         }
 
-        // Handle status transaksi
+        // Ambil relasi transaksi dari model Order
+        $transaction = $order->transaction;
+
+        if (!$transaction) {
+            return response()->json(['message' => 'Transaction record not found for this order.'], 404);
+        }
+
+        // Handle status transaksi dari Midtrans (Skema ini sama baik untuk Snap maupun Core API)
         if ($status == 'capture') {
             if ($type == 'credit_card') {
                 if ($fraud == 'challenge') {
-                    // TODO: set transaction status on your database to 'challenge'
+                    $transaction->status = 'challenge';
                 } else {
-                    $order->transaction->status = 'approved';
-                    // Anda mungkin juga ingin mengubah status order utama
-                    // $order->status = 'processing'; 
+                    $transaction->status = 'approved';
+                    $order->status = 'ordered'; 
                 }
             }
         } elseif ($status == 'settlement') {
-            // Jika status pembayaran berhasil (settlement)
-            $order->transaction->status = 'approved';
-            $order->status = 'ordered'; // atau 'processing' jika Anda punya status itu
+            // Jika status pembayaran berhasil/lunas (settlement)
+            $transaction->status = 'approved';
+            $order->status = 'ordered'; // Anda bisa menyesuaikan menjadi 'processing' jika ada status itu
             
         } elseif ($status == 'pending') {
-            $order->transaction->status = 'pending';
+            // Jika pengguna baru mendapatkan VA/QRIS tetapi belum membayar
+            $transaction->status = 'pending';
+            $order->status = 'ordered'; 
+            
         } elseif ($status == 'deny' || $status == 'expire' || $status == 'cancel') {
-            $order->transaction->status = 'declined';
-            $order->status = 'canceled'; // Batalkan pesanan
+            // Jika pembayaran ditolak, kedaluwarsa, atau dibatalkan
+            $transaction->status = 'declined';
+            $order->status = 'canceled'; // Otomatis batalkan pesanan di sistem toko
         }
 
-        $order->transaction->save();
+        // Simpan perubahan ke masing-masing tabel di database
+        $transaction->save();
         $order->save();
 
-        return response()->json(['message' => 'Notification handled.']);
+        return response()->json(['message' => 'Notification handled successfully.']);
     }
 }

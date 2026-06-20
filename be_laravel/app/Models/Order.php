@@ -17,6 +17,11 @@ class Order extends Model
         'status', 'is_shipping_different', 'delivered_date', 'canceled_date'
     ];
 
+    public function transaction()
+    {
+        return $this->hasOne(Transaction::class);
+    }
+
     // --- TAMBAHKAN RELASI INI ---
     /**
      * Relasi ke tabel order_items

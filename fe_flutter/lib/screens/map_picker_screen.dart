@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 
 class MapPickerScreen extends StatefulWidget {
   final double? initialLat;
   final double? initialLng;
-  final String? searchAddress; // Parameter pencarian alamat pintar
+  final String? searchAddress; 
 
   const MapPickerScreen({Key? key, this.initialLat, this.initialLng, this.searchAddress}) : super(key: key);
 
@@ -15,10 +16,11 @@ class MapPickerScreen extends StatefulWidget {
 }
 
 class _MapPickerScreenState extends State<MapPickerScreen> {
-  GoogleMapController? _mapController;
-  LatLng _currentPosition = const LatLng(-6.200000, 106.816666); // Default: Jakarta
+  final MapController _mapController = MapController();
+  LatLng _currentPosition = const LatLng(-6.200000, 106.816666); // Default jika gagal semua
   bool _isLoading = true;
   String _addressText = "Mencari lokasi...";
+  bool _hasLocationPermission = false;
 
   @override
   void initState() {
@@ -26,13 +28,39 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     _initializeMap();
   }
 
-  Future<void> _initializeMap() async {
-    // 1. Jika Mode Edit (sudah ada koordinat lama)
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkPermission() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      
+      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        _hasLocationPermission = true;
+      }
+    } catch (e) {
+      debugPrint("Izin lokasi error: $e");
+    }
+  }
+
+Future<void> _initializeMap() async {
+    await _checkPermission();
+
+    // 1. Jika Mode Edit (sudah ada koordinat tersimpan dari database sebelumnya)
     if (widget.initialLat != null && widget.initialLng != null) {
       _currentPosition = LatLng(widget.initialLat!, widget.initialLng!);
       await _getAddressFromLatLng(_currentPosition);
     } 
-    // 2. SISTEM PINTAR: Cari koordinat berdasarkan ketikan/pilihan alamat user
+    // 2. PRIORITAS UTAMA (Standar E-Commerce): Lempar peta ke area yang dipilih dari Dropdown RajaOngkir
     else if (widget.searchAddress != null && widget.searchAddress!.isNotEmpty) {
       try {
         List<Location> locations = await locationFromAddress(widget.searchAddress!);
@@ -40,37 +68,47 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
           _currentPosition = LatLng(locations.first.latitude, locations.first.longitude);
           await _getAddressFromLatLng(_currentPosition);
         } else {
-          await _getCurrentGPSLocation();
+          // Jika satelit gagal mengidentifikasi nama daerah, baru pakai GPS HP
+          if (_hasLocationPermission) await _fetchCurrentLocation();
         }
       } catch (e) {
-        debugPrint("Gagal konversi alamat ke peta: $e");
-        await _getCurrentGPSLocation();
+        debugPrint("Pencarian lokasi satelit dari dropdown gagal: $e");
+        if (_hasLocationPermission) await _fetchCurrentLocation();
       }
     } 
-    // 3. Jika tidak ada patokan, gunakan GPS HP
-    else {
-      await _getCurrentGPSLocation();
+    // 3. FALLBACK: Jika dropdown kosong sama sekali, baru gunakan murni GPS Device
+    else if (_hasLocationPermission) {
+      await _fetchCurrentLocation();
     }
 
-    setState(() => _isLoading = false);
-    if (_mapController != null) {
-      _mapController!.animateCamera(CameraUpdate.newLatLngZoom(_currentPosition, 16));
+    if (mounted) {
+      setState(() => _isLoading = false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _mapController.move(_currentPosition, 16.0);
+      });
+    }
+  }
+  Future<void> _fetchCurrentLocation() async {
+    try {
+      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      _currentPosition = LatLng(position.latitude, position.longitude);
+      await _getAddressFromLatLng(_currentPosition);
+    } catch (e) {
+      debugPrint("Error mengambil GPS: $e");
     }
   }
 
-  Future<void> _getCurrentGPSLocation() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
+  // Fungsi untuk tombol My Location
+  void _goToDeviceLocation() async {
+    setState(() => _addressText = "Mencari lokasi anda...");
+    await _checkPermission();
+    if (_hasLocationPermission) {
+      await _fetchCurrentLocation();
+      _mapController.move(_currentPosition, 16.0);
+      setState(() {});
+    } else {
+      setState(() => _addressText = "Akses GPS/Lokasi HP belum diizinkan.");
     }
-
-    Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-    _currentPosition = LatLng(position.latitude, position.longitude);
-    await _getAddressFromLatLng(_currentPosition);
   }
 
   Future<void> _getAddressFromLatLng(LatLng position) async {
@@ -78,12 +116,18 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks[0];
-        setState(() {
-          _addressText = "${place.street}, ${place.subLocality}, ${place.locality}, ${place.administrativeArea}";
-        });
+        if (mounted) {
+          setState(() {
+            // Mencegah munculnya koma berlebih jika ada data alamat yang kosong dari satelit
+            String rawAddress = "${place.street}, ${place.subLocality}, ${place.locality}, ${place.administrativeArea}";
+            _addressText = rawAddress.replaceAll(RegExp(r',\s*,|,\s*$'), '').trim();
+          });
+        }
       }
     } catch (e) {
-      setState(() => _addressText = "Koordinat: ${position.latitude}, ${position.longitude}");
+      if (mounted) {
+        setState(() => _addressText = "Koordinat: ${position.latitude}, ${position.longitude}");
+      }
     }
   }
 
@@ -99,29 +143,58 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF0C2442)))
           : Stack(
               children: [
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(target: _currentPosition, zoom: 16),
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  onMapCreated: (controller) {
-                     _mapController = controller;
-                     _mapController!.animateCamera(CameraUpdate.newLatLngZoom(_currentPosition, 16));
-                  },
-                  onCameraMove: (position) => _currentPosition = position.target,
-                  onCameraIdle: () => _getAddressFromLatLng(_currentPosition),
+                FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: _currentPosition,
+                    initialZoom: 16.0,
+                    onPositionChanged: (camera, hasGesture) {
+                      _currentPosition = camera.center ?? _currentPosition; 
+                    },
+                    onMapEvent: (event) {
+                      if (event is MapEventMoveEnd) {
+                        _getAddressFromLatLng(_currentPosition);
+                      }
+                    },
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.example.fe_flutter', 
+                    ),
+                  ],
                 ),
-                // Pin Peta
-                const Center(child: Padding(
-                  padding: EdgeInsets.only(bottom: 35.0),
-                  child: Icon(Icons.location_on, size: 50, color: Colors.red),
-                )),
                 
-                // Panel Konfirmasi
+                // Pin Peta Berada di Tengah Layar
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: 35.0),
+                    child: Icon(Icons.location_on, size: 50, color: Colors.red),
+                  )
+                ),
+
+                // Tombol "My Location" untuk memusatkan kembali peta ke lokasi HP
+                Positioned(
+                  right: 20,
+                  bottom: 220, 
+                  child: FloatingActionButton(
+                    heroTag: "myLocationBtn",
+                    backgroundColor: Colors.white,
+                    onPressed: _goToDeviceLocation,
+                    child: const Icon(Icons.my_location, color: Color(0xFF0C2442)),
+                  ),
+                ),
+                
+                // Panel Konfirmasi Bawah
                 Positioned(
                   bottom: 20, left: 20, right: 20,
                   child: Container(
                     padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)]),
+                    decoration: BoxDecoration(
+                      color: Colors.white, 
+                      borderRadius: BorderRadius.circular(12), 
+                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)]
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
@@ -133,7 +206,10 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0C2442), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0C2442), 
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                            ),
                             onPressed: () {
                               Navigator.pop(context, {
                                 'latitude': _currentPosition.latitude,

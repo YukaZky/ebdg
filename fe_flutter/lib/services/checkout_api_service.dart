@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
@@ -12,6 +11,9 @@ class CheckoutApiService {
     required String courier,
     required double shippingCost,
     required List<Map<String, dynamic>> cartItems,
+    // Tambahan parameter untuk Core API
+    required String paymentType, 
+    String? bankCode,
   }) async {
     if (ApiService.token == null) return null;
 
@@ -43,13 +45,33 @@ class CheckoutApiService {
         'courier': courier,
         'shipping_cost': shippingCost,
         'items': formattedItems,
+        'payment_type': paymentType, // Kirim tipe pembayaran
+        'bank_code': bankCode,       // Kirim kode bank jika ada
       }),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body);
+    }
+
+    return null;
+  }
+
+  // Fungsi baru untuk mengecek status dari Midtrans via Laravel
+  static Future<Map<String, dynamic>?> checkOrderStatus(String orderId) async {
+    if (ApiService.token == null) return null;
+
+    final response = await http.get(
+      Uri.parse('${ApiService.baseUrl}/order/$orderId/status'),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer ${ApiService.token}',
+      },
     );
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
-
     return null;
   }
 }

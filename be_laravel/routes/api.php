@@ -12,6 +12,8 @@ use App\Http\Controllers\Api\ApiWishlistController;
 use App\Http\Controllers\Api\ApiAdminController;
 use App\Http\Controllers\Api\ApiMarketplaceController;
 use App\Http\Controllers\Api\ApiUserProfileController;
+use App\Http\Controllers\MidtransController;
+use App\Http\Controllers\Api\ApiPaymentMethodController;
 
 Route::post('/register', [ApiAuthController::class, 'register']);
 Route::post('/login', [ApiAuthController::class, 'login']);
@@ -20,6 +22,8 @@ Route::get('/products', [ApiProductController::class, 'index']);
 Route::get('/products/{slug}', [ApiProductController::class, 'show']);
 Route::get('/stores/{slug}', [ApiMarketplaceController::class, 'storeDetail']);
 Route::get('/products/{productId}/reviews', [ApiMarketplaceController::class, 'productReviews']);
+Route::post('/midtrans/notification', [MidtransController::class, 'notificationHandler']);
+Route::get('/payment-methods', [ApiPaymentMethodController::class, 'index']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [ApiAuthController::class, 'logout']);
@@ -62,6 +66,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/addresses', [ApiAdminController::class, 'saveUserAddress']);
     Route::put('/user/addresses/{id}/set-main', [ApiAdminController::class, 'setMainAddress']);
     Route::delete('/user/addresses/{id}', [ApiAdminController::class, 'deleteUserAddress']);
+    Route::get('/order/{id}/status', [\App\Http\Controllers\Api\ApiCheckoutController::class, 'checkStatus']);
 
     Route::middleware('admin')->prefix('admin')->group(function () {
         Route::get('/dashboard', [ApiAdminController::class, 'dashboardStats']);
