@@ -314,7 +314,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           onPressed: _openAccountSettings,
                         ),
                         IconButton(
-                          icon: const Icon(Icons.logout, color: Colors.redAccent, size: 24),
+                          icon: const Icon(Icons.logout, color: Color.fromARGB(255, 255, 255, 255), size: 24),
                           tooltip: 'Keluar',
                           onPressed: _handleLogout,
                         ),
