@@ -72,7 +72,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/dashboard', [ApiAdminController::class, 'dashboardStats']);
         Route::get('/products', [ApiAdminController::class, 'getProducts']);
         Route::post('/products/store', [ApiAdminController::class, 'storeProduct']);
+        Route::get('/products/{id}', [ApiAdminController::class, 'getProductDetail']);
         Route::put('/products/update/{id}', [ApiAdminController::class, 'updateProduct']);
+        Route::post('/products/update/{id}', [ApiAdminController::class, 'updateProduct']);
         Route::delete('/products/delete/{id}', [ApiAdminController::class, 'deleteProduct']);
 
         Route::get('/categories', [ApiAdminController::class, 'getCategories']);
