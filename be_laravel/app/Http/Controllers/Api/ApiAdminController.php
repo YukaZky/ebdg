@@ -94,7 +94,8 @@ class ApiAdminController extends Controller
         $product = new Product();
         $product->user_id = auth()->id();
         $product->name = $request->name;
-        $product->slug = Str::slug($request->name);
+        // PERBAIKAN: Slug unik per toko agar tidak tabrakan (Unique Key constraint)
+        $product->slug = Str::slug($request->name) . '-' . auth()->id();
         $product->short_description = $request->short_description;
         $product->description = $request->description;
         $product->regular_price = $request->regular_price;
@@ -157,7 +158,8 @@ class ApiAdminController extends Controller
 
         $product = Product::where('user_id', auth()->id())->findOrFail($id);
         $product->name = $request->name;
-        $product->slug = Str::slug($request->name);
+        // PERBAIKAN: Slug unik per toko agar tidak tabrakan
+        $product->slug = Str::slug($request->name) . '-' . auth()->id();
         $product->short_description = $request->short_description;
         $product->description = $request->description;
         $product->regular_price = $request->regular_price;
@@ -197,7 +199,8 @@ class ApiAdminController extends Controller
         $category = new Category();
         $category->user_id = auth()->id();
         $category->name = $request->name;
-        $category->slug = Str::slug($request->name);
+        // PERBAIKAN: Slug unik per toko untuk kategori
+        $category->slug = Str::slug($request->name) . '-' . auth()->id();
 
         if ($request->hasFile('image')) {
             $image = $request->file('image');
@@ -214,7 +217,8 @@ class ApiAdminController extends Controller
     {
         $category = Category::where('user_id', auth()->id())->findOrFail($id);
         $category->name = $request->name ?? $category->name;
-        $category->slug = Str::slug($category->name);
+        // PERBAIKAN: Slug unik per toko untuk kategori
+        $category->slug = Str::slug($category->name) . '-' . auth()->id();
 
         if ($request->hasFile('image')) {
             $image = $request->file('image');
@@ -240,11 +244,19 @@ class ApiAdminController extends Controller
 
     public function storeBrand(Request $request)
     {
-        $request->validate(['name' => 'required|string']);
+        // PERBAIKAN: Menambahkan validasi category_id wajib (menghindari error array kosong dan foreign key)
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'category_id' => 'required|integer|exists:categories,id'
+        ]);
+
         $brand = new Brand();
         $brand->user_id = auth()->id();
         $brand->name = $request->name;
-        $brand->slug = Str::slug($request->name);
+        $brand->category_id = $request->category_id; // Menyimpan data category yang dipilih
+        // PERBAIKAN: Slug unik per toko untuk brand
+        $brand->slug = Str::slug($request->name) . '-' . auth()->id();
+
         if ($request->hasFile('image')) {
             $image = $request->file('image');
             $fileName = time() . '.' . $image->extension();
@@ -252,6 +264,7 @@ class ApiAdminController extends Controller
             $brand->image = $fileName;
         }
         $brand->save();
+
         return response()->json(['status' => 'success', 'message' => 'Brand berhasil ditambahkan', 'data' => $brand], 201);
     }
 
@@ -259,7 +272,14 @@ class ApiAdminController extends Controller
     {
         $brand = Brand::where('user_id', auth()->id())->findOrFail($id);
         $brand->name = $request->name ?? $brand->name;
-        $brand->slug = Str::slug($brand->name);
+        
+        if ($request->has('category_id') && !empty($request->category_id)) {
+            $brand->category_id = $request->category_id;
+        }
+
+        // PERBAIKAN: Slug unik per toko untuk brand
+        $brand->slug = Str::slug($brand->name) . '-' . auth()->id();
+
         if ($request->hasFile('image')) {
             $image = $request->file('image');
             $fileName = time() . '.' . $image->extension();
@@ -267,6 +287,7 @@ class ApiAdminController extends Controller
             $brand->image = $fileName;
         }
         $brand->save();
+
         return response()->json(['status' => 'success', 'message' => 'Brand berhasil diupdate', 'data' => $brand]);
     }
 

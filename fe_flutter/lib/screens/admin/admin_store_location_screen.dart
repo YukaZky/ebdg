@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
-import '../map_picker_screen.dart'; // Sesuaikan lokasi path import-nya
+import '../map_picker_screen.dart'; 
 
 class AdminStoreLocationScreen extends StatefulWidget {
   final Map<String, dynamic>? existingAddress; 
@@ -65,8 +65,12 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
         _addressLabel = storeData['label'].toString();
       }
       
-      _isMainAddress = storeData['isdefault'] == 1 || storeData['isdefault'] == true;
-      _isStoreAddress = storeData['is_store_address'] == 1 || storeData['is_store_address'] == true;
+      // PERBAIKAN: Memastikan semua tipe parameter tersimpan terbaca sebagai true
+      _isMainAddress = storeData['isdefault'] == 1 || storeData['isdefault'] == '1' || storeData['isdefault'] == true ||
+                       storeData['is_main'] == 1 || storeData['is_main'] == '1' || storeData['is_main'] == true;
+                       
+      _isStoreAddress = storeData['is_store_address'] == 1 || storeData['is_store_address'] == '1' || storeData['is_store_address'] == true ||
+                        storeData['is_store'] == 1 || storeData['is_store'] == '1' || storeData['is_store'] == true;
 
       if (storeData['latitude'] != null) _latitude = double.tryParse(storeData['latitude'].toString());
       if (storeData['longitude'] != null) _longitude = double.tryParse(storeData['longitude'].toString());
@@ -161,8 +165,13 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
       'landmark': _landmarkController.text, 
       'note': _noteController.text,
       'label': _addressLabel,
-      'is_main': _isMainAddress,
-      'is_store': _isStoreAddress,
+      
+      // PERBAIKAN: Mengirim angka integer 1/0 dan duplikasi key
+      'is_main': _isMainAddress ? 1 : 0,
+      'isdefault': _isMainAddress ? 1 : 0,
+      'is_store': _isStoreAddress ? 1 : 0,
+      'is_store_address': _isStoreAddress ? 1 : 0,
+      
       'latitude': _latitude?.toString(),
       'longitude': _longitude?.toString(),
     };
@@ -427,6 +436,8 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
             searchAddress: fullSearchAddress,
           )),
         );
+
+        if (!mounted) return;
 
         if (result != null) {
           setState(() {

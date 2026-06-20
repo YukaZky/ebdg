@@ -78,8 +78,13 @@ class _AddressListScreenState extends State<AddressListScreen> {
               itemCount: addresses.length,
               itemBuilder: (context, index) {
                 final addr = addresses[index];
-                bool isMain = addr['isdefault'] == 1 || addr['isdefault'] == true;
-                bool isStore = addr['is_store_address'] == 1 || addr['is_store_address'] == true;
+                
+                // PERBAIKAN: Menangani tipe String, Integer, Boolean dan berbagai nama key dari backend
+                bool isMain = addr['isdefault'] == 1 || addr['isdefault'] == '1' || addr['isdefault'] == true ||
+                              addr['is_main'] == 1 || addr['is_main'] == '1' || addr['is_main'] == true;
+                              
+                bool isStore = addr['is_store_address'] == 1 || addr['is_store_address'] == '1' || addr['is_store_address'] == true ||
+                               addr['is_store'] == 1 || addr['is_store'] == '1' || addr['is_store'] == true;
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 16),

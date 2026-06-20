@@ -65,8 +65,12 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
         _addressLabel = storeData['label'].toString();
       }
       
-      _isMainAddress = storeData['isdefault'] == 1 || storeData['isdefault'] == true;
-      _isStoreAddress = storeData['is_store_address'] == 1 || storeData['is_store_address'] == true;
+      // PERBAIKAN: Membaca segala jenis format respons dari backend (Integer, String, Boolean, atau key alternatif)
+      _isMainAddress = storeData['isdefault'] == 1 || storeData['isdefault'] == '1' || storeData['isdefault'] == true ||
+                       storeData['is_main'] == 1 || storeData['is_main'] == '1' || storeData['is_main'] == true;
+                       
+      _isStoreAddress = storeData['is_store_address'] == 1 || storeData['is_store_address'] == '1' || storeData['is_store_address'] == true ||
+                        storeData['is_store'] == 1 || storeData['is_store'] == '1' || storeData['is_store'] == true;
 
       if (storeData['latitude'] != null) _latitude = double.tryParse(storeData['latitude'].toString());
       if (storeData['longitude'] != null) _longitude = double.tryParse(storeData['longitude'].toString());
@@ -161,8 +165,13 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       'landmark': _landmarkController.text,
       'note': _noteController.text,
       'label': _addressLabel,
-      'is_main': _isMainAddress,
-      'is_store': _isStoreAddress,
+      
+      // PERBAIKAN: Mengirim angka integer 1/0 dan duplikasi key agar backend pasti menerimanya
+      'is_main': _isMainAddress ? 1 : 0,
+      'isdefault': _isMainAddress ? 1 : 0,
+      'is_store': _isStoreAddress ? 1 : 0,
+      'is_store_address': _isStoreAddress ? 1 : 0,
+      
       'latitude': _latitude?.toString(),
       'longitude': _longitude?.toString(),
     };
@@ -180,7 +189,6 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     }
   }
 
-  // --- PEMBENTUKAN DROPDOWN ---
   List<DropdownMenuItem<String>> _buildProvinceItems() {
     final seen = <String>{};
     return _provinces.where((prov) {
@@ -360,7 +368,6 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     );
   }
 
-  // --- KOMPONEN UI ---
   Widget _buildSectionContainer({required String title, required List<Widget> children}) {
     return Container(
       width: double.infinity, margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.all(16), color: Colors.white,
@@ -429,6 +436,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             searchAddress: fullSearchAddress,
           )),
         );
+
+        if (!mounted) return;
 
         if (result != null) {
           setState(() {
