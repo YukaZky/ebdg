@@ -22,6 +22,7 @@ class _SlideItem {
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final PageController _pageController = PageController();
+  late Product _product;
   ProductVariation? _variation;
   int _page = 0;
   int _qty = 1;
@@ -34,6 +35,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _product = widget.product;
+    _refreshProductDetail();
     _loadProductReviews();
     _loadRecommendations();
   }
@@ -44,8 +47,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     super.dispose();
   }
 
+  Future<void> _refreshProductDetail() async {
+    final latest = await ApiService.getProductDetails(widget.product.slug);
+    if (!mounted || latest == null) return;
+
+    setState(() {
+      _product = latest;
+      if (_variation != null) {
+        final matched = latest.variations?.where((item) => item.id == _variation!.id).toList() ?? [];
+        _variation = matched.isNotEmpty ? matched.first : null;
+      }
+      _page = 0;
+      _qty = 1;
+    });
+  }
+
   Future<void> _loadProductReviews() async {
-    final data = await MarketplaceApiService.productReviews(widget.product.id);
+    final data = await MarketplaceApiService.productReviews(_product.id);
     if (!mounted) return;
     setState(() {
       _productReviews = data;
@@ -59,9 +77,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       if (!mounted) return;
 
       final sameCategory = products
-          .where((item) => item.id != widget.product.id && widget.product.categoryId != null && item.categoryId == widget.product.categoryId)
+          .where((item) => item.id != _product.id && _product.categoryId != null && item.categoryId == _product.categoryId)
           .toList();
-      final others = products.where((item) => item.id != widget.product.id && !sameCategory.any((same) => same.id == item.id)).toList();
+      final others = products.where((item) => item.id != _product.id && !sameCategory.any((same) => same.id == item.id)).toList();
 
       setState(() {
         _recommendations = [...sameCategory, ...others].take(8).toList();
@@ -110,27 +128,27 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       if (used.add(key)) list.add(_SlideItem(value, variation));
     }
 
-    add(widget.product.image, null);
-    for (final item in widget.product.galleryImages) {
+    add(_product.image, null);
+    for (final item in _product.galleryImages) {
       add(_galleryImage(item), null);
     }
-    for (final item in widget.product.variations ?? <ProductVariation>[]) {
+    for (final item in _product.variations ?? <ProductVariation>[]) {
       add(item.image, item);
     }
     return list;
   }
 
-  Map<String, dynamic>? get _store => widget.product.store;
+  Map<String, dynamic>? get _store => _product.store;
   bool get _hasStore => _store != null && (_store!['slug']?.toString().isNotEmpty ?? false);
 
-  double get _regularPrice => _variation?.regularPrice ?? widget.product.price;
-  double? get _salePrice => _variation?.salePrice ?? widget.product.salePrice;
+  double get _regularPrice => _variation?.regularPrice ?? _product.price;
+  double? get _salePrice => _variation?.salePrice ?? _product.salePrice;
   bool get _hasPromo => _salePrice != null && _salePrice! > 0 && _salePrice! < _regularPrice;
   double get _activePrice => _hasPromo ? _salePrice! : _regularPrice;
-  int get _stock => _variation?.quantity ?? widget.product.quantity;
-  int get _weight => _variation?.weight ?? widget.product.weight;
-  bool get _hasVariation => widget.product.variations != null && widget.product.variations!.isNotEmpty;
-  bool get _emptyStock => _stock <= 0 || widget.product.stockStatus != 'instock';
+  int get _stock => _variation?.quantity ?? _product.quantity;
+  int get _weight => _variation?.weight ?? _product.weight;
+  bool get _hasVariation => _product.variations != null && _product.variations!.isNotEmpty;
+  bool get _emptyStock => _stock <= 0 || _product.stockStatus != 'instock';
 
   void _syncSlide(int index) {
     final item = _slides[index];
@@ -167,7 +185,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return;
     }
     setState(() => _saving = true);
-    final ok = await CartApiService.addSelectedProductToCart(productId: widget.product.id, quantity: _qty, variationId: _variation?.id);
+    final ok = await CartApiService.addSelectedProductToCart(productId: _product.id, quantity: _qty, variationId: _variation?.id);
     if (!mounted) return;
     setState(() => _saving = false);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'Produk masuk keranjang.' : 'Gagal menambahkan produk.')));
@@ -224,7 +242,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return Material(color: Colors.white.withOpacity(0.85), shape: const CircleBorder(), child: InkWell(customBorder: const CircleBorder(), onTap: onTap, child: Padding(padding: const EdgeInsets.all(7), child: Icon(icon, size: 25, color: Colors.black87))));
   }
 
-  List<ProductVariation> get _allVariations => widget.product.variations ?? <ProductVariation>[];
+  List<ProductVariation> get _allVariations => _product.variations ?? <ProductVariation>[];
 
   Widget _variationChip(ProductVariation item) {
     final selected = _variation?.id == item.id;
@@ -345,7 +363,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Deskripsi Produk', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        Text(widget.product.description ?? 'Tidak ada deskripsi tersedia.'),
+        Text(_product.description ?? 'Tidak ada deskripsi tersedia.'),
       ]),
     );
   }
@@ -453,7 +471,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           color: Colors.white,
           padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(widget.product.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Text(_product.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             _priceView(),
             const SizedBox(height: 12),

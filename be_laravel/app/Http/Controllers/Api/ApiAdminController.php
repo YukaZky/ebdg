@@ -16,6 +16,7 @@ use App\Models\WhatsappSetting;
 use App\Models\About;
 use App\Models\Address;
 use App\Models\StoreProfile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ApiAdminController extends Controller
@@ -50,6 +51,55 @@ class ApiAdminController extends Controller
         $store->save();
     }
 
+    private function syncProductVariations(Request $request, Product $product): void
+    {
+        $names = $request->input('variation_names', []);
+        $variationIds = $request->input('variation_ids', []);
+        $regularPrices = $request->input('variation_regular_prices', []);
+        $salePrices = $request->input('variation_sale_prices', []);
+        $weights = $request->input('variation_weights', []);
+        $quantities = $request->input('variation_quantities', []);
+
+        $savedIds = [];
+
+        foreach ($names as $index => $name) {
+            $name = trim((string) $name);
+            if ($name === '') continue;
+
+            $variationId = $variationIds[$index] ?? null;
+            $variation = null;
+
+            if ($variationId) {
+                $variation = ProductVariation::where('product_id', $product->id)->where('id', $variationId)->first();
+            }
+
+            if (! $variation) {
+                $variation = new ProductVariation();
+                $variation->product_id = $product->id;
+            }
+
+            $variation->name = $name;
+            $variation->regular_price = isset($regularPrices[$index]) && $regularPrices[$index] !== '' ? $regularPrices[$index] : 0;
+            $variation->sale_price = isset($salePrices[$index]) && $salePrices[$index] !== '' ? $salePrices[$index] : null;
+            $variation->weight = isset($weights[$index]) && $weights[$index] !== '' ? $weights[$index] : 0;
+            $variation->quantity = isset($quantities[$index]) && $quantities[$index] !== '' ? $quantities[$index] : 0;
+
+            if ($request->hasFile("variation_images.$index")) {
+                $varImage = $request->file("variation_images.$index");
+                $varImageName = time() . "_var_{$product->id}_$index." . $varImage->extension();
+                $varImage->move(public_path('uploads/products'), $varImageName);
+                $variation->image = $varImageName;
+            }
+
+            $variation->save();
+            $savedIds[] = $variation->id;
+        }
+
+        ProductVariation::where('product_id', $product->id)
+            ->when(! empty($savedIds), fn ($query) => $query->whereNotIn('id', $savedIds))
+            ->delete();
+    }
+
     public function dashboardStats()
     {
         $userId = auth()->id();
@@ -73,7 +123,7 @@ class ApiAdminController extends Controller
                     ->get();
 
         foreach ($products as $product) {
-            $product->images = \Illuminate\Support\Facades\DB::table('product_images')
+            $product->images = DB::table('product_images')
                                 ->where('product_id', $product->id)
                                 ->get();
         }
@@ -94,7 +144,6 @@ class ApiAdminController extends Controller
         $product = new Product();
         $product->user_id = auth()->id();
         $product->name = $request->name;
-        // PERBAIKAN: Slug unik per toko agar tidak tabrakan (Unique Key constraint)
         $product->slug = Str::slug($request->name) . '-' . auth()->id();
         $product->short_description = $request->short_description;
         $product->description = $request->description;
@@ -115,33 +164,8 @@ class ApiAdminController extends Controller
         }
 
         $product->save();
-
-        if ($request->has('variation_names')) {
-            $names = $request->variation_names;
-            $regularPrices = $request->variation_regular_prices ?? [];
-            $salePrices = $request->variation_sale_prices ?? [];
-            $weights = $request->variation_weights ?? [];
-            $quantities = $request->variation_quantities ?? [];
-
-            foreach ($names as $index => $name) {
-                if (empty($name)) continue;
-                $variation = new ProductVariation();
-                $variation->product_id = $product->id;
-                $variation->name = $name;
-                $variation->regular_price = isset($regularPrices[$index]) && $regularPrices[$index] !== '' ? $regularPrices[$index] : 0;
-                $variation->sale_price = isset($salePrices[$index]) && $salePrices[$index] !== '' ? $salePrices[$index] : null;
-                $variation->weight = isset($weights[$index]) && $weights[$index] !== '' ? $weights[$index] : 0;
-                $variation->quantity = isset($quantities[$index]) && $quantities[$index] !== '' ? $quantities[$index] : 0;
-
-                if ($request->hasFile("variation_images.$index")) {
-                    $varImage = $request->file("variation_images.$index");
-                    $varImageName = time() . "_var_$index." . $varImage->extension();
-                    $varImage->move(public_path('uploads/products'), $varImageName);
-                    $variation->image = $varImageName;
-                }
-                $variation->save();
-            }
-        }
+        $this->syncProductVariations($request, $product);
+        $product->load(['category', 'brand', 'variations']);
 
         return response()->json(['message' => 'Product created successfully!', 'data' => $product], 201);
     }
@@ -158,13 +182,12 @@ class ApiAdminController extends Controller
 
         $product = Product::where('user_id', auth()->id())->findOrFail($id);
         $product->name = $request->name;
-        // PERBAIKAN: Slug unik per toko agar tidak tabrakan
         $product->slug = Str::slug($request->name) . '-' . auth()->id();
         $product->short_description = $request->short_description;
         $product->description = $request->description;
         $product->regular_price = $request->regular_price;
         $product->sale_price = $request->sale_price;
-        $product->SKU = 'PRD' . time();
+        $product->SKU = $product->SKU ?: 'PRD' . time();
         $product->stock_status = $request->stock_status;
         $product->quantity = $request->quantity ?? '0';
         $product->weight = $request->weight ?? '0';
@@ -179,6 +202,9 @@ class ApiAdminController extends Controller
         }
 
         $product->save();
+        $this->syncProductVariations($request, $product);
+        $product->load(['category', 'brand', 'variations']);
+
         return response()->json(['message' => 'Product updated successfully!', 'data' => $product]);
     }
 
@@ -199,7 +225,6 @@ class ApiAdminController extends Controller
         $category = new Category();
         $category->user_id = auth()->id();
         $category->name = $request->name;
-        // PERBAIKAN: Slug unik per toko untuk kategori
         $category->slug = Str::slug($request->name) . '-' . auth()->id();
 
         if ($request->hasFile('image')) {
@@ -217,7 +242,6 @@ class ApiAdminController extends Controller
     {
         $category = Category::where('user_id', auth()->id())->findOrFail($id);
         $category->name = $request->name ?? $category->name;
-        // PERBAIKAN: Slug unik per toko untuk kategori
         $category->slug = Str::slug($category->name) . '-' . auth()->id();
 
         if ($request->hasFile('image')) {
@@ -244,19 +268,11 @@ class ApiAdminController extends Controller
 
     public function storeBrand(Request $request)
     {
-        // PERBAIKAN: Menambahkan validasi category_id wajib (menghindari error array kosong dan foreign key)
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'category_id' => 'required|integer|exists:categories,id'
-        ]);
-
+        $request->validate(['name' => 'required|string']);
         $brand = new Brand();
         $brand->user_id = auth()->id();
         $brand->name = $request->name;
-        $brand->category_id = $request->category_id; // Menyimpan data category yang dipilih
-        // PERBAIKAN: Slug unik per toko untuk brand
-        $brand->slug = Str::slug($request->name) . '-' . auth()->id();
-
+        $brand->slug = Str::slug($request->name);
         if ($request->hasFile('image')) {
             $image = $request->file('image');
             $fileName = time() . '.' . $image->extension();
@@ -264,7 +280,6 @@ class ApiAdminController extends Controller
             $brand->image = $fileName;
         }
         $brand->save();
-
         return response()->json(['status' => 'success', 'message' => 'Brand berhasil ditambahkan', 'data' => $brand], 201);
     }
 
@@ -272,14 +287,7 @@ class ApiAdminController extends Controller
     {
         $brand = Brand::where('user_id', auth()->id())->findOrFail($id);
         $brand->name = $request->name ?? $brand->name;
-        
-        if ($request->has('category_id') && !empty($request->category_id)) {
-            $brand->category_id = $request->category_id;
-        }
-
-        // PERBAIKAN: Slug unik per toko untuk brand
-        $brand->slug = Str::slug($brand->name) . '-' . auth()->id();
-
+        $brand->slug = Str::slug($brand->name);
         if ($request->hasFile('image')) {
             $image = $request->file('image');
             $fileName = time() . '.' . $image->extension();
@@ -287,7 +295,6 @@ class ApiAdminController extends Controller
             $brand->image = $fileName;
         }
         $brand->save();
-
         return response()->json(['status' => 'success', 'message' => 'Brand berhasil diupdate', 'data' => $brand]);
     }
 
