@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import '../marketplace/chat_list_screen.dart';
 import '../marketplace/store_profile_screen.dart';
 import '../marketplace/toko_pesanan_screen.dart';
 import 'admin_brands_screen.dart';
@@ -33,6 +34,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     } catch (e) {
       setState(() => isLoading = false);
     }
+  }
+
+  void _openCustomerMessages() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ChatListScreen(
+          title: 'Pesan Pelanggan',
+          emptyText: 'Belum ada pesan masuk dari pelanggan.',
+        ),
+      ),
+    ).then((_) => _fetchDashboardData());
   }
 
   @override
@@ -122,7 +135,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               _buildListMenu(context, 'Daftar Pesanan', 'Cek dan proses pesanan masuk', Icons.receipt_long_outlined, Colors.deepOrange, true, () {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => const TokoPesananScreen()));
                               }),
-                              _buildListMenu(context, 'Pesan Pelanggan', 'Balas pesan', Icons.chat_outlined, Colors.amber, true, () {}),
+                              _buildListMenu(context, 'Pesan Pelanggan', 'Lihat dan balas chat pelanggan', Icons.chat_outlined, Colors.amber, true, _openCustomerMessages),
                               _buildListMenu(context, 'Kupon Diskon', 'Voucher promo', Icons.confirmation_num_outlined, Colors.pink, false, () {}),
                             ]),
                           ),
