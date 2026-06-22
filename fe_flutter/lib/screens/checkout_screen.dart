@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Untuk Copy-Paste Clipboard
 import '../services/api_service.dart';
@@ -54,11 +55,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    debugPrint("⚡ [CHECKOUT STATE] initState dipanggil.");
     _fetchMainAddress();
   }
 
   @override
   void dispose() {
+    debugPrint("⚡ [CHECKOUT STATE] dispose dipanggil. Menghentikan timer jika ada.");
     _countdownTimer?.cancel();
     super.dispose();
   }
@@ -75,17 +78,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _fetchMainAddress() async {
+    debugPrint("🚀 [DEBUGGER] Memulai pengambilan Alamat Utama...");
     setState(() => _isLoadingAddress = true);
     final data = await ApiService.getUserAddresses();
     if (!mounted) return;
     Map<String, dynamic>? mainAddr;
     if (data != null && data is List && data.isNotEmpty) {
       try {
-        mainAddr = data.firstWhere((a) => a['isdefault'] == 1 || a['isdefault'] == '1' || a['isdefault'] == true || a['is_main'] == 1 || a['is_main'] == '1' || a['is_main'] == true);
+        mainAddr = data.firstWhere((a) =>
+            a['isdefault'] == 1 ||
+            a['isdefault'] == '1' ||
+            a['isdefault'] == true ||
+            a['is_main'] == 1 ||
+            a['is_main'] == '1' ||
+            a['is_main'] == true);
       } catch (e) {
         mainAddr = data.first;
       }
     }
+    
+    debugPrint("📦 [DEBUGGER] Respons Alamat Utama Berhasil Dipetakan: ${json.encode(mainAddr)}");
     setState(() {
       _mainAddress = mainAddr;
       _isLoadingAddress = false;
@@ -97,13 +109,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _calculateShipping() async {
-    if (_mainAddress == null || _mainAddress!['city_id'] == null || _selectedCourier == null) return;
+    if (_mainAddress == null || _mainAddress!['city_id'] == null || _selectedCourier == null) {
+      debugPrint("⚠️ [DEBUGGER] Kalkulasi Ongkir dibatalkan: Alamat atau kurir belum siap.");
+      return;
+    }
     setState(() {
       _isLoadingOngkir = true;
       _shippingCost = 0;
       _selectedService = null;
     });
     final cityId = _mainAddress!['city_id'].toString();
+    debugPrint("🚀 [DEBUGGER] Meminta ongkir untuk kota: $cityId dengan kurir: $_selectedCourier");
     final data = await ApiService.checkCost(cityId, widget.totalWeight.toInt(), _selectedCourier!);
     if (!mounted) return;
     setState(() {
@@ -112,6 +128,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (data.isNotEmpty && data[0]['cost'].isNotEmpty) {
         _selectedService = data[0]['service']?.toString();
         _shippingCost = double.tryParse(data[0]['cost'][0]['value']?.toString() ?? '0') ?? 0;
+        debugPrint("📡 [DEBUGGER] Ongkir terpilih otomatis: Rp $_shippingCost via $_selectedService");
       }
     });
   }
@@ -127,14 +144,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // --- Navigasi Pilih Metode Pembayaran ---
   void _selectPaymentMethod() async {
+    debugPrint("⚡ [UI ACTION] Memilih Metode Pembayaran. Navigasi ke MetodeScreen.");
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const MetodeScreen()),
     );
     if (result != null && result is PaymentMethodModel) {
+      debugPrint("📥 [UI ACTION] User sukses memilih bank: ${result.name}");
       setState(() {
         _selectedPaymentMethod = result;
       });
+    } else {
+      debugPrint("⚠️ [UI ACTION] Kembali dari halaman Metode Pembayaran tanpa memilih bank.");
     }
   }
 
@@ -142,6 +163,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   // Aksi Klik Bayar Sekarang
   void _processCheckout() async {
+    debugPrint("=== [DEBUG CHECKOUT] TOMBOL BAYAR SEKARANG DIKLIK ===");
     if (_mainAddress == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Harap atur alamat!'), backgroundColor: Colors.red));
       return;
@@ -163,6 +185,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final provinceName = _mainAddress!['province_name']?.toString() ?? 'Unknown';
     final cityName = _mainAddress!['city_name']?.toString() ?? 'Unknown';
 
+    debugPrint("📤 [DEBUG CHECKOUT] Mengirim payload checkout ke server Laravel...");
+    debugPrint("📤 [DEBUG CHECKOUT] Kurir: $courierWithService, Ongkir: $_shippingCost");
+    debugPrint("📤 [DEBUG CHECKOUT] Metode: ${_selectedPaymentMethod!.paymentType}, Bank: ${_selectedPaymentMethod!.bankCode}");
+
     final responseData = await CheckoutApiService.checkout(
       address: addressString,
       phone: phoneString,
@@ -178,53 +204,110 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!mounted) return;
     setState(() => _isLoading = false);
 
+    debugPrint("📥 [DEBUG CHECKOUT] Respons Checkout Diterima dari Backend!");
+    debugPrint("📥 [DEBUG CHECKOUT] RAW JSON RESPONS: ${json.encode(responseData)}");
+
     if (responseData != null && responseData['success'] == true) {
-      // Ambil data instruksi pembayaran dari respons Laravel
       final orderData = responseData['order'];
-      final paymentInfo = responseData['payment_info'] ?? responseData['order']; // Sesuaikan dengan key JSON backend Anda
-      
+      final paymentInfo = responseData['payment_info'] ?? responseData['order'];
+      final midtrans = responseData['midtrans_response'];
+
       if (orderData != null) {
+        // --- SCANNING DATA SECARA MENDALAM (BUSTER DETECTOR) ---
+        String? finalVa;
+        String? finalQr;
+        String? finalExp;
+
+        // 1. Scanning VA Number
+        if (paymentInfo != null && paymentInfo['va_number'] != null) {
+          finalVa = paymentInfo['va_number'].toString();
+        } else if (midtrans != null && midtrans['va_numbers'] != null && midtrans['va_numbers'] is List && midtrans['va_numbers'].isNotEmpty) {
+          finalVa = midtrans['va_numbers'][0]['va_number']?.toString();
+        } else if (midtrans != null && midtrans['permata_va_number'] != null) {
+          finalVa = midtrans['permata_va_number']?.toString();
+        } else if (midtrans != null && midtrans['bill_key'] != null) {
+          finalVa = "Bill Key: ${midtrans['bill_key']}\nBiller Code: ${midtrans['biller_code'] ?? ''}";
+        }
+
+        // 2. Scanning QRIS QR Code Url
+        if (paymentInfo != null && paymentInfo['qr_code_url'] != null) {
+          finalQr = paymentInfo['qr_code_url'].toString();
+        } else if (midtrans != null && midtrans['actions'] != null && midtrans['actions'] is List) {
+          for (var action in midtrans['actions']) {
+            if (action['name'] == 'generate-qr-code') {
+              finalQr = action['url']?.toString();
+            }
+          }
+        }
+
+        // 3. Scanning Expiry Time
+        if (paymentInfo != null && paymentInfo['expiry_time'] != null) {
+          finalExp = paymentInfo['expiry_time'].toString();
+        } else if (midtrans != null && midtrans['expiry_time'] != null) {
+          finalExp = midtrans['expiry_time'].toString();
+        }
+
+        debugPrint("🔍 [DEBUG PARSING] Berhasil mengekstrak info pembayaran:");
+        debugPrint("🔍 [DEBUG PARSING] -> VA Number: $finalVa");
+        debugPrint("🔍 [DEBUG PARSING] -> QRIS URL: $finalQr");
+        debugPrint("🔍 [DEBUG PARSING] -> Expiry Time: $finalExp");
+
         setState(() {
           _finalOrderData = orderData;
           _orderId = orderData['id'].toString();
+          _vaNumber = finalVa;
+          _qrCodeUrl = finalQr;
           
-          // Mengambil VA atau URL QRIS
-          _vaNumber = paymentInfo['va_number']?.toString();
-          _qrCodeUrl = paymentInfo['qr_code_url']?.toString();
-          
-          // Menyiapkan Timer mundur
-          if (paymentInfo['expiry_time'] != null) {
-            final expDate = DateTime.parse(paymentInfo['expiry_time']);
-            _timeLeft = expDate.difference(DateTime.now());
+          // Menyiapkan Timer mundur jika data kedaluwarsa tersedia
+          if (finalExp != null) {
+            try {
+              final expDate = DateTime.parse(finalExp!);
+              _timeLeft = expDate.difference(DateTime.now());
+              _startTimer();
+            } catch (e) {
+              debugPrint("❌ [DEBUG PARSING] Error parse expiry time: $e");
+              _timeLeft = const Duration(hours: 24); // Fallback jika format salah
+              _startTimer();
+            }
+          } else {
+            // Default timer jika kosong dari server
+            _timeLeft = const Duration(hours: 24);
             _startTimer();
           }
 
-          // Transisi State ke Pending
+          // Transisi State ke Pending untuk merender instruksi native di UI
           _paymentState = PaymentState.pending;
         });
+        
+        debugPrint("🔄 [DEBUG CHECKOUT] State lokal berhasil diperbarui ke: PENDING.");
       }
     } else {
+      debugPrint("❌ [DEBUG CHECKOUT] Proses checkout gagal pada level API.");
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal memproses pesanan.'), backgroundColor: Colors.red));
     }
   }
 
   void _startTimer() {
+    debugPrint("⏳ [TIMER] Memulai hitung mundur.");
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        if (_timeLeft.inSeconds > 0) {
-          _timeLeft = _timeLeft - const Duration(seconds: 1);
-        } else {
-          // Jika waktu habis
-          timer.cancel();
-          _paymentState = PaymentState.expired;
-        }
-      });
+      if (mounted) {
+        setState(() {
+          if (_timeLeft.inSeconds > 0) {
+            _timeLeft = _timeLeft - const Duration(seconds: 1);
+          } else {
+            debugPrint("⏳ [TIMER] Sisa waktu menyentuh 0. Mengubah State ke EXPIRED.");
+            timer.cancel();
+            _paymentState = PaymentState.expired;
+          }
+        });
+      }
     });
   }
 
   void _checkPaymentStatus() async {
     if (_orderId == null) return;
+    debugPrint("🚀 [DEBUG STATUS] Menanyakan status pesanan terbaru untuk Order ID: $_orderId");
     setState(() => _isLoading = true);
 
     final statusResponse = await CheckoutApiService.checkOrderStatus(_orderId!);
@@ -232,13 +315,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!mounted) return;
     setState(() => _isLoading = false);
 
+    debugPrint("📥 [DEBUG STATUS] Respons Cek Status Diterima: ${json.encode(statusResponse)}");
+
     if (statusResponse != null && statusResponse['success'] == true) {
       final status = statusResponse['transaction_status'];
+      debugPrint("📥 [DEBUG STATUS] transaction_status terbaca: $status");
       
       setState(() {
         if (status == 'settlement' || status == 'capture' || status == 'approved') {
           _paymentState = PaymentState.approved;
           _countdownTimer?.cancel();
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pembayaran Berhasil Diterima!'), backgroundColor: Colors.green));
         } else if (status == 'expire' || status == 'cancel') {
           _paymentState = PaymentState.expired;
           _countdownTimer?.cancel();
@@ -246,11 +333,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pembayaran belum diterima/menunggu proses.')));
         }
       });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal menyinkronkan status pembayaran.')));
     }
   }
 
   void _goToConfirmation() {
     if (_finalOrderData == null) return;
+    debugPrint("🏁 [NAVIGATION] Transaksi lunas! Berpindah ke OrderConfirmationScreen.");
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => OrderConfirmationScreen(order: _finalOrderData!)),
@@ -307,14 +397,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final minutes = strDigits(_timeLeft.inMinutes.remainder(60));
     final seconds = strDigits(_timeLeft.inSeconds.remainder(60));
 
+    debugPrint("🎨 [UI RENDER] Merender antarmuka utama. State saat ini: $_paymentState");
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
-      appBar: AppBar(title: const Text('Pengiriman & Checkout')),
+      appBar: AppBar(
+        title: const Text('Pengiriman & Checkout', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+        elevation: 0.5,
+        backgroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.black),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           
-          // BLOK 1: Alamat & Kurir (Hanya tampil jika state Initial)
+          // BLOK 1: Alamat & Kurir (Hanya tampil jika state Initial / Expired)
           if (_paymentState == PaymentState.initial || _paymentState == PaymentState.expired) ...[
             if (_isLoadingAddress)
               const Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator(color: Color(0xFFE65100))))
@@ -328,7 +425,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               )
             else
               Container(
-                padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade300)),
+                padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                     const Text('Alamat Pengiriman', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -353,7 +450,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
             if (_mainAddress != null)
               Container(
-                padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('Kurir Pengiriman', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 12),
@@ -389,7 +486,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
           // BLOK 2: Pilihan Metode Pembayaran ATAU Instruksi VA
           Container(
-            padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+            padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               
               if (_paymentState == PaymentState.initial || _paymentState == PaymentState.expired) ...[
@@ -421,43 +518,71 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
               // State Instruksi Pembayaran (Pending / Approved / Expired Text)
               if (_paymentState == PaymentState.pending) ...[
-                const Center(child: Text('Selesaikan Pembayaran Dalam Waktu', style: TextStyle(color: Colors.grey))),
+                const Center(child: Text('Selesaikan Pembayaran Dalam Waktu', style: TextStyle(color: Colors.grey, fontSize: 13))),
                 const SizedBox(height: 8),
-                Center(child: Text('$hours : $minutes : $seconds', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.red))),
+                Center(child: Text('$hours : $minutes : $seconds', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.red, letterSpacing: 1.5))),
                 const Divider(height: 32),
                 const Text('Instruksi Pembayaran:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 16),
                 
                 if (_vaNumber != null) ...[
                    Text('${_selectedPaymentMethod?.name ?? 'Virtual Account'}', style: const TextStyle(color: Colors.grey)),
+                   const SizedBox(height: 6),
                    Row(
                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                      children: [
-                       Text('$_vaNumber', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                       TextButton.icon(
+                       Expanded(
+                         child: SelectableText(
+                           '$_vaNumber', 
+                           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: Colors.black)
+                         ),
+                       ),
+                       ElevatedButton.icon(
                          onPressed: () => _copyToClipboard(_vaNumber!),
-                         icon: const Icon(Icons.copy),
-                         label: const Text('Salin'),
+                         style: ElevatedButton.styleFrom(
+                           backgroundColor: const Color(0xFFE65100).withOpacity(0.1),
+                           elevation: 0,
+                           shadowColor: Colors.transparent,
+                         ),
+                         icon: const Icon(Icons.copy, size: 16, color: Color(0xFFE65100)),
+                         label: const Text('Salin', style: TextStyle(color: Color(0xFFE65100), fontWeight: FontWeight.bold)),
                        )
                      ],
                    )
                 ],
 
                 if (_qrCodeUrl != null) ...[
-                  const Text('Scan QRIS berikut menggunakan aplikasi dompet digital Anda:'),
-                  const SizedBox(height: 12),
-                  Center(child: Image.network(_qrCodeUrl!, width: 200, height: 200)),
+                  const Text('Silakan scan kode QRIS resmi berikut:', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                  const SizedBox(height: 16),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12), color: Colors.white),
+                      child: Image.network(_qrCodeUrl!, width: 220, height: 200, fit: BoxFit.contain, errorBuilder: (_, __, ___) {
+                        return const SizedBox(width: 220, height: 200, child: Center(child: Icon(Icons.broken_image, size: 48, color: Colors.grey)));
+                      }),
+                    ),
+                  ),
                 ],
 
-                const SizedBox(height: 20),
+                if (_vaNumber == null && _qrCodeUrl == null) ...[
+                  const Text('Selesaikan pembayaran sesuai petunjuk metode yang dipilih.', style: TextStyle(fontSize: 14)),
+                ],
+
+                const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton(
+                  child: OutlinedButton.icon(
                     onPressed: _isLoading ? null : _checkPaymentStatus,
-                    style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFFE65100))),
-                    child: _isLoading 
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator())
-                      : const Text('Refresh Status Pembayaran', style: TextStyle(color: Color(0xFFE65100))),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE65100)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    icon: _isLoading 
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFE65100)))
+                      : const Icon(Icons.refresh, color: Color(0xFFE65100), size: 18),
+                    label: const Text('Refresh Status Pembayaran', style: TextStyle(color: Color(0xFFE65100), fontWeight: FontWeight.bold, fontSize: 15)),
                   ),
                 )
               ],
@@ -466,9 +591,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 const Center(
                   child: Column(
                     children: [
-                      Icon(Icons.check_circle, color: Colors.green, size: 64),
+                      Icon(Icons.check_circle, color: Colors.green, size: 68),
                       SizedBox(height: 12),
                       Text('Pembayaran Berhasil!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+                      SizedBox(height: 6),
+                      Text('Sistem telah mencatat transaksi Anda.', style: TextStyle(color: Colors.grey)),
                     ],
                   ),
                 )
@@ -478,11 +605,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                  const Center(
                   child: Column(
                     children: [
-                      Icon(Icons.cancel, color: Colors.red, size: 64),
+                      Icon(Icons.cancel, color: Colors.red, size: 68),
                       SizedBox(height: 12),
-                      Text('Waktu Pembayaran Habis / Dibatalkan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
+                      Text('Sesi Pembayaran Berakhir', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
                       SizedBox(height: 8),
-                      Text('Silakan pilih metode pembayaran kembali dan buat pesanan ulang.', textAlign: TextAlign.center),
+                      Text('Sisa waktu habis atau transaksi telah dibatalkan. Harap pilih metode kembali.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
                     ],
                   ),
                 )
@@ -494,7 +621,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           const SizedBox(height: 16),
           // Ringkasan Pesanan (Tetap tampil di semua state untuk review)
           Container(
-            padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+            padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('Ringkasan Pesanan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 12),
@@ -533,7 +660,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       case PaymentState.expired:
         return ElevatedButton(
           onPressed: _isLoading || _mainAddress == null || _selectedPaymentMethod == null ? null : _processCheckout,
-          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE65100), padding: const EdgeInsets.symmetric(vertical: 14)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFE65100), 
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            disabledBackgroundColor: Colors.grey.shade300,
+          ),
           child: _isLoading
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
               : const Text('BAYAR SEKARANG', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
@@ -541,13 +673,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       case PaymentState.pending:
         return ElevatedButton(
           onPressed: null, // Dikunci selama pending
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade400, padding: const EdgeInsets.symmetric(vertical: 14)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.grey.shade400, 
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
           child: const Text('MENUNGGU PEMBAYARAN...', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
         );
       case PaymentState.approved:
         return ElevatedButton(
           onPressed: _goToConfirmation,
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 14)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green, 
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
           child: const Text('SELESAIKAN PESANAN', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
         );
     }
