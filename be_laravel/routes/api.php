@@ -38,6 +38,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/cart/remove/{id}', [ApiCartController::class, 'remove']);
 
     Route::post('/checkout', [ApiCheckoutController::class, 'checkout']);
+    Route::post('/checkout/finalize', [ApiCheckoutController::class, 'finalize']);
+    Route::get('/orders/{id}', [ApiCheckoutController::class, 'show']);
+    Route::post('/orders/{id}/payment-method', [ApiCheckoutController::class, 'setPaymentMethod']);
+    Route::post('/orders/{id}/reset-payment', [ApiCheckoutController::class, 'resetPayment']);
     Route::get('/orders', [ApiOrderController::class, 'index']);
 
     Route::get('/marketplace/my-store', [ApiMarketplaceController::class, 'myStore']);
@@ -66,7 +70,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/addresses', [ApiAdminController::class, 'saveUserAddress']);
     Route::put('/user/addresses/{id}/set-main', [ApiAdminController::class, 'setMainAddress']);
     Route::delete('/user/addresses/{id}', [ApiAdminController::class, 'deleteUserAddress']);
-    Route::get('/order/{id}/status', [\App\Http\Controllers\Api\ApiCheckoutController::class, 'checkStatus']);
+    Route::get('/order/{id}/status', [ApiCheckoutController::class, 'checkStatus']);
 
     Route::middleware('admin')->prefix('admin')->group(function () {
         Route::get('/dashboard', [ApiAdminController::class, 'dashboardStats']);
