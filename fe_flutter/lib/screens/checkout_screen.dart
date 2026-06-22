@@ -42,6 +42,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _finalizing = false;
   bool _loadingPayment = false;
 
+  bool get _paymentLocked => _paymentState == PaymentState.pending || _paymentState == PaymentState.approved;
+
   @override
   void initState() {
     super.initState();
@@ -277,6 +279,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _paymentState = PaymentState.initial;
         _timer?.cancel();
       });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Metode pembayaran berhasil direset.')));
     }
   }
 
@@ -309,6 +312,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => OrderConfirmationScreen(order: _order!)), (_) => false);
   }
 
+  void _lockedMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reset metode pembayaran dulu jika ingin mengubah alamat atau ongkir.')));
+  }
+
   double _itemPrice(Map<String, dynamic> item) {
     final product = item['product'] ?? {};
     return double.tryParse((item['price'] ?? product['regular_price'] ?? 0).toString()) ?? 0;
@@ -325,7 +332,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (_paymentState == PaymentState.initial || _paymentState == PaymentState.expired) ...[_addressCard(), const SizedBox(height: 16), if (_address != null) _shippingCard(), const SizedBox(height: 16)],
+          _addressCard(),
+          const SizedBox(height: 16),
+          if (_address != null) _shippingCard(),
+          const SizedBox(height: 16),
           _paymentCard(timerText),
           const SizedBox(height: 16),
           _summaryCard(),
@@ -334,7 +344,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
       bottomSheet: Container(
         padding: const EdgeInsets.all(16),
-        color: Colors.white,
+        decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(.05), blurRadius: 14, offset: const Offset(0, -4))]),
         child: SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Total Tagihan', style: TextStyle(color: Colors.grey, fontSize: 16)), Text('Rp ${_grandTotal.toStringAsFixed(0)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFFE65100)))]),
@@ -346,72 +356,85 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Widget _card(Widget child) => Container(width: double.infinity, padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)), child: child);
+  Widget _card(Widget child) => Container(width: double.infinity, padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE5E7EB)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(.035), blurRadius: 12, offset: const Offset(0, 6))]), child: child);
+
+  Widget _sectionTitle(IconData icon, String title, {String? badge}) => Row(children: [
+        Container(width: 34, height: 34, decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(10)), child: Icon(icon, size: 19, color: const Color(0xFFE65100))),
+        const SizedBox(width: 10),
+        Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+        if (badge != null) Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(20)), child: Text(badge, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 11))),
+      ]);
 
   Widget _addressCard() {
-    if (_loadingAddress) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Color(0xFFE65100))));
+    if (_loadingAddress) return _card(const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Color(0xFFE65100)))));
     if (_address == null) {
-      return InkWell(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressListScreen())).then((_) => _fetchAddress()), child: _card(const Row(children: [Icon(Icons.location_off, color: Colors.red), SizedBox(width: 12), Expanded(child: Text('Alamat belum diatur. Klik di sini.', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)))])));
+      return InkWell(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressListScreen())).then((_) => _fetchAddress()), child: _card(Row(children: const [Icon(Icons.location_off, color: Colors.red), SizedBox(width: 12), Expanded(child: Text('Alamat belum diatur. Klik di sini.', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))), Icon(Icons.arrow_forward_ios, size: 16, color: Colors.red)])));
     }
     return _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Alamat Pengiriman', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressListScreen())).then((_) => _fetchAddress()), child: const Text('Ubah'))]),
-      const Divider(),
-      Text('${_address!['name']} | ${_address!['phone']}', style: const TextStyle(fontWeight: FontWeight.w600)),
-      const SizedBox(height: 6),
-      Text(_addressText),
-      Text('${_address!['city_name']}, ${_address!['province_name']} - ${_address!['postal_code']}', style: TextStyle(color: Colors.grey.shade700)),
+      _sectionTitle(Icons.location_on_outlined, 'Alamat Pengiriman', badge: 'Dipilih'),
+      const SizedBox(height: 14),
+      Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(0xFFF9FAFB), borderRadius: BorderRadius.circular(14)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${_address!['name']} | ${_address!['phone']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        Text(_addressText, style: const TextStyle(height: 1.35)),
+        const SizedBox(height: 4),
+        Text('${_address!['city_name']}, ${_address!['province_name']} - ${_address!['postal_code']}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+      ])),
+      const SizedBox(height: 10),
+      Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: _paymentLocked ? _lockedMessage : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressListScreen())).then((_) => _fetchAddress()), icon: const Icon(Icons.edit_location_alt_outlined, size: 18), label: const Text('Ubah Alamat'))),
     ]));
   }
 
   Widget _shippingCard() => _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Kurir Pengiriman', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(decoration: const InputDecoration(labelText: 'Pilih Ekspedisi', border: OutlineInputBorder()), value: _courier, items: _couriers.map((c) => DropdownMenuItem(value: c, child: Text(c.toUpperCase()))).toList(), onChanged: (v) { setState(() => _courier = v); _calculateShipping(); }),
-        const SizedBox(height: 16),
-        if (_loadingShipping) const Center(child: CircularProgressIndicator()) else if (_shippingOptions.isNotEmpty) DropdownButtonFormField<String>(isExpanded: true, decoration: const InputDecoration(labelText: 'Pilih Layanan', border: OutlineInputBorder()), value: _service, items: _shippingOptions.map<DropdownMenuItem<String>>((option) { final cost = option['cost'] as List?; final price = cost != null && cost.isNotEmpty ? cost[0]['value']?.toString() ?? '0' : '0'; return DropdownMenuItem(value: option['service']?.toString(), child: Text('${option['service']} - Rp $price', overflow: TextOverflow.ellipsis)); }).toList(), onChanged: _chooseService),
-        if (_finalizing) const Padding(padding: EdgeInsets.only(top: 12), child: Text('Menyiapkan pesanan final...', style: TextStyle(color: Colors.grey))) else if (_orderId != null) const Padding(padding: EdgeInsets.only(top: 12), child: Text('Pesanan siap. Silakan pilih metode pembayaran.', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600))),
+        _sectionTitle(Icons.local_shipping_outlined, 'Kurir Pengiriman', badge: _orderId == null ? null : 'Siap'),
+        const SizedBox(height: 14),
+        DropdownButtonFormField<String>(decoration: InputDecoration(labelText: 'Pilih Ekspedisi', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), prefixIcon: const Icon(Icons.local_post_office_outlined)), value: _courier, items: _couriers.map((c) => DropdownMenuItem(value: c, child: Text(c.toUpperCase()))).toList(), onChanged: _paymentLocked ? null : (v) { setState(() => _courier = v); _calculateShipping(); }),
+        const SizedBox(height: 14),
+        if (_loadingShipping) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())) else if (_shippingOptions.isNotEmpty) DropdownButtonFormField<String>(isExpanded: true, decoration: InputDecoration(labelText: 'Pilih Layanan Ongkir', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), prefixIcon: const Icon(Icons.inventory_2_outlined)), value: _service, items: _shippingOptions.map<DropdownMenuItem<String>>((option) { final cost = option['cost'] as List?; final price = cost != null && cost.isNotEmpty ? cost[0]['value']?.toString() ?? '0' : '0'; return DropdownMenuItem(value: option['service']?.toString(), child: Text('${option['service']} - Rp $price', overflow: TextOverflow.ellipsis)); }).toList(), onChanged: _paymentLocked ? null : _chooseService),
+        if (_finalizing) const Padding(padding: EdgeInsets.only(top: 12), child: Row(children: [SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)), SizedBox(width: 8), Text('Menyiapkan pesanan final...', style: TextStyle(color: Colors.grey))])) else if (_orderId != null) Padding(padding: const EdgeInsets.only(top: 12), child: Row(children: const [Icon(Icons.check_circle_outline, color: Colors.green, size: 18), SizedBox(width: 8), Expanded(child: Text('Alamat dan ongkir sudah final. Lanjut pilih metode pembayaran.', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600)))])),
+        if (_paymentLocked) Padding(padding: const EdgeInsets.only(top: 8), child: Text('Reset metode pembayaran jika ingin mengubah alamat atau ongkir.', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))),
       ]));
 
   Widget _paymentCard(String timerText) => _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _sectionTitle(Icons.account_balance_wallet_outlined, 'Metode Pembayaran', badge: _paymentState == PaymentState.pending ? 'Menunggu' : _paymentState == PaymentState.approved ? 'Lunas' : null),
+        const SizedBox(height: 14),
         if (_paymentState == PaymentState.initial || _paymentState == PaymentState.expired) ...[
-          const Text('Metode Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 12),
-          InkWell(onTap: _loadingPayment || _finalizing ? null : _selectPaymentMethod, child: Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Expanded(child: Text(_orderId == null ? 'Lengkapi ongkir dulu' : (_method?.name ?? 'Pilih Metode Pembayaran'), style: TextStyle(color: _method == null ? Colors.grey : Colors.black, fontWeight: _method == null ? FontWeight.normal : FontWeight.bold))), _loadingPayment ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey)]))),
+          InkWell(onTap: _loadingPayment || _finalizing ? null : _selectPaymentMethod, child: Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: const Color(0xFFF9FAFB), border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(14)), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)), child: _method?.iconUrl.isNotEmpty == true ? Padding(padding: const EdgeInsets.all(6), child: Image.network(_method!.iconUrl, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.payment))) : const Icon(Icons.payment, color: Color(0xFFE65100))), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_orderId == null ? 'Lengkapi alamat dan ongkir dulu' : (_method?.name ?? 'Pilih Metode Pembayaran'), style: TextStyle(color: _method == null ? Colors.grey.shade600 : Colors.black, fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text(_orderId == null ? 'VA/QRIS dibuat setelah ongkir final' : 'Tap untuk memilih bank, QRIS, atau e-wallet', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))])), _loadingPayment ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey)]))),
           if (_paymentState == PaymentState.expired) const Padding(padding: EdgeInsets.only(top: 10), child: Text('Sesi pembayaran berakhir. Pilih metode kembali.', style: TextStyle(color: Colors.red))),
         ],
         if (_paymentState == PaymentState.pending) ...[
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Metode Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), TextButton(onPressed: _loadingPayment ? null : _resetPayment, child: const Text('Reset Status'))]),
-          Text(_method?.name ?? 'Metode pembayaran', style: const TextStyle(fontWeight: FontWeight.bold)),
-          const Text('Status: Menunggu Pembayaran', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          Center(child: Text(timerText, style: const TextStyle(fontSize: 30, color: Colors.red, fontWeight: FontWeight.bold))),
-          const Divider(height: 28),
-          if (_vaNumber != null) Row(children: [Expanded(child: SelectableText(_vaNumber!, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))), TextButton.icon(onPressed: () { Clipboard.setData(ClipboardData(text: _vaNumber!)); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nomor VA disalin!'))); }, icon: const Icon(Icons.copy), label: const Text('Salin'))]),
-          if (_qrCodeUrl != null) Center(child: Image.network(_qrCodeUrl!, width: 220, height: 200, fit: BoxFit.contain)),
+          Container(width: double.infinity, padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: const Color(0xFFFFF8E1), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFFFE0B2))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [Expanded(child: Text(_method?.name ?? 'Metode pembayaran', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))), Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(20)), child: const Text('Menunggu Pembayaran', style: TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 11)))]),
+            const SizedBox(height: 12),
+            Center(child: Column(children: [const Text('Batas waktu pembayaran', style: TextStyle(color: Colors.grey, fontSize: 12)), const SizedBox(height: 4), Text(timerText, style: const TextStyle(fontSize: 30, color: Colors.red, fontWeight: FontWeight.w900, letterSpacing: 1.2))])),
+          ])),
+          const SizedBox(height: 14),
+          if (_vaNumber != null) Container(width: double.infinity, padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(14)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Nomor Virtual Account', style: TextStyle(color: Colors.grey, fontSize: 12)), const SizedBox(height: 6), Row(children: [Expanded(child: SelectableText(_vaNumber!, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 1.1))), TextButton.icon(onPressed: () { Clipboard.setData(ClipboardData(text: _vaNumber!)); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nomor VA disalin!'))); }, icon: const Icon(Icons.copy, size: 18), label: const Text('Salin'))])])),
+          if (_qrCodeUrl != null) Padding(padding: const EdgeInsets.only(top: 12), child: Center(child: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.grey.shade300)), child: Image.network(_qrCodeUrl!, width: 220, height: 200, fit: BoxFit.contain)))),
           if (_vaNumber == null && _qrCodeUrl == null) const Text('Selesaikan pembayaran sesuai instruksi metode yang dipilih.'),
-          const SizedBox(height: 16),
-          SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _loadingPayment ? null : _checkPaymentStatus, icon: const Icon(Icons.refresh), label: const Text('Refresh Status Pembayaran'))),
+          const SizedBox(height: 14),
+          Row(children: [Expanded(child: OutlinedButton.icon(onPressed: _loadingPayment ? null : _checkPaymentStatus, icon: const Icon(Icons.refresh), label: const Text('Refresh Status'))), const SizedBox(width: 10), Expanded(child: OutlinedButton.icon(onPressed: _loadingPayment ? null : _resetPayment, icon: const Icon(Icons.restart_alt), label: const Text('Reset Metode')))]),
         ],
         if (_paymentState == PaymentState.approved) const Center(child: Column(children: [Icon(Icons.check_circle, color: Colors.green, size: 64), SizedBox(height: 8), Text('Pembayaran Berhasil!', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 18))])),
       ]));
 
-  Widget _summaryCard() => _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Ringkasan Pesanan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 12), ...widget.cartItems.map(_summaryItem)]));
+  Widget _summaryCard() => _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_sectionTitle(Icons.receipt_long_outlined, 'Ringkasan Pesanan'), const SizedBox(height: 14), ...widget.cartItems.map(_summaryItem)]));
 
   Widget _summaryItem(Map<String, dynamic> item) {
     final product = item['product'] ?? {};
     final price = _itemPrice(item);
     final qty = _itemQty(item);
     final image = _imageUrl(item['selected_image'] ?? product['image']);
-    return Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(children: [Container(width: 50, height: 50, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)), child: image.isEmpty ? const Icon(Icons.image, color: Colors.grey) : Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Colors.grey))), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(product['name'] ?? 'Produk', style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis), Text('$qty x Rp ${price.toStringAsFixed(0)}', style: TextStyle(color: Colors.grey[600], fontSize: 12))])), Text('Rp ${(price * qty).toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold))]));
+    return Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(children: [Container(width: 52, height: 52, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)), child: image.isEmpty ? const Icon(Icons.image, color: Colors.grey) : Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Colors.grey))), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(product['name'] ?? 'Produk', style: const TextStyle(fontWeight: FontWeight.w700), maxLines: 1, overflow: TextOverflow.ellipsis), Text('$qty x Rp ${price.toStringAsFixed(0)}', style: TextStyle(color: Colors.grey[600], fontSize: 12))])), Text('Rp ${(price * qty).toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold))]));
   }
 
   Widget _bottomButton() {
     if (_paymentState == PaymentState.pending) {
-      return ElevatedButton(onPressed: _loadingPayment ? null : _goToConfirmation, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE65100), padding: const EdgeInsets.symmetric(vertical: 14)), child: const Text('KONFIRMASI PESANAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)));
+      return ElevatedButton(onPressed: _loadingPayment ? null : _goToConfirmation, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE65100), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('KONFIRMASI PESANAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)));
     }
     if (_paymentState == PaymentState.approved) {
-      return ElevatedButton(onPressed: _goToConfirmation, style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 14)), child: const Text('SELESAIKAN PESANAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)));
+      return ElevatedButton(onPressed: _goToConfirmation, style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('SELESAIKAN PESANAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)));
     }
-    return ElevatedButton(onPressed: null, style: ElevatedButton.styleFrom(disabledBackgroundColor: Colors.grey.shade300, padding: const EdgeInsets.symmetric(vertical: 14)), child: Text(_finalizing ? 'MENYIAPKAN PESANAN...' : 'PILIH METODE PEMBAYARAN', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)));
+    return ElevatedButton(onPressed: _orderId == null || _loadingPayment || _finalizing ? null : _selectPaymentMethod, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE65100), disabledBackgroundColor: Colors.grey.shade300, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text(_finalizing ? 'MENYIAPKAN PESANAN...' : 'PILIH METODE PEMBAYARAN', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)));
   }
 }
