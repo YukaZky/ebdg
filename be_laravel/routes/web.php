@@ -42,7 +42,7 @@ Auth::routes();
 
 Route::post('cart/checkout-selected', [CartController::class, 'checkoutSelected'])->name('cart.checkout.selected');
 
-Route::get('/home', [HomeController::class, 'index'])->name('home');
+Route::redirect('/home', '/')->name('home');
 
 Route::get('auth/google', [GoogleController::class, 'redirectToGoogle'])->name('google.login');
 Route::get('google/callback', [GoogleController::class, 'handleGoogleCallback'])->name('google.callback');
