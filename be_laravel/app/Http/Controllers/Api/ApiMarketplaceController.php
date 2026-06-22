@@ -82,6 +82,33 @@ class ApiMarketplaceController extends Controller
         return $query;
     }
 
+    private function conversationQueryForUser(Request $request)
+    {
+        return Conversation::with(['customer:id,name,email', 'merchant:id,name,email', 'product:id,user_id,name,slug,image'])
+            ->where(function ($query) use ($request) {
+                $query->where('buyer_id', $request->user()->id)
+                    ->orWhere('seller_id', $request->user()->id);
+            });
+    }
+
+    private function conversationPayload(Conversation $conversation, int $userId): array
+    {
+        $isMerchant = (int) $conversation->seller_id === $userId;
+        $counterpart = $isMerchant ? $conversation->customer : $conversation->merchant;
+        $payload = $conversation->toArray();
+
+        $payload['role'] = $isMerchant ? 'seller' : 'buyer';
+        $payload['counterpart'] = $counterpart ? [
+            'id' => $counterpart->id,
+            'name' => $counterpart->name,
+            'email' => $counterpart->email,
+        ] : null;
+        $payload['buyer'] = $conversation->customer;
+        $payload['seller'] = $conversation->merchant;
+
+        return $payload;
+    }
+
     public function myStore(Request $request)
     {
         $store = StoreProfile::firstOrCreate(
@@ -244,17 +271,28 @@ class ApiMarketplaceController extends Controller
 
     public function conversations(Request $request)
     {
-        $data = Conversation::where('buyer_id', $request->user()->id)
-            ->orWhere('seller_id', $request->user()->id)
+        $userId = $request->user()->id;
+        $data = $this->conversationQueryForUser($request)
+            ->withCount(['chatItems as unread_count' => function ($query) use ($userId) {
+                $query->where('sender_id', '!=', $userId)->whereNull('read_at');
+            }])
             ->latest('last_message_at')
-            ->get();
+            ->get()
+            ->map(fn ($conversation) => $this->conversationPayload($conversation, $userId));
 
         return response()->json(['success' => true, 'data' => $data]);
     }
 
     public function startConversation(Request $request)
     {
-        $request->validate(['seller_id' => 'required|exists:users,id']);
+        $request->validate([
+            'seller_id' => 'required|exists:users,id',
+            'product_id' => 'nullable|exists:products,id',
+        ]);
+
+        if ((int) $request->seller_id === (int) $request->user()->id) {
+            return response()->json(['success' => false, 'message' => 'Tidak bisa chat toko sendiri'], 422);
+        }
 
         $conversation = Conversation::firstOrCreate(
             [
@@ -265,37 +303,65 @@ class ApiMarketplaceController extends Controller
             ['last_message_at' => now()]
         );
 
-        return response()->json(['success' => true, 'data' => $conversation]);
+        $conversation->load(['customer:id,name,email', 'merchant:id,name,email', 'product:id,user_id,name,slug,image']);
+
+        return response()->json(['success' => true, 'data' => $this->conversationPayload($conversation, $request->user()->id)]);
     }
 
     public function messages(Request $request, $conversationId)
     {
-        $conversation = Conversation::where(function ($query) use ($request) {
-            $query->where('buyer_id', $request->user()->id)->orWhere('seller_id', $request->user()->id);
-        })->findOrFail($conversationId);
+        $conversation = $this->conversationQueryForUser($request)->findOrFail($conversationId);
 
-        $messages = ConversationMessage::where('conversation_id', $conversation->id)->orderBy('id')->get();
-        return response()->json(['success' => true, 'data' => $messages]);
+        ConversationMessage::where('conversation_id', $conversation->id)
+            ->where('sender_id', '!=', $request->user()->id)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        $messages = ConversationMessage::with('author:id,name,email')
+            ->where('conversation_id', $conversation->id)
+            ->orderBy('id')
+            ->get()
+            ->map(function ($item) {
+                $payload = $item->toArray();
+                $payload['sender'] = $item->author ? [
+                    'id' => $item->author->id,
+                    'name' => $item->author->name,
+                    'email' => $item->author->email,
+                ] : null;
+                return $payload;
+            });
+
+        return response()->json([
+            'success' => true,
+            'conversation' => $this->conversationPayload($conversation, $request->user()->id),
+            'data' => $messages,
+        ]);
     }
 
     public function sendMessage(Request $request, $conversationId)
     {
         $request->validate(['message' => 'required|string']);
 
-        $conversation = Conversation::where(function ($query) use ($request) {
-            $query->where('buyer_id', $request->user()->id)->orWhere('seller_id', $request->user()->id);
-        })->findOrFail($conversationId);
+        $conversation = $this->conversationQueryForUser($request)->findOrFail($conversationId);
 
         $message = ConversationMessage::create([
             'conversation_id' => $conversation->id,
             'sender_id' => $request->user()->id,
             'message' => $request->message,
         ]);
+        $message->load('author:id,name,email');
 
         $conversation->last_message = $request->message;
         $conversation->last_message_at = now();
         $conversation->save();
 
-        return response()->json(['success' => true, 'data' => $message]);
+        $payload = $message->toArray();
+        $payload['sender'] = [
+            'id' => $request->user()->id,
+            'name' => $request->user()->name,
+            'email' => $request->user()->email,
+        ];
+
+        return response()->json(['success' => true, 'data' => $payload]);
     }
 }
