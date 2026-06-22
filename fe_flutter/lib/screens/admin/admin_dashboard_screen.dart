@@ -42,7 +42,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       MaterialPageRoute(
         builder: (_) => const ChatListScreen(
           title: 'Pesan Pelanggan',
-          emptyText: 'Belum ada pesan masuk dari pelanggan.',
+          emptyText: 'Belum ada pesan masuk untuk toko ini.',
+          role: 'seller',
         ),
       ),
     ).then((_) => _fetchDashboardData());
@@ -135,7 +136,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               _buildListMenu(context, 'Daftar Pesanan', 'Cek dan proses pesanan masuk', Icons.receipt_long_outlined, Colors.deepOrange, true, () {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => const TokoPesananScreen()));
                               }),
-                              _buildListMenu(context, 'Pesan Pelanggan', 'Lihat dan balas chat pelanggan', Icons.chat_outlined, Colors.amber, true, _openCustomerMessages),
+                              _buildListMenu(context, 'Pesan Pelanggan', 'Lihat dan balas chat yang masuk ke toko ini', Icons.chat_outlined, Colors.amber, true, _openCustomerMessages),
                               _buildListMenu(context, 'Kupon Diskon', 'Voucher promo', Icons.confirmation_num_outlined, Colors.pink, false, () {}),
                             ]),
                           ),
