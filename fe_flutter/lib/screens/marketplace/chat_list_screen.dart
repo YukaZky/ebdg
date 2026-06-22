@@ -5,11 +5,13 @@ import 'chat_room_screen.dart';
 class ChatListScreen extends StatefulWidget {
   final String title;
   final String emptyText;
+  final String? role;
 
   const ChatListScreen({
     Key? key,
     this.title = 'Chat',
     this.emptyText = 'Belum ada chat.',
+    this.role,
   }) : super(key: key);
 
   @override
@@ -27,7 +29,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Future<void> loadChats() async {
-    final data = await MarketplaceApiService.conversations();
+    final data = await MarketplaceApiService.conversations(role: widget.role);
     if (!mounted) return;
     setState(() {
       chats = data;

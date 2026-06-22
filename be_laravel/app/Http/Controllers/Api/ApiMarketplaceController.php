@@ -82,13 +82,23 @@ class ApiMarketplaceController extends Controller
         return $query;
     }
 
-    private function conversationQueryForUser(Request $request)
+    private function conversationQueryForUser(Request $request, ?string $role = null)
     {
-        return Conversation::with(['customer:id,name,email', 'merchant:id,name,email', 'product:id,user_id,name,slug,image'])
-            ->where(function ($query) use ($request) {
-                $query->where('buyer_id', $request->user()->id)
-                    ->orWhere('seller_id', $request->user()->id);
-            });
+        $userId = $request->user()->id;
+        $query = Conversation::with(['customer:id,name,email', 'merchant:id,name,email', 'product:id,user_id,name,slug,image']);
+
+        if ($role === 'seller') {
+            return $query->where('seller_id', $userId);
+        }
+
+        if ($role === 'buyer') {
+            return $query->where('buyer_id', $userId);
+        }
+
+        return $query->where(function ($query) use ($userId) {
+            $query->where('buyer_id', $userId)
+                ->orWhere('seller_id', $userId);
+        });
     }
 
     private function conversationPayload(Conversation $conversation, int $userId): array
@@ -272,7 +282,10 @@ class ApiMarketplaceController extends Controller
     public function conversations(Request $request)
     {
         $userId = $request->user()->id;
-        $data = $this->conversationQueryForUser($request)
+        $role = $request->query('role') ?: $request->query('scope');
+        $role = in_array($role, ['seller', 'buyer'], true) ? $role : null;
+
+        $data = $this->conversationQueryForUser($request, $role)
             ->withCount(['chatItems as unread_count' => function ($query) use ($userId) {
                 $query->where('sender_id', '!=', $userId)->whereNull('read_at');
             }])
@@ -286,19 +299,29 @@ class ApiMarketplaceController extends Controller
     public function startConversation(Request $request)
     {
         $request->validate([
-            'seller_id' => 'required|exists:users,id',
+            'seller_id' => 'nullable|required_without:product_id|exists:users,id',
             'product_id' => 'nullable|exists:products,id',
         ]);
 
-        if ((int) $request->seller_id === (int) $request->user()->id) {
+        $product = $request->product_id
+            ? Product::select('id', 'user_id')->findOrFail($request->product_id)
+            : null;
+        $sellerId = $product ? (int) $product->user_id : (int) $request->seller_id;
+        $productId = $product ? $product->id : null;
+
+        if ($sellerId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Data penjual belum tersedia'], 422);
+        }
+
+        if ($sellerId === (int) $request->user()->id) {
             return response()->json(['success' => false, 'message' => 'Tidak bisa chat toko sendiri'], 422);
         }
 
         $conversation = Conversation::firstOrCreate(
             [
                 'buyer_id' => $request->user()->id,
-                'seller_id' => $request->seller_id,
-                'product_id' => $request->product_id,
+                'seller_id' => $sellerId,
+                'product_id' => $productId,
             ],
             ['last_message_at' => now()]
         );
