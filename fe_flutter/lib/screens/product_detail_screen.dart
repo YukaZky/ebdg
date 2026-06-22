@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../services/cart_api_service.dart';
 import '../services/marketplace_api_service.dart';
 import '../widgets/marketplace_product_card.dart';
+import 'marketplace/chat_room_screen.dart';
 import 'marketplace/store_detail_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
@@ -27,6 +28,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _page = 0;
   int _qty = 1;
   bool _saving = false;
+  bool _startingChat = false;
   bool _loadingReviews = true;
   bool _loadingRecommendations = true;
   List<dynamic> _productReviews = [];
@@ -140,6 +142,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Map<String, dynamic>? get _store => _product.store;
   bool get _hasStore => _store != null && (_store!['slug']?.toString().isNotEmpty ?? false);
+  String get _storeName => _store?['name']?.toString() ?? 'Penjual';
+  int? get _sellerId => _product.userId ?? int.tryParse(_store?['user_id']?.toString() ?? '');
 
   double get _regularPrice => _variation?.regularPrice ?? _product.price;
   double? get _salePrice => _variation?.salePrice ?? _product.salePrice;
@@ -173,6 +177,37 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (value?.image == null) return;
     final index = _slides.indexWhere((item) => item.variation?.id == value!.id);
     if (index >= 0) _goSlide(index);
+  }
+
+  Future<void> _openSellerChat() async {
+    if (_startingChat) return;
+
+    if (ApiService.token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Silakan login dulu untuk chat penjual.')));
+      return;
+    }
+
+    final sellerId = _sellerId;
+    if (sellerId == null || sellerId <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Data penjual belum tersedia.')));
+      return;
+    }
+
+    setState(() => _startingChat = true);
+    final conversation = await MarketplaceApiService.startConversation(sellerId: sellerId, productId: _product.id);
+    if (!mounted) return;
+    setState(() => _startingChat = false);
+
+    final conversationId = int.tryParse(conversation?['id']?.toString() ?? '') ?? 0;
+    if (conversationId <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membuka chat penjual.')));
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ChatRoomScreen(conversationId: conversationId, title: _storeName)),
+    );
   }
 
   Future<void> _addCart() async {
@@ -338,19 +373,36 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           const SizedBox(height: 6),
           Row(children: [_ratingStars(rating), const SizedBox(width: 6), Text('${rating.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))]),
         ])),
-        if (_hasStore)
-          OutlinedButton(
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))),
+        Column(mainAxisSize: MainAxisSize.min, children: [
+          OutlinedButton.icon(
+            onPressed: _startingChat ? null : _openSellerChat,
+            icon: _startingChat ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chat_bubble_outline, size: 16),
+            label: const Text('Chat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.deepOrange,
-              side: const BorderSide(color: Colors.deepOrange, width: 1),
+              foregroundColor: Colors.green.shade700,
+              side: BorderSide(color: Colors.green.shade600, width: 1),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               minimumSize: const Size(0, 34),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text('Lihat Toko', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
           ),
+          if (_hasStore) ...[
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.deepOrange,
+                side: const BorderSide(color: Colors.deepOrange, width: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                minimumSize: const Size(0, 34),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Lihat Toko', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ]),
       ]),
     );
   }
@@ -463,7 +515,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(title: const Text('Detail Produk'), backgroundColor: Colors.white, foregroundColor: Colors.black87),
+      appBar: AppBar(
+        title: const Text('Detail Produk'),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        actions: [
+          IconButton(
+            tooltip: 'Chat Penjual',
+            onPressed: _startingChat ? null : _openSellerChat,
+            icon: _startingChat ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chat_bubble_outline),
+          ),
+        ],
+      ),
       body: ListView(children: [
         _imageArea(),
         const SizedBox(height: 16),
@@ -491,6 +554,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(children: [
+            SizedBox(
+              width: 52,
+              height: 48,
+              child: OutlinedButton(
+                onPressed: _startingChat ? null : _openSellerChat,
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  foregroundColor: Colors.green.shade700,
+                  side: BorderSide(color: Colors.green.shade600),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: _startingChat ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chat_bubble_outline),
+              ),
+            ),
+            const SizedBox(width: 8),
             IconButton(onPressed: _qty > 1 ? () => setState(() => _qty--) : null, icon: const Icon(Icons.remove)),
             Text('$_qty', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             IconButton(onPressed: _qty < _stock ? () => setState(() => _qty++) : null, icon: const Icon(Icons.add)),
