@@ -3,8 +3,9 @@ import '../../services/marketplace_api_service.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   final int conversationId;
+  final String? title;
 
-  const ChatRoomScreen({Key? key, required this.conversationId}) : super(key: key);
+  const ChatRoomScreen({Key? key, required this.conversationId, this.title}) : super(key: key);
 
   @override
   State<ChatRoomScreen> createState() => _ChatRoomScreenState();
@@ -57,7 +58,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(
-        title: const Text('Ruang Chat'),
+        title: Text(widget.title?.isNotEmpty == true ? widget.title! : 'Ruang Chat'),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
       ),
