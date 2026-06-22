@@ -34,7 +34,7 @@ class GoogleController extends Controller
 
             if($finduser){
                 Auth::login($finduser);
-                return redirect()->intended('home');
+                return redirect()->intended(route('home.index'));
             } else {
                 $newUser = User::create([
                     'name' => $user->name,
@@ -44,7 +44,7 @@ class GoogleController extends Controller
                 ]);
 
                 Auth::login($newUser);
-                return redirect()->intended('home');
+                return redirect()->intended(route('home.index'));
             }
 
         } catch (Exception $e) {
