@@ -218,8 +218,10 @@ class CheckoutApiService {
   }
 
   /// Endpoint lama tetap disediakan untuk kompatibilitas: langsung finalisasi order
-  /// dan charge Midtrans dalam satu request.
+  /// dan charge Midtrans dalam satu request. Jika orderId dikirim, backend akan
+  /// meng-update Order, OrderItem, dan Transaction yang sama agar tidak ganda.
   static Future<Map<String, dynamic>?> checkout({
+    String? orderId,
     required String address,
     required String phone,
     required String provinceName,
@@ -231,6 +233,7 @@ class CheckoutApiService {
     String? bankCode,
   }) async {
     final payload = _shippingPayload(
+      orderId: orderId,
       address: address,
       phone: phone,
       provinceName: provinceName,
