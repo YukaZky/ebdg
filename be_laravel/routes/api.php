@@ -42,6 +42,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders/{id}', [ApiCheckoutController::class, 'show']);
     Route::post('/orders/{id}/payment-method', [ApiCheckoutController::class, 'setPaymentMethod']);
     Route::post('/orders/{id}/reset-payment', [ApiCheckoutController::class, 'resetPayment']);
+    Route::post('/orders/{id}/complete-checkout', [ApiCheckoutController::class, 'completeCheckout']);
     Route::get('/orders', [ApiOrderController::class, 'index']);
 
     Route::get('/marketplace/my-store', [ApiMarketplaceController::class, 'myStore']);
