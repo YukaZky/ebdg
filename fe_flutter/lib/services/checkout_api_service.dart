@@ -7,7 +7,7 @@ import 'api_service.dart';
 class CheckoutApiService {
   static String get baseUrl => ApiService.baseUrl;
   static const _orderKey = 'active_checkout_order_id';
-  static const _itemsKey = 'active_checkout_items_signature';
+  static const _signatureKey = 'active_checkout_signature';
 
   static int _toInt(dynamic value, {int fallback = 0}) {
     if (value == null) return fallback;
@@ -32,7 +32,15 @@ class CheckoutApiService {
     final product = _asMap(item['product']);
     final productId = item['product_id'] ?? item['id_product'] ?? product['id'];
     final quantity = _toInt(item['quantity'] ?? item['qty'], fallback: 1);
-    final price = _toDouble(item['price'] ?? item['active_price'] ?? item['sale_price'] ?? item['regular_price'] ?? product['active_price'] ?? product['sale_price'] ?? product['regular_price']);
+    final price = _toDouble(
+      item['price'] ??
+          item['active_price'] ??
+          item['sale_price'] ??
+          item['regular_price'] ??
+          product['active_price'] ??
+          product['sale_price'] ??
+          product['regular_price'],
+    );
 
     return {
       'cart_item_id': item['cart_item_id'] ?? item['id'],
@@ -46,39 +54,78 @@ class CheckoutApiService {
     };
   }
 
-  static String _signature(List<Map<String, dynamic>> cartItems) {
-    final items = cartItems.map(_formatCheckoutItem).map((item) => {
-      'cart_item_id': item['cart_item_id'],
-      'product_id': item['product_id'],
-      'quantity': item['quantity'],
-      'variation_id': item['variation_id'],
-    }).toList()
-      ..sort((a, b) => '${a['cart_item_id']}:${a['product_id']}:${a['variation_id']}'.compareTo('${b['cart_item_id']}:${b['product_id']}:${b['variation_id']}'));
-    return json.encode(items);
+  static List<Map<String, dynamic>> _signatureItems(List<Map<String, dynamic>> cartItems) {
+    final items = cartItems.map(_formatCheckoutItem).map((item) {
+      return {
+        'cart_item_id': item['cart_item_id'],
+        'product_id': item['product_id'],
+        'quantity': item['quantity'],
+        'price': item['price'],
+        'variation_id': item['variation_id'],
+      };
+    }).toList();
+
+    items.sort((a, b) =>
+        '${a['cart_item_id']}:${a['product_id']}:${a['variation_id']}'
+            .compareTo('${b['cart_item_id']}:${b['product_id']}:${b['variation_id']}'));
+    return items;
   }
 
-  static Future<String?> _cachedOrderId(List<Map<String, dynamic>> cartItems) async {
+  static String _checkoutSignature({
+    required String address,
+    required String phone,
+    required String provinceName,
+    required String cityName,
+    required String courier,
+    required double shippingCost,
+    required List<Map<String, dynamic>> cartItems,
+    required String paymentType,
+    String? bankCode,
+  }) {
+    final payload = {
+      'address': address.trim(),
+      'phone': phone.trim(),
+      'province_name': provinceName.trim(),
+      'city_name': cityName.trim(),
+      'courier': courier.trim(),
+      'shipping_cost': shippingCost.toInt(),
+      'payment_type': paymentType,
+      'bank': bankCode,
+      'items': _signatureItems(cartItems),
+    };
+    return json.encode(payload);
+  }
+
+  static Future<String?> _cachedOrderId() async {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getString(_itemsKey) != _signature(cartItems)) return null;
     final id = prefs.getString(_orderKey);
     return id == null || id.isEmpty ? null : id;
   }
 
-  static Future<void> _saveOrderId(String id, List<Map<String, dynamic>> cartItems) async {
+  static Future<String?> _cachedSignature() async {
+    final prefs = await SharedPreferences.getInstance();
+    final signature = prefs.getString(_signatureKey);
+    return signature == null || signature.isEmpty ? null : signature;
+  }
+
+  static Future<void> _saveOrderId(String id, String signature) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_orderKey, id);
-    await prefs.setString(_itemsKey, _signature(cartItems));
+    await prefs.setString(_signatureKey, signature);
   }
 
   static Future<void> _clearOrderId() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_orderKey);
-    await prefs.remove(_itemsKey);
+    await prefs.remove(_signatureKey);
   }
 
   static Future<Map<String, String>?> _authHeaders({bool jsonBody = false}) async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ?? prefs.getString('auth_token') ?? prefs.getString('access_token') ?? ApiService.token;
+    final token = prefs.getString('token') ??
+        prefs.getString('auth_token') ??
+        prefs.getString('access_token') ??
+        ApiService.token;
     if (token == null) return null;
     return {
       if (jsonBody) 'Content-Type': 'application/json',
@@ -136,6 +183,7 @@ class CheckoutApiService {
     required String courier,
     required double shippingCost,
     required List<Map<String, dynamic>> cartItems,
+    String? checkoutSignature,
   }) {
     final payload = <String, dynamic>{
       'address': address,
@@ -147,7 +195,63 @@ class CheckoutApiService {
       'items': cartItems.map(_formatCheckoutItem).toList(),
     };
     if (orderId != null && orderId.isNotEmpty) payload['order_id'] = orderId;
+    if (checkoutSignature != null && checkoutSignature.isNotEmpty) {
+      payload['checkout_signature'] = checkoutSignature;
+    }
     return payload;
+  }
+
+  static Map<String, dynamic> _decodePaymentDetails(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = json.decode(value);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return <String, dynamic>{};
+  }
+
+  static bool _isPaymentInfoActive(Map<String, dynamic> paymentInfo) {
+    final expiry = paymentInfo['expiry_time']?.toString();
+    if (expiry == null || expiry.isEmpty || expiry == 'null') return true;
+    try {
+      return DateTime.parse(expiry).isAfter(DateTime.now());
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> _activePaymentResponse(String orderId, String signature) async {
+    final status = await checkOrderStatus(orderId);
+    if (status == null || status['success'] != true) return null;
+
+    final transactionStatus = status['transaction_status']?.toString();
+    if (transactionStatus == 'approved' || transactionStatus == 'settlement' || transactionStatus == 'capture') {
+      await _clearOrderId();
+      return null;
+    }
+
+    final paymentInfo = _asMap(status['payment_info']);
+    if (paymentInfo.isEmpty || !_isPaymentInfoActive(paymentInfo)) return null;
+
+    final orderResponse = await getOrder(orderId);
+    final order = _asMap(orderResponse?['order']);
+    final transaction = _asMap(order['transaction']);
+    final details = _decodePaymentDetails(transaction['payment_details']);
+
+    if (details['checkout_signature']?.toString() != signature) return null;
+
+    return {
+      'success': true,
+      'message': 'Instruksi pembayaran aktif digunakan kembali.',
+      'reused_payment': true,
+      'payment_info': paymentInfo,
+      'midtrans_response': details['midtrans_response'],
+      'order': order,
+    };
   }
 
   static Future<Map<String, dynamic>?> finalizeOrder({
@@ -160,11 +264,30 @@ class CheckoutApiService {
     required double shippingCost,
     required List<Map<String, dynamic>> cartItems,
   }) {
-    return _postJson('/checkout/finalize', _shippingPayload(orderId: orderId, address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems));
+    return _postJson(
+      '/checkout/finalize',
+      _shippingPayload(
+        orderId: orderId,
+        address: address,
+        phone: phone,
+        provinceName: provinceName,
+        cityName: cityName,
+        courier: courier,
+        shippingCost: shippingCost,
+        cartItems: cartItems,
+      ),
+    );
   }
 
-  static Future<Map<String, dynamic>?> setPaymentMethod({required String orderId, required String paymentType, String? bankCode}) {
-    return _postJson('/orders/$orderId/payment-method', {'payment_type': paymentType, 'bank': bankCode});
+  static Future<Map<String, dynamic>?> setPaymentMethod({
+    required String orderId,
+    required String paymentType,
+    String? bankCode,
+  }) {
+    return _postJson('/orders/$orderId/payment-method', {
+      'payment_type': paymentType,
+      'bank': bankCode,
+    });
   }
 
   static Future<Map<String, dynamic>?> resetPayment(String orderId) {
@@ -187,11 +310,32 @@ class CheckoutApiService {
     required String paymentType,
     String? bankCode,
   }) async {
-    var reusableOrderId = orderId ?? await _cachedOrderId(cartItems);
+    final signature = _checkoutSignature(
+      address: address,
+      phone: phone,
+      provinceName: provinceName,
+      cityName: cityName,
+      courier: courier,
+      shippingCost: shippingCost,
+      cartItems: cartItems,
+      paymentType: paymentType,
+      bankCode: bankCode,
+    );
+
+    final cachedOrderId = await _cachedOrderId();
+    final cachedSignature = await _cachedSignature();
+    var reusableOrderId = orderId ?? cachedOrderId;
+
     if (reusableOrderId != null && reusableOrderId.isNotEmpty) {
+      if (cachedSignature == signature) {
+        final existingPayment = await _activePaymentResponse(reusableOrderId, signature);
+        if (existingPayment != null) return existingPayment;
+      }
+
       final status = await checkOrderStatus(reusableOrderId);
       final transactionStatus = status?['transaction_status']?.toString();
       final alreadyPaid = transactionStatus == 'approved' || transactionStatus == 'settlement' || transactionStatus == 'capture';
+
       if (alreadyPaid) {
         await _clearOrderId();
         reusableOrderId = null;
@@ -200,14 +344,24 @@ class CheckoutApiService {
       }
     }
 
-    final payload = _shippingPayload(orderId: reusableOrderId, address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems);
+    final payload = _shippingPayload(
+      orderId: reusableOrderId,
+      address: address,
+      phone: phone,
+      provinceName: provinceName,
+      cityName: cityName,
+      courier: courier,
+      shippingCost: shippingCost,
+      cartItems: cartItems,
+      checkoutSignature: signature,
+    );
     payload['payment_type'] = paymentType;
     payload['bank'] = bankCode;
 
     final response = await _postJson('/checkout', payload);
     final responseOrderId = response?['order']?['id']?.toString();
     if (response != null && response['success'] == true && responseOrderId != null) {
-      await _saveOrderId(responseOrderId, cartItems);
+      await _saveOrderId(responseOrderId, signature);
     }
     return response;
   }
