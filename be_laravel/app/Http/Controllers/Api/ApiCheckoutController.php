@@ -27,6 +27,12 @@ class ApiCheckoutController extends Controller
 
         try {
             $user = Auth::user();
+
+            $activePayment = $this->activePaymentFromRequest($request, $user);
+            if ($activePayment) {
+                return response()->json($activePayment, 200);
+            }
+
             $order = DB::transaction(function () use ($request, $user) {
                 return $this->persistFinalOrder($request, $user);
             });
@@ -112,6 +118,9 @@ class ApiCheckoutController extends Controller
         }
 
         $transaction = $order->transaction ?: new Transaction();
+        $previousDetails = $this->transactionDetails($transaction);
+        $history = $this->appendSupersededAttempt($previousDetails, $transaction, 'Pembayaran direset oleh user.');
+
         $transaction->user_id = $order->user_id;
         $transaction->order_id = $order->id;
         $transaction->mode = 'card';
@@ -121,6 +130,7 @@ class ApiCheckoutController extends Controller
         $this->setTransactionDetails($transaction, [
             'stage' => 'waiting_payment_method',
             'message' => 'Metode pembayaran direset oleh user.',
+            'superseded_attempts' => $history,
         ]);
         $transaction->save();
 
@@ -161,12 +171,15 @@ class ApiCheckoutController extends Controller
             ], 404);
         }
 
+        $details = $this->transactionDetails($order->transaction);
+
         return response()->json([
             'success' => true,
             'order_id' => $order->id,
             'order_status' => $order->status,
             'transaction_status' => $order->transaction ? $order->transaction->status : 'no_transaction',
             'payment_info' => $this->paymentInfoFromTransaction($order->transaction),
+            'checkout_signature' => $details['checkout_signature'] ?? null,
         ], 200);
     }
 
@@ -174,6 +187,7 @@ class ApiCheckoutController extends Controller
     {
         $request->validate([
             'order_id' => 'nullable|integer',
+            'checkout_signature' => 'nullable|string',
             'address' => 'required|string',
             'phone' => 'required|string',
             'province_name' => 'required|string',
@@ -214,10 +228,6 @@ class ApiCheckoutController extends Controller
 
             if (! $order) {
                 throw new \Exception('Order sebelumnya tidak ditemukan.');
-            }
-
-            if ($order->transaction && $order->transaction->payment_token) {
-                throw new \Exception('Metode pembayaran sudah dibuat. Reset pembayaran sebelum mengubah pengiriman.');
             }
 
             $isNewOrder = false;
@@ -277,6 +287,9 @@ class ApiCheckoutController extends Controller
         }
 
         $transaction = $order->transaction ?: new Transaction();
+        $previousDetails = $this->transactionDetails($transaction);
+        $history = $this->appendSupersededAttempt($previousDetails, $transaction, 'Data checkout berubah sebelum pembayaran selesai.');
+
         $transaction->user_id = $user->id;
         $transaction->order_id = $order->id;
         $transaction->mode = 'card';
@@ -286,6 +299,8 @@ class ApiCheckoutController extends Controller
         $this->setTransactionDetails($transaction, [
             'stage' => 'waiting_payment_method',
             'message' => 'Order sudah final, menunggu user memilih metode pembayaran.',
+            'checkout_signature' => $this->checkoutSignature($request),
+            'superseded_attempts' => $history,
         ]);
         $transaction->save();
 
@@ -334,11 +349,17 @@ class ApiCheckoutController extends Controller
 
     private function chargePaymentMethod(Request $request, Order $order)
     {
+        $signature = $this->checkoutSignature($request);
+        $existingPayment = $this->activePaymentResponse($order, $signature);
+        if ($existingPayment) {
+            return response()->json($existingPayment, 200);
+        }
+
         $this->configureMidtrans();
 
         $params = [
             'transaction_details' => [
-                'order_id' => 'ORDER-' . $order->id . '-' . time(),
+                'order_id' => 'ORDER-' . $order->id . '-' . substr(sha1($signature), 0, 10) . '-' . time(),
                 'gross_amount' => (int) round($order->total),
             ],
             'customer_details' => [
@@ -371,6 +392,9 @@ class ApiCheckoutController extends Controller
         $paymentInfo = $this->extractPaymentInfo($midtransArray);
 
         $transaction = $order->transaction ?: new Transaction();
+        $previousDetails = $this->transactionDetails($transaction);
+        $history = $previousDetails['superseded_attempts'] ?? [];
+
         $transaction->user_id = $order->user_id;
         $transaction->order_id = $order->id;
         $transaction->mode = 'card';
@@ -379,10 +403,13 @@ class ApiCheckoutController extends Controller
         $transaction->payment_url = $paymentInfo['qr_code_url'] ?? null;
         $this->setTransactionDetails($transaction, [
             'stage' => 'payment_instruction_created',
+            'checkout_signature' => $signature,
+            'gross_amount' => (int) round($order->total),
             'payment_type' => $request->payment_type,
-            'bank' => $request->bank,
+            'bank' => $request->input('bank'),
             'payment_info' => $paymentInfo,
             'midtrans_response' => $midtransArray,
+            'superseded_attempts' => $history,
         ]);
         $transaction->save();
 
@@ -423,7 +450,7 @@ class ApiCheckoutController extends Controller
         } elseif (! empty($midtrans['permata_va_number'])) {
             $vaNumber = $midtrans['permata_va_number'];
         } elseif (! empty($midtrans['bill_key'])) {
-            $vaNumber = 'Bill Key: ' . $midtrans['bill_key'] . '\nBiller Code: ' . ($midtrans['biller_code'] ?? '');
+            $vaNumber = 'Bill Key: ' . $midtrans['bill_key'] . "\nBiller Code: " . ($midtrans['biller_code'] ?? '');
         }
 
         if (! empty($midtrans['actions']) && is_array($midtrans['actions'])) {
@@ -445,6 +472,134 @@ class ApiCheckoutController extends Controller
         ];
     }
 
+    private function checkoutSignature(Request $request): string
+    {
+        if ($request->filled('checkout_signature')) {
+            return (string) $request->checkout_signature;
+        }
+
+        $items = collect($request->items ?? [])
+            ->map(function ($item) {
+                return [
+                    'cart_item_id' => $item['cart_item_id'] ?? null,
+                    'product_id' => (int) ($item['product_id'] ?? 0),
+                    'quantity' => (int) ($item['quantity'] ?? 1),
+                    'price' => isset($item['price']) ? (int) $item['price'] : null,
+                    'variation_id' => $item['variation_id'] ?? null,
+                ];
+            })
+            ->sortBy(fn ($item) => ($item['cart_item_id'] ?? '') . ':' . $item['product_id'] . ':' . ($item['variation_id'] ?? ''))
+            ->values()
+            ->all();
+
+        return json_encode([
+            'address' => trim((string) $request->address),
+            'phone' => trim((string) $request->phone),
+            'province_name' => trim((string) $request->province_name),
+            'city_name' => trim((string) $request->city_name),
+            'courier' => trim((string) $request->courier),
+            'shipping_cost' => (int) $request->shipping_cost,
+            'payment_type' => (string) $request->payment_type,
+            'bank' => $request->input('bank'),
+            'items' => $items,
+        ]);
+    }
+
+    private function activePaymentFromRequest(Request $request, $user): ?array
+    {
+        if (! $request->filled('order_id')) {
+            return null;
+        }
+
+        $order = Order::with('transaction', 'items.product')
+            ->where('user_id', $user->id)
+            ->find($request->order_id);
+
+        if (! $order) {
+            return null;
+        }
+
+        return $this->activePaymentResponse($order, $this->checkoutSignature($request));
+    }
+
+    private function activePaymentResponse(Order $order, ?string $signature = null): ?array
+    {
+        $order->loadMissing('transaction', 'items.product');
+        $transaction = $order->transaction;
+
+        if (! $transaction || empty($transaction->payment_token)) {
+            return null;
+        }
+
+        $details = $this->transactionDetails($transaction);
+        if ($signature && (($details['checkout_signature'] ?? null) !== $signature)) {
+            return null;
+        }
+
+        $paymentInfo = $details['payment_info'] ?? null;
+        if (! is_array($paymentInfo) || ! $this->paymentInfoIsActive($paymentInfo)) {
+            return null;
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Instruksi pembayaran aktif digunakan kembali.',
+            'reused_payment' => true,
+            'payment_info' => $paymentInfo,
+            'midtrans_response' => $details['midtrans_response'] ?? null,
+            'order' => $order->fresh()->load('items.product', 'transaction'),
+        ];
+    }
+
+    private function paymentInfoIsActive(array $paymentInfo): bool
+    {
+        if (empty($paymentInfo['expiry_time'])) {
+            return true;
+        }
+
+        $timestamp = strtotime($paymentInfo['expiry_time']);
+        if (! $timestamp) {
+            return true;
+        }
+
+        return $timestamp > time();
+    }
+
+    private function appendSupersededAttempt(array $details, Transaction $transaction, string $reason): array
+    {
+        $history = $details['superseded_attempts'] ?? [];
+        if (! is_array($history)) {
+            $history = [];
+        }
+
+        if (! empty($transaction->payment_token) || ! empty($details['payment_info'])) {
+            $history[] = [
+                'reason' => $reason,
+                'superseded_at' => now()->toDateTimeString(),
+                'payment_token' => $transaction->payment_token,
+                'payment_url' => $transaction->payment_url,
+                'checkout_signature' => $details['checkout_signature'] ?? null,
+                'gross_amount' => $details['gross_amount'] ?? null,
+                'payment_type' => $details['payment_type'] ?? null,
+                'bank' => $details['bank'] ?? null,
+                'payment_info' => $details['payment_info'] ?? null,
+                'midtrans_response' => $details['midtrans_response'] ?? null,
+            ];
+        }
+
+        return $history;
+    }
+
+    private function transactionDetails(?Transaction $transaction): array
+    {
+        if (! $transaction || ! Schema::hasColumn('transactions', 'payment_details') || empty($transaction->payment_details)) {
+            return [];
+        }
+
+        $details = json_decode($transaction->payment_details, true);
+        return is_array($details) ? $details : [];
+    }
+
     private function setTransactionDetails(Transaction $transaction, array $details): void
     {
         if (Schema::hasColumn('transactions', 'payment_details')) {
@@ -454,12 +609,8 @@ class ApiCheckoutController extends Controller
 
     private function paymentInfoFromTransaction(?Transaction $transaction): ?array
     {
-        if (! $transaction || ! Schema::hasColumn('transactions', 'payment_details') || empty($transaction->payment_details)) {
-            return null;
-        }
-
-        $details = json_decode($transaction->payment_details, true);
-        if (! is_array($details)) {
+        $details = $this->transactionDetails($transaction);
+        if (empty($details)) {
             return null;
         }
 
