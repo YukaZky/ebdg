@@ -14,154 +14,828 @@ class CheckoutScreen extends StatefulWidget {
   final double totalAmount;
   final double totalWeight;
   final List<Map<String, dynamic>> cartItems;
-  const CheckoutScreen({Key? key, required this.totalAmount, required this.totalWeight, required this.cartItems}) : super(key: key);
+
+  const CheckoutScreen({
+    Key? key,
+    required this.totalAmount,
+    required this.totalWeight,
+    required this.cartItems,
+  }) : super(key: key);
+
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  final _couriers = ['jne', 'pos', 'tiki'];
-  Map<String, dynamic>? _addr;
-  List _costs = [];
-  String? _courier, _service, _orderId, _va, _qr;
-  double _shipping = 0;
-  PaymentMethodModel? _method;
-  PaymentState _state = PaymentState.initial;
-  bool _loadingAddr = true, _loadingCost = false, _loading = false;
-  Timer? _timer;
-  Duration _left = Duration.zero;
-  Map<String, dynamic>? _order;
+  static const Color _navy = Color(0xFF0B1F4D);
+  static const Color _navySoft = Color(0xFFEAF0FF);
+  static const Color _pageBg = Color(0xFFF5F7FB);
 
-  double get _total => widget.totalAmount + _shipping;
-  bool get _locked => _state == PaymentState.pending || _state == PaymentState.approved;
-  String get _address => _addr?['address']?.toString() ?? _addr?['detail_address']?.toString() ?? '-';
-  String get _phone => _addr?['phone']?.toString() ?? '-';
-  String get _province => _addr?['province_name']?.toString() ?? 'Unknown';
-  String get _city => _addr?['city_name']?.toString() ?? 'Unknown';
-  String get _shipName => '${_courier?.toUpperCase()} - $_service';
+  final List<String> _couriers = ['jne', 'pos', 'tiki'];
+
+  Map<String, dynamic>? _addressData;
+  List _shippingOptions = [];
+  String? _selectedCourier;
+  String? _selectedService;
+  double _shippingCost = 0;
+
+  PaymentMethodModel? _selectedPaymentMethod;
+  PaymentState _paymentState = PaymentState.initial;
+
+  bool _isLoadingAddress = true;
+  bool _isLoadingShipping = false;
+  bool _isLoading = false;
+
+  String? _orderId;
+  String? _vaNumber;
+  String? _qrCodeUrl;
+  Timer? _countdownTimer;
+  Duration _timeLeft = Duration.zero;
+  Map<String, dynamic>? _orderData;
+
+  double get _grandTotal => widget.totalAmount + _shippingCost;
+  bool get _isPaymentMode => _paymentState == PaymentState.pending || _paymentState == PaymentState.approved;
+
+  String get _addressText =>
+      _addressData?['address']?.toString() ?? _addressData?['detail_address']?.toString() ?? '-';
+  String get _phoneText => _addressData?['phone']?.toString() ?? '-';
+  String get _provinceName => _addressData?['province_name']?.toString() ?? 'Unknown';
+  String get _cityName => _addressData?['city_name']?.toString() ?? 'Unknown';
+  String get _courierWithService => '${_selectedCourier?.toUpperCase()} - $_selectedService';
 
   @override
-  void initState() { super.initState(); _loadAddress(); }
-  @override
-  void dispose() { _timer?.cancel(); super.dispose(); }
-
-  Future<void> _loadAddress() async {
-    setState(() => _loadingAddr = true);
-    final data = await ApiService.getUserAddresses();
-    if (!mounted) return;
-    Map<String, dynamic>? chosen;
-    if (data is List && data.isNotEmpty) {
-      try {
-        chosen = Map<String, dynamic>.from(data.firstWhere((a) => a['isdefault'] == 1 || a['isdefault'] == '1' || a['isdefault'] == true || a['is_main'] == 1 || a['is_main'] == '1' || a['is_main'] == true));
-      } catch (_) { chosen = Map<String, dynamic>.from(data.first); }
-    }
-    setState(() { _addr = chosen; _loadingAddr = false; _costs = []; _service = null; _shipping = 0; });
-    if (_addr != null && _courier != null) _loadShipping();
+  void initState() {
+    super.initState();
+    _loadMainAddress();
   }
 
-  Future<void> _loadShipping() async {
-    if (_addr == null || _addr!['city_id'] == null || _courier == null) return;
-    setState(() { _loadingCost = true; _costs = []; _service = null; _shipping = 0; });
-    final data = await ApiService.checkCost(_addr!['city_id'].toString(), widget.totalWeight.toInt(), _courier!);
-    if (!mounted) return;
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<bool> _handleBack() async {
+    if (_isPaymentMode || _paymentState == PaymentState.expired) {
+      _backToCheckoutForm();
+      return false;
+    }
+    return true;
+  }
+
+  void _backToCheckoutForm() {
     setState(() {
-      _loadingCost = false; _costs = data;
+      _paymentState = PaymentState.initial;
+      _orderId = null;
+      _vaNumber = null;
+      _qrCodeUrl = null;
+      _orderData = null;
+      _timeLeft = Duration.zero;
+      _countdownTimer?.cancel();
+    });
+  }
+
+  Future<void> _loadMainAddress() async {
+    setState(() => _isLoadingAddress = true);
+    final data = await ApiService.getUserAddresses();
+    if (!mounted) return;
+
+    Map<String, dynamic>? selected;
+    if (data is List && data.isNotEmpty) {
+      try {
+        selected = Map<String, dynamic>.from(data.firstWhere((address) =>
+            address['isdefault'] == 1 ||
+            address['isdefault'] == '1' ||
+            address['isdefault'] == true ||
+            address['is_main'] == 1 ||
+            address['is_main'] == '1' ||
+            address['is_main'] == true));
+      } catch (_) {
+        selected = Map<String, dynamic>.from(data.first);
+      }
+    }
+
+    setState(() {
+      _addressData = selected;
+      _isLoadingAddress = false;
+      _shippingOptions = [];
+      _selectedService = null;
+      _shippingCost = 0;
+    });
+
+    if (_addressData != null && _selectedCourier != null) {
+      _loadShippingCost();
+    }
+  }
+
+  Future<void> _loadShippingCost() async {
+    if (_addressData == null || _addressData!['city_id'] == null || _selectedCourier == null) return;
+
+    setState(() {
+      _isLoadingShipping = true;
+      _shippingOptions = [];
+      _selectedService = null;
+      _shippingCost = 0;
+    });
+
+    final data = await ApiService.checkCost(
+      _addressData!['city_id'].toString(),
+      widget.totalWeight.toInt(),
+      _selectedCourier!,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingShipping = false;
+      _shippingOptions = data;
       if (data.isNotEmpty && data[0]['cost'] is List && data[0]['cost'].isNotEmpty) {
-        _service = data[0]['service']?.toString();
-        _shipping = double.tryParse(data[0]['cost'][0]['value']?.toString() ?? '0') ?? 0;
+        _selectedService = data[0]['service']?.toString();
+        _shippingCost = double.tryParse(data[0]['cost'][0]['value']?.toString() ?? '0') ?? 0;
       }
     });
   }
 
-  Future<void> _pickMethod() async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const MetodeScreen()));
-    if (result is PaymentMethodModel) setState(() => _method = result);
+  Future<void> _selectPaymentMethod() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MetodeScreen()),
+    );
+
+    if (result is PaymentMethodModel) {
+      setState(() => _selectedPaymentMethod = result);
+    }
   }
 
   Future<void> _payNow() async {
-    if (_addr == null) return _toast('Harap atur alamat terlebih dahulu.', error: true);
-    if (_courier == null || _service == null || _shipping <= 0) return _toast('Pilih kurir dan layanan pengiriman.', error: true);
-    if (_method == null) return _toast('Pilih metode pembayaran terlebih dahulu.', error: true);
-    setState(() => _loading = true);
-    final res = await CheckoutApiService.checkout(address: _address, phone: _phone, provinceName: _province, cityName: _city, courier: _shipName, shippingCost: _shipping, cartItems: widget.cartItems, paymentType: _method!.paymentType, bankCode: _method!.bankCode);
+    if (_addressData == null) {
+      _showSnack('Harap pilih alamat terlebih dahulu.', error: true);
+      return;
+    }
+    if (_selectedCourier == null || _selectedService == null || _shippingCost <= 0) {
+      _showSnack('Pilih kurir dan layanan pengiriman terlebih dahulu.', error: true);
+      return;
+    }
+    if (_selectedPaymentMethod == null) {
+      _showSnack('Pilih metode pembayaran terlebih dahulu.', error: true);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final response = await CheckoutApiService.checkout(
+      address: _addressText,
+      phone: _phoneText,
+      provinceName: _provinceName,
+      cityName: _cityName,
+      courier: _courierWithService,
+      shippingCost: _shippingCost,
+      cartItems: widget.cartItems,
+      paymentType: _selectedPaymentMethod!.paymentType,
+      bankCode: _selectedPaymentMethod!.bankCode,
+    );
+
     if (!mounted) return;
-    setState(() => _loading = false);
-    if (res == null || res['success'] != true) return _toast('Gagal memproses pesanan.', error: true);
-    final info = res['payment_info'];
-    final mid = res['midtrans_response'];
+    setState(() => _isLoading = false);
+
+    if (response == null || response['success'] != true) {
+      _showSnack('Gagal memproses pesanan.', error: true);
+      return;
+    }
+
+    final paymentInfo = response['payment_info'];
+    final midtrans = response['midtrans_response'];
+
     setState(() {
-      if (res['order'] != null) { _order = Map<String, dynamic>.from(res['order']); _orderId = res['order']['id'].toString(); }
-      _va = _readVa(info, mid); _qr = _readQr(info, mid); _state = PaymentState.pending;
-      _startTimer(_readExpiry(info, mid));
+      if (response['order'] != null) {
+        _orderData = Map<String, dynamic>.from(response['order']);
+        _orderId = response['order']['id'].toString();
+      }
+      _vaNumber = _readVaNumber(paymentInfo, midtrans);
+      _qrCodeUrl = _readQrCodeUrl(paymentInfo, midtrans);
+      _paymentState = PaymentState.pending;
+      _startTimer(_readExpiry(paymentInfo, midtrans));
     });
   }
 
-  String? _readVa(dynamic info, dynamic mid) {
+  String? _readVaNumber(dynamic info, dynamic midtrans) {
     if (info is Map && info['va_number'] != null) return info['va_number'].toString();
-    if (mid is Map && mid['va_numbers'] is List && mid['va_numbers'].isNotEmpty) return mid['va_numbers'][0]['va_number']?.toString();
-    if (mid is Map && mid['permata_va_number'] != null) return mid['permata_va_number'].toString();
-    if (mid is Map && mid['bill_key'] != null) return 'Bill Key: ${mid['bill_key']}\nBiller Code: ${mid['biller_code'] ?? ''}';
+    if (midtrans is Map && midtrans['va_numbers'] is List && midtrans['va_numbers'].isNotEmpty) {
+      return midtrans['va_numbers'][0]['va_number']?.toString();
+    }
+    if (midtrans is Map && midtrans['permata_va_number'] != null) return midtrans['permata_va_number'].toString();
+    if (midtrans is Map && midtrans['bill_key'] != null) {
+      return 'Bill Key: ${midtrans['bill_key']}\nBiller Code: ${midtrans['biller_code'] ?? ''}';
+    }
     return null;
   }
-  String? _readQr(dynamic info, dynamic mid) {
-    if (info is Map && info['qr_code_url'] != null) return info['qr_code_url'].toString();
-    if (mid is Map && mid['actions'] is List) { for (final a in mid['actions']) { if (a is Map && a['name'] == 'generate-qr-code') return a['url']?.toString(); } }
-    return null;
-  }
-  String? _readExpiry(dynamic info, dynamic mid) => info is Map && info['expiry_time'] != null ? info['expiry_time'].toString() : mid is Map && mid['expiry_time'] != null ? mid['expiry_time'].toString() : null;
 
-  void _startTimer(String? expiry) {
-    _timer?.cancel();
-    try { _left = expiry == null ? const Duration(hours: 24) : DateTime.parse(expiry).difference(DateTime.now()); } catch (_) { _left = const Duration(hours: 24); }
-    if (_left.isNegative) { _left = Duration.zero; _state = PaymentState.expired; return; }
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+  String? _readQrCodeUrl(dynamic info, dynamic midtrans) {
+    if (info is Map && info['qr_code_url'] != null) return info['qr_code_url'].toString();
+    if (midtrans is Map && midtrans['actions'] is List) {
+      for (final action in midtrans['actions']) {
+        if (action is Map && action['name'] == 'generate-qr-code') return action['url']?.toString();
+      }
+    }
+    return null;
+  }
+
+  String? _readExpiry(dynamic info, dynamic midtrans) {
+    if (info is Map && info['expiry_time'] != null) return info['expiry_time'].toString();
+    if (midtrans is Map && midtrans['expiry_time'] != null) return midtrans['expiry_time'].toString();
+    return null;
+  }
+
+  void _startTimer(String? expiryTime) {
+    _countdownTimer?.cancel();
+
+    try {
+      _timeLeft = expiryTime == null
+          ? const Duration(hours: 24)
+          : DateTime.parse(expiryTime).difference(DateTime.now());
+    } catch (_) {
+      _timeLeft = const Duration(hours: 24);
+    }
+
+    if (_timeLeft.isNegative) {
+      _timeLeft = Duration.zero;
+      _paymentState = PaymentState.expired;
+      return;
+    }
+
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
-      setState(() { if (_left.inSeconds <= 0) { t.cancel(); _state = PaymentState.expired; } else { _left -= const Duration(seconds: 1); } });
+      setState(() {
+        if (_timeLeft.inSeconds <= 0) {
+          timer.cancel();
+          _paymentState = PaymentState.expired;
+        } else {
+          _timeLeft -= const Duration(seconds: 1);
+        }
+      });
     });
   }
 
-  Future<void> _refreshStatus() async {
+  Future<void> _refreshPaymentStatus() async {
     if (_orderId == null) return;
-    setState(() => _loading = true);
-    final res = await CheckoutApiService.checkOrderStatus(_orderId!);
+
+    setState(() => _isLoading = true);
+    final response = await CheckoutApiService.checkOrderStatus(_orderId!);
     if (!mounted) return;
-    setState(() => _loading = false);
-    final s = res?['transaction_status'];
-    if (s == 'settlement' || s == 'capture' || s == 'approved') { setState(() => _state = PaymentState.approved); _timer?.cancel(); _toast('Pembayaran berhasil diterima.'); }
-    else if (s == 'expire' || s == 'cancel' || s == 'declined') { setState(() => _state = PaymentState.expired); _timer?.cancel(); }
-    else { _toast('Pembayaran masih menunggu proses.'); }
+    setState(() => _isLoading = false);
+
+    final status = response?['transaction_status'];
+    if (response != null && response['success'] == true) {
+      if (status == 'settlement' || status == 'capture' || status == 'approved') {
+        setState(() => _paymentState = PaymentState.approved);
+        _countdownTimer?.cancel();
+        _showSnack('Pembayaran berhasil diterima.');
+      } else if (status == 'expire' || status == 'cancel' || status == 'declined') {
+        setState(() => _paymentState = PaymentState.expired);
+        _countdownTimer?.cancel();
+      } else {
+        _showSnack('Pembayaran masih menunggu proses.');
+      }
+    }
   }
 
-  void _confirm() {
-    if (_state != PaymentState.approved) return _toast('Konfirmasi pesanan baru bisa dibuka setelah pembayaran diterima.');
-    if (_order == null) return;
-    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => OrderConfirmationScreen(order: _order!)), (_) => false);
-  }
+  Future<void> _confirmOrder() async {
+    if (_paymentState != PaymentState.approved) {
+      _showSnack('Konfirmasi pesanan baru bisa dibuka setelah pembayaran diterima.');
+      return;
+    }
 
-  void _toast(String msg, {bool error = false}) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: error ? Colors.red : null));
-  double _price(Map<String, dynamic> item) => double.tryParse((item['price'] ?? item['product']?['regular_price'] ?? 0).toString()) ?? 0;
-  int _qty(Map<String, dynamic> item) => int.tryParse((item['quantity'] ?? 1).toString()) ?? 1;
-  String _img(dynamic image) { final v = image?.toString().trim() ?? ''; if (v.isEmpty || v == 'null') return ''; if (v.startsWith('http')) return v; final base = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), ''); final c = v.startsWith('/') ? v.substring(1) : v; return c.startsWith('uploads/') || c.startsWith('storage/') ? '$base/$c' : '$base/uploads/products/$c'; }
+    if (_orderData == null && _orderId != null) {
+      final response = await CheckoutApiService.getOrder(_orderId!);
+      if (response != null && response['success'] == true && response['order'] != null) {
+        _orderData = Map<String, dynamic>.from(response['order']);
+      }
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    final timer = '${_left.inHours.remainder(24).toString().padLeft(2, '0')} : ${_left.inMinutes.remainder(60).toString().padLeft(2, '0')} : ${_left.inSeconds.remainder(60).toString().padLeft(2, '0')}';
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      appBar: AppBar(title: const Text('Pengiriman & Checkout', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)), backgroundColor: Colors.white, iconTheme: const IconThemeData(color: Colors.black), elevation: .5),
-      body: SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_addressCard(), const SizedBox(height: 16), _shippingCard(), const SizedBox(height: 16), _paymentCard(timer), const SizedBox(height: 16), _summaryCard(), const SizedBox(height: 120)])),
-      bottomSheet: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.grey.withOpacity(.12), blurRadius: 10, offset: const Offset(0, -5))]), child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Total Tagihan', style: TextStyle(color: Colors.grey, fontSize: 16)), Text('Rp ${_total.toStringAsFixed(0)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFFE65100)))]), const SizedBox(height: 12), SizedBox(width: double.infinity, child: _bottomButton())]))),
+    if (!mounted || _orderData == null) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => OrderConfirmationScreen(order: _orderData!)),
+      (_) => false,
     );
   }
 
-  Widget _box(Widget child) => Container(width: double.infinity, padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200), boxShadow: [BoxShadow(color: Colors.black.withOpacity(.03), blurRadius: 10, offset: const Offset(0, 4))]), child: child);
-  Widget _addressCard() {
-    if (_loadingAddr) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Color(0xFFE65100))));
-    if (_addr == null) return InkWell(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressListScreen())).then((_) => _loadAddress()), child: _box(const Row(children: [Icon(Icons.location_off, color: Colors.red), SizedBox(width: 12), Expanded(child: Text('Alamat belum diatur. Klik di sini.', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)))])));
-    return _box(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Alamat Pengiriman', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), TextButton(onPressed: _locked ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressListScreen())).then((_) => _loadAddress()), child: const Text('Ubah'))]), const Divider(), Text('${_addr!['name']} | ${_addr!['phone']}', style: const TextStyle(fontWeight: FontWeight.w600)), const SizedBox(height: 6), Text(_address), Text('${_addr!['city_name']}, ${_addr!['province_name']} - ${_addr!['postal_code']}', style: TextStyle(color: Colors.grey.shade700))]));
+  void _copyVa() {
+    if (_vaNumber == null) return;
+    Clipboard.setData(ClipboardData(text: _vaNumber!));
+    _showSnack('Nomor VA disalin.');
   }
-  Widget _shippingCard() => _addr == null ? const SizedBox.shrink() : _box(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Kurir Pengiriman', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 12), DropdownButtonFormField<String>(decoration: const InputDecoration(labelText: 'Pilih Ekspedisi', border: OutlineInputBorder()), value: _courier, items: _couriers.map((c) => DropdownMenuItem(value: c, child: Text(c.toUpperCase()))).toList(), onChanged: _locked ? null : (v) { setState(() => _courier = v); _loadShipping(); }), const SizedBox(height: 16), if (_loadingCost) const Center(child: CircularProgressIndicator()) else if (_costs.isNotEmpty) DropdownButtonFormField<String>(isExpanded: true, decoration: const InputDecoration(labelText: 'Pilih Layanan', border: OutlineInputBorder()), value: _service, items: _costs.map<DropdownMenuItem<String>>((o) { final cost = o['cost'] as List?; final val = cost != null && cost.isNotEmpty ? cost[0]['value']?.toString() ?? '0' : '0'; return DropdownMenuItem(value: o['service']?.toString(), child: Text('${o['service']} - Rp $val', overflow: TextOverflow.ellipsis)); }).toList(), onChanged: _locked ? null : (v) { final s = _costs.firstWhere((o) => o['service']?.toString() == v); final cost = s['cost'] as List?; setState(() { _service = v; _shipping = double.tryParse(cost != null && cost.isNotEmpty ? cost[0]['value']?.toString() ?? '0' : '0') ?? 0; }); })]));
-  Widget _paymentCard(String timer) => _box(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.payment, color: Color(0xFFE65100)), const SizedBox(width: 10), const Expanded(child: Text('Metode Pembayaran', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))), if (_state == PaymentState.pending) const Chip(label: Text('Menunggu')) else if (_state == PaymentState.approved) const Chip(label: Text('Lunas'))]), const SizedBox(height: 12), if (_state == PaymentState.initial || _state == PaymentState.expired) InkWell(onTap: _pickMethod, child: Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Expanded(child: Text(_method?.name ?? 'Pilih Metode Pembayaran', style: TextStyle(color: _method == null ? Colors.grey : Colors.black, fontWeight: _method == null ? FontWeight.normal : FontWeight.bold))), const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey)]))), if (_state == PaymentState.expired) const Padding(padding: EdgeInsets.only(top: 10), child: Text('Sesi pembayaran berakhir. Silakan pilih metode kembali.', style: TextStyle(color: Colors.red))), if (_state == PaymentState.pending) ...[Text(_method?.name ?? 'Metode Pembayaran', style: const TextStyle(fontWeight: FontWeight.bold)), const Text('Status: Menunggu Pembayaran', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w600)), const SizedBox(height: 14), Center(child: Text(timer, style: const TextStyle(fontSize: 30, color: Colors.red, fontWeight: FontWeight.bold))), const Divider(height: 28), if (_va != null) Row(children: [Expanded(child: SelectableText(_va!, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))), TextButton.icon(onPressed: () { Clipboard.setData(ClipboardData(text: _va!)); _toast('Nomor VA disalin.'); }, icon: const Icon(Icons.copy), label: const Text('Salin'))]), if (_qr != null) Center(child: Image.network(_qr!, width: 220, height: 200)), if (_va == null && _qr == null) const Text('Selesaikan pembayaran sesuai instruksi metode yang dipilih.'), const SizedBox(height: 14), SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _loading ? null : _refreshStatus, icon: const Icon(Icons.refresh), label: const Text('Refresh Status Pembayaran')))], if (_state == PaymentState.approved) const Center(child: Column(children: [Icon(Icons.check_circle, color: Colors.green, size: 64), SizedBox(height: 8), Text('Pembayaran Berhasil!', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 18))]))]));
-  Widget _summaryCard() => _box(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Ringkasan Pesanan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 12), ...widget.cartItems.map((item) { final product = item['product'] ?? {}; final price = _price(item); final qty = _qty(item); final image = _img(item['selected_image'] ?? product['image']); return Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(children: [Container(width: 50, height: 50, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)), child: image.isEmpty ? const Icon(Icons.image, color: Colors.grey) : Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Colors.grey))), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(product['name'] ?? 'Produk', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)), Text('$qty x Rp ${price.toStringAsFixed(0)}', style: TextStyle(color: Colors.grey[600], fontSize: 12))])), Text('Rp ${(price * qty).toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold))])); })]));
-  Widget _bottomButton() { if (_state == PaymentState.pending) return ElevatedButton(onPressed: null, style: ElevatedButton.styleFrom(disabledBackgroundColor: Colors.grey.shade400, padding: const EdgeInsets.symmetric(vertical: 14)), child: const Text('MENUNGGU PEMBAYARAN...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))); if (_state == PaymentState.approved) return ElevatedButton(onPressed: _confirm, style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 14)), child: const Text('SELESAIKAN PESANAN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))); return ElevatedButton(onPressed: _loading ? null : _payNow, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE65100), disabledBackgroundColor: Colors.grey.shade300, padding: const EdgeInsets.symmetric(vertical: 14)), child: _loading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('BAYAR SEKARANG', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))); }
+
+  void _showSnack(String message, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(fontSize: 13)),
+        backgroundColor: error ? Colors.red : null,
+      ),
+    );
+  }
+
+  double _itemPrice(Map<String, dynamic> item) {
+    final product = item['product'] ?? {};
+    return double.tryParse((item['price'] ?? product['regular_price'] ?? 0).toString()) ?? 0;
+  }
+
+  int _itemQty(Map<String, dynamic> item) {
+    return int.tryParse((item['quantity'] ?? 1).toString()) ?? 1;
+  }
+
+  String _imageUrl(dynamic image) {
+    final value = image?.toString().trim() ?? '';
+    if (value.isEmpty || value == 'null') return '';
+    if (value.startsWith('http')) return value;
+    final base = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+    final cleanValue = value.startsWith('/') ? value.substring(1) : value;
+    if (cleanValue.startsWith('uploads/') || cleanValue.startsWith('storage/')) return '$base/$cleanValue';
+    return '$base/uploads/products/$cleanValue';
+  }
+
+  String _currency(num value) => 'Rp ${value.toStringAsFixed(0)}';
+
+  @override
+  Widget build(BuildContext context) {
+    final timerText =
+        '${_timeLeft.inHours.remainder(24).toString().padLeft(2, '0')} : '
+        '${_timeLeft.inMinutes.remainder(60).toString().padLeft(2, '0')} : '
+        '${_timeLeft.inSeconds.remainder(60).toString().padLeft(2, '0')}';
+
+    return WillPopScope(
+      onWillPop: _handleBack,
+      child: Scaffold(
+        backgroundColor: _pageBg,
+        appBar: AppBar(
+          title: Text(
+            _isPaymentMode ? 'Pembayaran' : 'Checkout',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
+          ),
+          centerTitle: false,
+          backgroundColor: _navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: Colors.white),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () async {
+              final canPop = await _handleBack();
+              if (canPop && mounted) Navigator.pop(context);
+            },
+          ),
+        ),
+        body: _isPaymentMode
+            ? _buildPaymentBody(timerText)
+            : _buildCheckoutBody(),
+        bottomSheet: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(.08), blurRadius: 16, offset: const Offset(0, -5))],
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total Order', style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+                    Text(_currency(_grandTotal), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _navy)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(width: double.infinity, child: _bottomButton()),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCheckoutBody() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionLabel('Alamat'),
+          const SizedBox(height: 8),
+          _addressCard(),
+          const SizedBox(height: 14),
+          _sectionLabel('Pengiriman'),
+          const SizedBox(height: 8),
+          _shippingCard(),
+          const SizedBox(height: 14),
+          _sectionLabel('Pembayaran'),
+          const SizedBox(height: 8),
+          _methodCard(),
+          const SizedBox(height: 14),
+          _sectionLabel('Ringkasan'),
+          const SizedBox(height: 8),
+          _summaryCard(showOnlyProducts: false),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentBody(String timerText) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _paymentInstructionCard(timerText),
+          const SizedBox(height: 14),
+          _sectionLabel('Daftar Barang yang Diorder'),
+          const SizedBox(height: 8),
+          _summaryCard(showOnlyProducts: true),
+          const SizedBox(height: 14),
+          _totalOrderCard(),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: _backToCheckoutForm,
+            icon: const Icon(Icons.arrow_back, size: 18),
+            label: const Text('Kembali ubah alamat, kurir, atau metode pembayaran'),
+            style: TextButton.styleFrom(foregroundColor: _navy, textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Text(text, style: const TextStyle(fontSize: 13, color: _navy, fontWeight: FontWeight.w800));
+  }
+
+  Widget _card({required Widget child, EdgeInsetsGeometry padding = const EdgeInsets.all(14)}) {
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(.04), blurRadius: 12, offset: const Offset(0, 5))],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _addressCard() {
+    if (_isLoadingAddress) {
+      return _card(
+        child: const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(color: _navy))),
+      );
+    }
+
+    if (_addressData == null) {
+      return InkWell(
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressListScreen())).then((_) => _loadMainAddress()),
+        child: _card(
+          child: const Row(
+            children: [
+              Icon(Icons.location_off, color: Colors.red, size: 20),
+              SizedBox(width: 10),
+              Expanded(child: Text('Alamat belum diatur. Klik untuk memilih alamat.', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600, fontSize: 13))),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: _navySoft, borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.location_on_rounded, color: _navy, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${_addressData!['name']} | ${_addressData!['phone']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
+                    const SizedBox(height: 5),
+                    Text(_addressText, style: const TextStyle(fontSize: 12, height: 1.35, color: Color(0xFF475569))),
+                    const SizedBox(height: 3),
+                    Text('${_addressData!['city_name']}, ${_addressData!['province_name']} - ${_addressData!['postal_code']}', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressListScreen())).then((_) => _loadMainAddress()),
+                child: const Text('Ubah', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _shippingCard() {
+    if (_addressData == null) return const SizedBox.shrink();
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DropdownButtonFormField<String>(
+            value: _selectedCourier,
+            decoration: _inputDecoration('Pilih Ekspedisi'),
+            style: const TextStyle(fontSize: 13, color: Color(0xFF111827)),
+            items: _couriers.map((courier) => DropdownMenuItem(value: courier, child: Text(courier.toUpperCase()))).toList(),
+            onChanged: (value) {
+              setState(() => _selectedCourier = value);
+              _loadShippingCost();
+            },
+          ),
+          const SizedBox(height: 12),
+          if (_isLoadingShipping)
+            const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(color: _navy)))
+          else if (_shippingOptions.isNotEmpty)
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedService,
+              decoration: _inputDecoration('Pilih Layanan'),
+              style: const TextStyle(fontSize: 13, color: Color(0xFF111827)),
+              items: _shippingOptions.map<DropdownMenuItem<String>>((option) {
+                final cost = option['cost'] as List?;
+                final value = cost != null && cost.isNotEmpty ? cost[0]['value']?.toString() ?? '0' : '0';
+                return DropdownMenuItem(value: option['service']?.toString(), child: Text('${option['service']} - Rp $value', overflow: TextOverflow.ellipsis));
+              }).toList(),
+              onChanged: (value) {
+                final selected = _shippingOptions.firstWhere((option) => option['service']?.toString() == value);
+                final cost = selected['cost'] as List?;
+                setState(() {
+                  _selectedService = value;
+                  _shippingCost = double.tryParse(cost != null && cost.isNotEmpty ? cost[0]['value']?.toString() ?? '0' : '0') ?? 0;
+                });
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _methodCard() {
+    return InkWell(
+      onTap: _selectPaymentMethod,
+      borderRadius: BorderRadius.circular(16),
+      child: _card(
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: _navySoft, borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.account_balance_wallet_rounded, color: _navy, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_selectedPaymentMethod?.name ?? 'Pilih Metode Pembayaran', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _selectedPaymentMethod == null ? const Color(0xFF64748B) : const Color(0xFF111827))),
+                  const SizedBox(height: 3),
+                  const Text('Virtual Account / QRIS / e-wallet', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _navy, width: 1.4)),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    );
+  }
+
+  Widget _paymentInstructionCard(String timerText) {
+    final isApproved = _paymentState == PaymentState.approved;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [_navy, Color(0xFF163A73)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [BoxShadow(color: _navy.withOpacity(.22), blurRadius: 18, offset: const Offset(0, 8))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: Colors.white.withOpacity(.14), borderRadius: BorderRadius.circular(20)),
+                child: Text(isApproved ? 'LUNAS' : 'MENUNGGU PEMBAYARAN', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: .4)),
+              ),
+              const Spacer(),
+              Icon(isApproved ? Icons.check_circle : Icons.schedule_rounded, color: Colors.white, size: 22),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(_selectedPaymentMethod?.name ?? 'Metode Pembayaran', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          if (!isApproved) ...[
+            const Text('Selesaikan pembayaran sebelum waktu habis', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 12)),
+            const SizedBox(height: 10),
+            Text(timerText, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+          ] else ...[
+            const Text('Pembayaran sudah diterima oleh sistem.', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 12)),
+          ],
+          const SizedBox(height: 18),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_vaNumber != null) ...[
+                  const Text('Nomor Virtual Account', style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(child: SelectableText(_vaNumber!, style: const TextStyle(fontSize: 18, color: _navy, fontWeight: FontWeight.w900, letterSpacing: .8))),
+                      IconButton(onPressed: _copyVa, icon: const Icon(Icons.copy_rounded, color: _navy, size: 20)),
+                    ],
+                  ),
+                ],
+                if (_qrCodeUrl != null) ...[
+                  const Text('Scan QRIS', style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 10),
+                  Center(child: Image.network(_qrCodeUrl!, width: 190, height: 190, fit: BoxFit.contain)),
+                ],
+                if (_vaNumber == null && _qrCodeUrl == null)
+                  const Text('Ikuti instruksi pembayaran sesuai metode yang dipilih.', style: TextStyle(fontSize: 12, color: Color(0xFF475569))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _refreshPaymentStatus,
+                  icon: _isLoading
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.refresh_rounded, size: 17),
+                  label: const Text('Refresh Status'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(color: Colors.white.withOpacity(.55)),
+                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryCard({required bool showOnlyProducts}) {
+    return _card(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          ...widget.cartItems.map(_summaryItem),
+          if (!showOnlyProducts) ...[
+            const Divider(height: 20),
+            _priceRow('Subtotal Produk', widget.totalAmount),
+            const SizedBox(height: 6),
+            _priceRow('Ongkir', _shippingCost),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryItem(Map<String, dynamic> item) {
+    final product = item['product'] ?? {};
+    final price = _itemPrice(item);
+    final qty = _itemQty(item);
+    final image = _imageUrl(item['selected_image'] ?? product['image']);
+    final variation = item['variation_name']?.toString() ?? '';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
+            child: image.isEmpty
+                ? const Icon(Icons.image_outlined, color: Color(0xFF94A3B8), size: 22)
+                : Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Color(0xFF94A3B8))),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(product['name'] ?? 'Produk', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF111827))),
+                if (variation.isNotEmpty) Text('Variasi: $variation', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                Text('$qty x ${_currency(price)}', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+              ],
+            ),
+          ),
+          Text(_currency(price * qty), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _navy)),
+        ],
+      ),
+    );
+  }
+
+  Widget _totalOrderCard() {
+    return _card(
+      child: Column(
+        children: [
+          _priceRow('Subtotal Produk', widget.totalAmount),
+          const SizedBox(height: 8),
+          _priceRow('Ongkir', _shippingCost),
+          const Divider(height: 22),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Total Order', style: TextStyle(fontSize: 14, color: _navy, fontWeight: FontWeight.w900)),
+              Text(_currency(_grandTotal), style: const TextStyle(fontSize: 18, color: _navy, fontWeight: FontWeight.w900)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _priceRow(String label, num value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+        Text(_currency(value), style: const TextStyle(fontSize: 12.5, color: Color(0xFF111827), fontWeight: FontWeight.w700)),
+      ],
+    );
+  }
+
+  Widget _bottomButton() {
+    if (_paymentState == PaymentState.pending) {
+      return ElevatedButton(
+        onPressed: null,
+        style: ElevatedButton.styleFrom(
+          disabledBackgroundColor: const Color(0xFF94A3B8),
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: const Text('MENUNGGU PEMBAYARAN...', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
+      );
+    }
+
+    if (_paymentState == PaymentState.approved) {
+      return ElevatedButton(
+        onPressed: _confirmOrder,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _navy,
+          padding: const EdgeInsets.symmetric(vertical: 13),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: const Text('SELESAIKAN PESANAN', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
+      );
+    }
+
+    return ElevatedButton(
+      onPressed: _isLoading ? null : _payNow,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _navy,
+        disabledBackgroundColor: const Color(0xFFCBD5E1),
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: _isLoading
+          ? const SizedBox(width: 19, height: 19, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+          : const Text('BAYAR SEKARANG', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
+    );
+  }
 }
