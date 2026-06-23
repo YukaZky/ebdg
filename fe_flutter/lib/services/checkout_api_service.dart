@@ -6,14 +6,14 @@ import 'api_service.dart';
 
 class CheckoutApiService {
   static String get baseUrl => ApiService.baseUrl;
+  static const _orderKey = 'active_checkout_order_id';
+  static const _itemsKey = 'active_checkout_items_signature';
 
   static int _toInt(dynamic value, {int fallback = 0}) {
     if (value == null) return fallback;
     if (value is int) return value;
     if (value is double) return value.toInt();
-    return int.tryParse(value.toString()) ??
-        double.tryParse(value.toString())?.toInt() ??
-        fallback;
+    return int.tryParse(value.toString()) ?? double.tryParse(value.toString())?.toInt() ?? fallback;
   }
 
   static double _toDouble(dynamic value, {double fallback = 0}) {
@@ -30,18 +30,9 @@ class CheckoutApiService {
 
   static Map<String, dynamic> _formatCheckoutItem(Map<String, dynamic> item) {
     final product = _asMap(item['product']);
-
     final productId = item['product_id'] ?? item['id_product'] ?? product['id'];
     final quantity = _toInt(item['quantity'] ?? item['qty'], fallback: 1);
-    final price = _toDouble(
-      item['price'] ??
-          item['active_price'] ??
-          item['sale_price'] ??
-          item['regular_price'] ??
-          product['active_price'] ??
-          product['sale_price'] ??
-          product['regular_price'],
-    );
+    final price = _toDouble(item['price'] ?? item['active_price'] ?? item['sale_price'] ?? item['regular_price'] ?? product['active_price'] ?? product['sale_price'] ?? product['regular_price']);
 
     return {
       'cart_item_id': item['cart_item_id'] ?? item['id'],
@@ -55,18 +46,40 @@ class CheckoutApiService {
     };
   }
 
+  static String _signature(List<Map<String, dynamic>> cartItems) {
+    final items = cartItems.map(_formatCheckoutItem).map((item) => {
+      'cart_item_id': item['cart_item_id'],
+      'product_id': item['product_id'],
+      'quantity': item['quantity'],
+      'variation_id': item['variation_id'],
+    }).toList()
+      ..sort((a, b) => '${a['cart_item_id']}:${a['product_id']}:${a['variation_id']}'.compareTo('${b['cart_item_id']}:${b['product_id']}:${b['variation_id']}'));
+    return json.encode(items);
+  }
+
+  static Future<String?> _cachedOrderId(List<Map<String, dynamic>> cartItems) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getString(_itemsKey) != _signature(cartItems)) return null;
+    final id = prefs.getString(_orderKey);
+    return id == null || id.isEmpty ? null : id;
+  }
+
+  static Future<void> _saveOrderId(String id, List<Map<String, dynamic>> cartItems) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_orderKey, id);
+    await prefs.setString(_itemsKey, _signature(cartItems));
+  }
+
+  static Future<void> _clearOrderId() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_orderKey);
+    await prefs.remove(_itemsKey);
+  }
+
   static Future<Map<String, String>?> _authHeaders({bool jsonBody = false}) async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ??
-        prefs.getString('auth_token') ??
-        prefs.getString('access_token') ??
-        ApiService.token;
-
-    if (token == null) {
-      debugPrint('❌ [CHECKOUT API] Token otorisasi kosong.');
-      return null;
-    }
-
+    final token = prefs.getString('token') ?? prefs.getString('auth_token') ?? prefs.getString('access_token') ?? ApiService.token;
+    if (token == null) return null;
     return {
       if (jsonBody) 'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -74,44 +87,23 @@ class CheckoutApiService {
     };
   }
 
-  static Future<Map<String, dynamic>?> _postJson(
-    String endpoint,
-    Map<String, dynamic> payload,
-  ) async {
+  static Future<Map<String, dynamic>?> _postJson(String endpoint, Map<String, dynamic> payload) async {
     final headers = await _authHeaders(jsonBody: true);
     if (headers == null) return null;
-
     final urlNoSlash = Uri.parse('$baseUrl$endpoint');
     final urlWithSlash = Uri.parse('$baseUrl$endpoint/');
-
     try {
-      debugPrint('📡 [CHECKOUT API] POST $urlNoSlash');
-      debugPrint('📦 [CHECKOUT API] Payload: ${json.encode(payload)}');
-
-      var response = await http.post(
-        urlNoSlash,
-        headers: headers,
-        body: json.encode(payload),
-      );
-
+      var response = await http.post(urlNoSlash, headers: headers, body: json.encode(payload));
       if (response.statusCode == 405 || response.statusCode == 301 || response.statusCode == 302) {
-        response = await http.post(
-          urlWithSlash,
-          headers: headers,
-          body: json.encode(payload),
-        );
+        response = await http.post(urlWithSlash, headers: headers, body: json.encode(payload));
       }
-
-      debugPrint('📥 [CHECKOUT API] Status: ${response.statusCode}');
-      debugPrint('📥 [CHECKOUT API] Body: ${response.body}');
-
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return json.decode(response.body) as Map<String, dynamic>;
       }
+      debugPrint('Checkout POST gagal ${response.statusCode}: ${response.body}');
       return null;
-    } catch (e, stacktrace) {
-      debugPrint('❌ [CHECKOUT API] POST gagal: $e');
-      debugPrint('$stacktrace');
+    } catch (e) {
+      debugPrint('Checkout POST exception: $e');
       return null;
     }
   }
@@ -119,24 +111,18 @@ class CheckoutApiService {
   static Future<Map<String, dynamic>?> _getJson(String endpoint) async {
     final headers = await _authHeaders();
     if (headers == null) return null;
-
     final urlNoSlash = Uri.parse('$baseUrl$endpoint');
     final urlWithSlash = Uri.parse('$baseUrl$endpoint/');
-
     try {
       var response = await http.get(urlNoSlash, headers: headers);
-
       if (response.statusCode == 405 || response.statusCode == 301 || response.statusCode == 302) {
         response = await http.get(urlWithSlash, headers: headers);
       }
-
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return json.decode(response.body) as Map<String, dynamic>;
       }
-      debugPrint('❌ [CHECKOUT API] GET gagal. Status: ${response.statusCode}, Body: ${response.body}');
       return null;
-    } catch (e) {
-      debugPrint('❌ [CHECKOUT API] GET exception: $e');
+    } catch (_) {
       return null;
     }
   }
@@ -160,17 +146,10 @@ class CheckoutApiService {
       'shipping_cost': shippingCost.toInt(),
       'items': cartItems.map(_formatCheckoutItem).toList(),
     };
-
-    if (orderId != null && orderId.isNotEmpty) {
-      payload['order_id'] = orderId;
-    }
-
+    if (orderId != null && orderId.isNotEmpty) payload['order_id'] = orderId;
     return payload;
   }
 
-  /// Tahap baru: finalisasi order setelah alamat, kurir, dan ongkir valid.
-  /// Endpoint ini belum membuat VA/QRIS, hanya membuat Order, OrderItem,
-  /// Transaction placeholder, dan mengosongkan cart item yang di-checkout.
   static Future<Map<String, dynamic>?> finalizeOrder({
     String? orderId,
     required String address,
@@ -180,46 +159,22 @@ class CheckoutApiService {
     required String courier,
     required double shippingCost,
     required List<Map<String, dynamic>> cartItems,
-  }) async {
-    return _postJson(
-      '/checkout/finalize',
-      _shippingPayload(
-        orderId: orderId,
-        address: address,
-        phone: phone,
-        provinceName: provinceName,
-        cityName: cityName,
-        courier: courier,
-        shippingCost: shippingCost,
-        cartItems: cartItems,
-      ),
-    );
+  }) {
+    return _postJson('/checkout/finalize', _shippingPayload(orderId: orderId, address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems));
   }
 
-  /// Tahap baru: setelah user memilih metode pembayaran, backend charge Midtrans
-  /// memakai order_id yang sudah final sehingga VA/QRIS langsung dikembalikan.
-  static Future<Map<String, dynamic>?> setPaymentMethod({
-    required String orderId,
-    required String paymentType,
-    String? bankCode,
-  }) async {
-    return _postJson('/orders/$orderId/payment-method', {
-      'payment_type': paymentType,
-      'bank': bankCode,
-    });
+  static Future<Map<String, dynamic>?> setPaymentMethod({required String orderId, required String paymentType, String? bankCode}) {
+    return _postJson('/orders/$orderId/payment-method', {'payment_type': paymentType, 'bank': bankCode});
   }
 
-  static Future<Map<String, dynamic>?> resetPayment(String orderId) async {
+  static Future<Map<String, dynamic>?> resetPayment(String orderId) {
     return _postJson('/orders/$orderId/reset-payment', {});
   }
 
-  static Future<Map<String, dynamic>?> getOrder(String orderId) async {
+  static Future<Map<String, dynamic>?> getOrder(String orderId) {
     return _getJson('/orders/$orderId');
   }
 
-  /// Endpoint lama tetap disediakan untuk kompatibilitas: langsung finalisasi order
-  /// dan charge Midtrans dalam satu request. Jika orderId dikirim, backend akan
-  /// meng-update Order, OrderItem, dan Transaction yang sama agar tidak ganda.
   static Future<Map<String, dynamic>?> checkout({
     String? orderId,
     required String address,
@@ -232,24 +187,32 @@ class CheckoutApiService {
     required String paymentType,
     String? bankCode,
   }) async {
-    final payload = _shippingPayload(
-      orderId: orderId,
-      address: address,
-      phone: phone,
-      provinceName: provinceName,
-      cityName: cityName,
-      courier: courier,
-      shippingCost: shippingCost,
-      cartItems: cartItems,
-    );
+    var reusableOrderId = orderId ?? await _cachedOrderId(cartItems);
+    if (reusableOrderId != null && reusableOrderId.isNotEmpty) {
+      final status = await checkOrderStatus(reusableOrderId);
+      final transactionStatus = status?['transaction_status']?.toString();
+      final alreadyPaid = transactionStatus == 'approved' || transactionStatus == 'settlement' || transactionStatus == 'capture';
+      if (alreadyPaid) {
+        await _clearOrderId();
+        reusableOrderId = null;
+      } else {
+        await resetPayment(reusableOrderId);
+      }
+    }
 
+    final payload = _shippingPayload(orderId: reusableOrderId, address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems);
     payload['payment_type'] = paymentType;
     payload['bank'] = bankCode;
 
-    return _postJson('/checkout', payload);
+    final response = await _postJson('/checkout', payload);
+    final responseOrderId = response?['order']?['id']?.toString();
+    if (response != null && response['success'] == true && responseOrderId != null) {
+      await _saveOrderId(responseOrderId, cartItems);
+    }
+    return response;
   }
 
-  static Future<Map<String, dynamic>?> checkOrderStatus(String orderId) async {
+  static Future<Map<String, dynamic>?> checkOrderStatus(String orderId) {
     return _getJson('/order/$orderId/status');
   }
 }
