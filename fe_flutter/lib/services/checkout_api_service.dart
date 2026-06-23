@@ -65,9 +65,8 @@ class CheckoutApiService {
       };
     }).toList();
 
-    items.sort((a, b) =>
-        '${a['cart_item_id']}:${a['product_id']}:${a['variation_id']}'
-            .compareTo('${b['cart_item_id']}:${b['product_id']}:${b['variation_id']}'));
+    items.sort((a, b) => '${a['cart_item_id']}:${a['product_id']}:${a['variation_id']}'
+        .compareTo('${b['cart_item_id']}:${b['product_id']}:${b['variation_id']}'));
     return items;
   }
 
@@ -292,6 +291,10 @@ class CheckoutApiService {
 
   static Future<Map<String, dynamic>?> resetPayment(String orderId) {
     return _postJson('/orders/$orderId/reset-payment', {});
+  }
+
+  static Future<Map<String, dynamic>?> completeCheckout(String orderId) {
+    return _postJson('/orders/$orderId/complete-checkout', {});
   }
 
   static Future<Map<String, dynamic>?> getOrder(String orderId) {
