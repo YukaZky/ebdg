@@ -27,16 +27,12 @@ class ApiCheckoutController extends Controller
 
         try {
             $user = Auth::user();
-
             $activePayment = $this->activePaymentFromRequest($request, $user);
             if ($activePayment) {
                 return response()->json($activePayment, 200);
             }
 
-            $order = DB::transaction(function () use ($request, $user) {
-                return $this->persistFinalOrder($request, $user);
-            });
-
+            $order = DB::transaction(fn () => $this->persistFinalOrder($request, $user));
             return $this->chargePaymentMethod($request, $order);
         } catch (\Exception $e) {
             return response()->json([
@@ -52,9 +48,7 @@ class ApiCheckoutController extends Controller
 
         try {
             $user = Auth::user();
-            $order = DB::transaction(function () use ($request, $user) {
-                return $this->persistFinalOrder($request, $user);
-            });
+            $order = DB::transaction(fn () => $this->persistFinalOrder($request, $user));
 
             return response()->json([
                 'success' => true,
@@ -81,17 +75,11 @@ class ApiCheckoutController extends Controller
             ->find($id);
 
         if (! $order) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Pesanan tidak ditemukan.',
-            ], 404);
+            return response()->json(['success' => false, 'message' => 'Pesanan tidak ditemukan.'], 404);
         }
 
         if ((float) $order->total <= 0) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Total pesanan belum valid.',
-            ], 422);
+            return response()->json(['success' => false, 'message' => 'Total pesanan belum valid.'], 422);
         }
 
         try {
@@ -111,10 +99,7 @@ class ApiCheckoutController extends Controller
             ->find($id);
 
         if (! $order) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Pesanan tidak ditemukan.',
-            ], 404);
+            return response()->json(['success' => false, 'message' => 'Pesanan tidak ditemukan.'], 404);
         }
 
         $transaction = $order->transaction ?: new Transaction();
@@ -141,6 +126,37 @@ class ApiCheckoutController extends Controller
         ], 200);
     }
 
+    public function completeCheckout($id)
+    {
+        $order = Order::with('items.product', 'transaction')
+            ->where('user_id', Auth::id())
+            ->find($id);
+
+        if (! $order) {
+            return response()->json(['success' => false, 'message' => 'Pesanan tidak ditemukan.'], 404);
+        }
+
+        $transaction = $order->transaction;
+        if (! $transaction || ! in_array($transaction->status, ['approved', 'settlement', 'capture'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Checkout akhir hanya bisa dilakukan setelah pembayaran diterima.',
+            ], 422);
+        }
+
+        $details = $this->transactionDetails($transaction);
+        $details['stage'] = 'checkout_completed';
+        $details['checkout_completed_at'] = now()->toDateTimeString();
+        $this->setTransactionDetails($transaction, $details);
+        $transaction->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Checkout akhir berhasil diselesaikan.',
+            'order' => $order->fresh()->load('items.product', 'transaction'),
+        ], 200);
+    }
+
     public function show($id)
     {
         $order = Order::with('items.product', 'transaction')
@@ -148,16 +164,10 @@ class ApiCheckoutController extends Controller
             ->find($id);
 
         if (! $order) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Pesanan tidak ditemukan.',
-            ], 404);
+            return response()->json(['success' => false, 'message' => 'Pesanan tidak ditemukan.'], 404);
         }
 
-        return response()->json([
-            'success' => true,
-            'order' => $order,
-        ], 200);
+        return response()->json(['success' => true, 'order' => $order], 200);
     }
 
     public function checkStatus($id)
@@ -165,10 +175,7 @@ class ApiCheckoutController extends Controller
         $order = Order::with('transaction')->find($id);
 
         if (! $order) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Pesanan tidak ditemukan',
-            ], 404);
+            return response()->json(['success' => false, 'message' => 'Pesanan tidak ditemukan'], 404);
         }
 
         $details = $this->transactionDetails($order->transaction);
@@ -180,6 +187,7 @@ class ApiCheckoutController extends Controller
             'transaction_status' => $order->transaction ? $order->transaction->status : 'no_transaction',
             'payment_info' => $this->paymentInfoFromTransaction($order->transaction),
             'checkout_signature' => $details['checkout_signature'] ?? null,
+            'payment_stage' => $details['stage'] ?? null,
         ], 200);
     }
 
@@ -213,23 +221,17 @@ class ApiCheckoutController extends Controller
         $discount = 0;
         $tax = 0;
         $total = $subtotal + (float) $request->shipping_cost - $discount;
-
         $courierParts = explode(' - ', $request->courier);
-        $modePengiriman = $courierParts[0] ?? 'Tidak Diketahui';
-        $jenisPengiriman = $courierParts[1] ?? '-';
 
         $order = null;
         $isNewOrder = true;
-
         if ($request->filled('order_id')) {
             $order = Order::with('transaction')
                 ->where('user_id', $user->id)
                 ->find($request->order_id);
-
             if (! $order) {
                 throw new \Exception('Order sebelumnya tidak ditemukan.');
             }
-
             $isNewOrder = false;
         }
 
@@ -242,8 +244,8 @@ class ApiCheckoutController extends Controller
         $order->discount = $discount;
         $order->tax = $tax;
         $order->total = $total;
-        $order->mode_pengiriman = $modePengiriman;
-        $order->jenis_pengiriman = $jenisPengiriman;
+        $order->mode_pengiriman = $courierParts[0] ?? 'Tidak Diketahui';
+        $order->jenis_pengiriman = $courierParts[1] ?? '-';
         $order->ongkir = $request->shipping_cost;
         $order->name = $user->name;
         $order->phone = $request->phone;
@@ -270,26 +272,23 @@ class ApiCheckoutController extends Controller
                 ? (float) $item['price']
                 : (float) ($product->sale_price ?: $product->regular_price);
 
-            $options = [
-                'variation_id' => $item['variation_id'] ?? null,
-                'variation_name' => $item['variation_name'] ?? null,
-                'selected_image' => $item['selected_image'] ?? null,
-                'weight' => $item['weight'] ?? null,
-            ];
-
             $orderItem = new OrderItem();
             $orderItem->order_id = $order->id;
             $orderItem->product_id = $item['product_id'];
             $orderItem->price = $price;
             $orderItem->quantity = $item['quantity'];
-            $orderItem->option = json_encode($options);
+            $orderItem->option = json_encode([
+                'variation_id' => $item['variation_id'] ?? null,
+                'variation_name' => $item['variation_name'] ?? null,
+                'selected_image' => $item['selected_image'] ?? null,
+                'weight' => $item['weight'] ?? null,
+            ]);
             $orderItem->save();
         }
 
         $transaction = $order->transaction ?: new Transaction();
         $previousDetails = $this->transactionDetails($transaction);
         $history = $this->appendSupersededAttempt($previousDetails, $transaction, 'Data checkout berubah sebelum pembayaran selesai.');
-
         $transaction->user_id = $user->id;
         $transaction->order_id = $order->id;
         $transaction->mode = 'card';
@@ -323,7 +322,6 @@ class ApiCheckoutController extends Controller
             $price = isset($item['price']) && is_numeric($item['price'])
                 ? (float) $item['price']
                 : (float) ($product->sale_price ?: $product->regular_price);
-
             $subtotal += $price * (int) $item['quantity'];
         }
 
@@ -332,18 +330,9 @@ class ApiCheckoutController extends Controller
 
     private function removeCheckedCartItems(array $cartItems, int $userId): void
     {
-        $cartItemIds = collect($cartItems)
-            ->pluck('cart_item_id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values()
-            ->all();
-
+        $cartItemIds = collect($cartItems)->pluck('cart_item_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
         if (! empty($cartItemIds)) {
-            CartItem::where('user_id', $userId)
-                ->whereIn('id', $cartItemIds)
-                ->delete();
+            CartItem::where('user_id', $userId)->whereIn('id', $cartItemIds)->delete();
         }
     }
 
@@ -356,7 +345,6 @@ class ApiCheckoutController extends Controller
         }
 
         $this->configureMidtrans();
-
         $params = [
             'transaction_details' => [
                 'order_id' => 'ORDER-' . $order->id . '-' . substr(sha1($signature), 0, 10) . '-' . time(),
@@ -374,23 +362,17 @@ class ApiCheckoutController extends Controller
                 $params['payment_type'] = 'permata';
             } else {
                 $params['payment_type'] = 'bank_transfer';
-                $params['bank_transfer'] = [
-                    'bank' => $request->bank,
-                ];
+                $params['bank_transfer'] = ['bank' => $request->bank];
             }
         } elseif ($request->payment_type === 'qris') {
             $params['payment_type'] = 'qris';
-            $params['qris'] = [
-                'acquirer' => 'gopay',
-            ];
+            $params['qris'] = ['acquirer' => 'gopay'];
         } elseif ($request->payment_type === 'gopay') {
             $params['payment_type'] = 'gopay';
         }
 
-        $midtransResponse = CoreApi::charge($params);
-        $midtransArray = $this->toArray($midtransResponse);
+        $midtransArray = $this->toArray(CoreApi::charge($params));
         $paymentInfo = $this->extractPaymentInfo($midtransArray);
-
         $transaction = $order->transaction ?: new Transaction();
         $previousDetails = $this->transactionDetails($transaction);
         $history = $previousDetails['superseded_attempts'] ?? [];
@@ -444,7 +426,6 @@ class ApiCheckoutController extends Controller
     {
         $vaNumber = null;
         $qrCodeUrl = null;
-
         if (! empty($midtrans['va_numbers'][0]['va_number'])) {
             $vaNumber = $midtrans['va_numbers'][0]['va_number'];
         } elseif (! empty($midtrans['permata_va_number'])) {
@@ -479,15 +460,13 @@ class ApiCheckoutController extends Controller
         }
 
         $items = collect($request->items ?? [])
-            ->map(function ($item) {
-                return [
-                    'cart_item_id' => $item['cart_item_id'] ?? null,
-                    'product_id' => (int) ($item['product_id'] ?? 0),
-                    'quantity' => (int) ($item['quantity'] ?? 1),
-                    'price' => isset($item['price']) ? (int) $item['price'] : null,
-                    'variation_id' => $item['variation_id'] ?? null,
-                ];
-            })
+            ->map(fn ($item) => [
+                'cart_item_id' => $item['cart_item_id'] ?? null,
+                'product_id' => (int) ($item['product_id'] ?? 0),
+                'quantity' => (int) ($item['quantity'] ?? 1),
+                'price' => isset($item['price']) ? (int) $item['price'] : null,
+                'variation_id' => $item['variation_id'] ?? null,
+            ])
             ->sortBy(fn ($item) => ($item['cart_item_id'] ?? '') . ':' . $item['product_id'] . ':' . ($item['variation_id'] ?? ''))
             ->values()
             ->all();
@@ -515,18 +494,13 @@ class ApiCheckoutController extends Controller
             ->where('user_id', $user->id)
             ->find($request->order_id);
 
-        if (! $order) {
-            return null;
-        }
-
-        return $this->activePaymentResponse($order, $this->checkoutSignature($request));
+        return $order ? $this->activePaymentResponse($order, $this->checkoutSignature($request)) : null;
     }
 
     private function activePaymentResponse(Order $order, ?string $signature = null): ?array
     {
         $order->loadMissing('transaction', 'items.product');
         $transaction = $order->transaction;
-
         if (! $transaction || empty($transaction->payment_token)) {
             return null;
         }
@@ -556,13 +530,8 @@ class ApiCheckoutController extends Controller
         if (empty($paymentInfo['expiry_time'])) {
             return true;
         }
-
         $timestamp = strtotime($paymentInfo['expiry_time']);
-        if (! $timestamp) {
-            return true;
-        }
-
-        return $timestamp > time();
+        return ! $timestamp || $timestamp > time();
     }
 
     private function appendSupersededAttempt(array $details, Transaction $transaction, string $reason): array
@@ -595,7 +564,6 @@ class ApiCheckoutController extends Controller
         if (! $transaction || ! Schema::hasColumn('transactions', 'payment_details') || empty($transaction->payment_details)) {
             return [];
         }
-
         $details = json_decode($transaction->payment_details, true);
         return is_array($details) ? $details : [];
     }
@@ -610,10 +578,6 @@ class ApiCheckoutController extends Controller
     private function paymentInfoFromTransaction(?Transaction $transaction): ?array
     {
         $details = $this->transactionDetails($transaction);
-        if (empty($details)) {
-            return null;
-        }
-
-        return $details['payment_info'] ?? null;
+        return empty($details) ? null : ($details['payment_info'] ?? null);
     }
 }
