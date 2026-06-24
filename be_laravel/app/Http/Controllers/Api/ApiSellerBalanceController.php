@@ -49,6 +49,69 @@ class ApiSellerBalanceController extends Controller
         return max($available - $this->activeWithdrawals($storeId), 0);
     }
 
+    private function bankOptions(): array
+    {
+        return [
+            'bca' => 'BCA',
+            'bni' => 'BNI',
+            'bri' => 'BRI',
+            'mandiri' => 'Mandiri',
+            'permata' => 'Permata Bank',
+            'cimb' => 'CIMB Niaga',
+            'danamon' => 'Danamon',
+            'maybank' => 'Maybank',
+            'btn' => 'BTN',
+            'bsi' => 'Bank Syariah Indonesia',
+            'ocbc' => 'OCBC NISP',
+            'panin' => 'Panin Bank',
+            'mega' => 'Bank Mega',
+            'bukopin' => 'KB Bukopin',
+            'dbs' => 'DBS Indonesia',
+            'uob' => 'UOB Indonesia',
+            'hsbc' => 'HSBC Indonesia',
+            'standard_chartered' => 'Standard Chartered',
+            'jago' => 'Bank Jago',
+            'seabank' => 'SeaBank',
+            'neo' => 'Bank Neo Commerce',
+            'bjb' => 'Bank BJB',
+            'dki' => 'Bank DKI',
+            'jateng' => 'Bank Jateng',
+            'jatim' => 'Bank Jatim',
+            'sumut' => 'Bank Sumut',
+            'sumsel_babel' => 'Bank Sumsel Babel',
+            'nagari' => 'Bank Nagari',
+            'riau_kepri' => 'Bank Riau Kepri',
+            'kalsel' => 'Bank Kalsel',
+            'kalbar' => 'Bank Kalbar',
+            'kaltimtara' => 'Bank Kaltimtara',
+            'sulselbar' => 'Bank Sulselbar',
+            'ntb' => 'Bank NTB Syariah',
+            'ntt' => 'Bank NTT',
+            'maluku' => 'Bank Maluku Malut',
+            'papua' => 'Bank Papua',
+        ];
+    }
+
+    private function bankLabel(?string $bankCode): ?string
+    {
+        if (! $bankCode) {
+            return null;
+        }
+
+        return $this->bankOptions()[$bankCode] ?? strtoupper($bankCode);
+    }
+
+    private function bankAccountPayload(StoreProfile $store): array
+    {
+        return [
+            'bank_name' => $store->bank_name,
+            'bank_code' => $store->bank_name,
+            'bank_label' => $this->bankLabel($store->bank_name),
+            'bank_account_number' => $store->bank_account_number,
+            'bank_account_name' => $store->bank_account_name,
+        ];
+    }
+
     public function index(Request $request)
     {
         $store = $this->store($request);
@@ -88,6 +151,8 @@ class ApiSellerBalanceController extends Controller
                 'id' => $withdrawal->id,
                 'amount' => $withdrawal->amount,
                 'bank_name' => $withdrawal->bank_name,
+                'bank_code' => $withdrawal->bank_name,
+                'bank_label' => $this->bankLabel($withdrawal->bank_name),
                 'bank_account_number' => $withdrawal->bank_account_number,
                 'bank_account_name' => $withdrawal->bank_account_name,
                 'status' => $withdrawal->status,
@@ -113,11 +178,10 @@ class ApiSellerBalanceController extends Controller
 
         return response()->json(['success' => true, 'data' => [
             'store' => $store,
-            'bank_account' => [
-                'bank_name' => $store->bank_name,
-                'bank_account_number' => $store->bank_account_number,
-                'bank_account_name' => $store->bank_account_name,
-            ],
+            'bank_options' => collect($this->bankOptions())
+                ->map(fn ($label, $code) => ['code' => $code, 'label' => $label])
+                ->values(),
+            'bank_account' => $this->bankAccountPayload($store),
             'is_sandbox' => ! (bool) config('midtrans.is_production'),
             'summary' => [
                 'total_income' => $total,
@@ -131,11 +195,38 @@ class ApiSellerBalanceController extends Controller
         ]]);
     }
 
+    public function saveBankAccount(Request $request)
+    {
+        $bankCodes = implode(',', array_keys($this->bankOptions()));
+
+        $request->validate([
+            'bank_name' => 'required|string|in:' . $bankCodes,
+            'bank_account_number' => 'required|string|max:50',
+            'bank_account_name' => 'required|string|max:150',
+        ]);
+
+        $store = $this->store($request);
+
+        $store->forceFill([
+            'bank_name' => trim((string) $request->bank_name),
+            'bank_account_number' => trim((string) $request->bank_account_number),
+            'bank_account_name' => trim((string) $request->bank_account_name),
+        ])->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Data rekening toko berhasil disimpan.',
+            'data' => $this->bankAccountPayload($store->fresh()),
+        ]);
+    }
+
     public function withdraw(Request $request)
     {
+        $bankCodes = implode(',', array_keys($this->bankOptions()));
+
         $request->validate([
             'amount' => 'required|numeric|min:10000',
-            'bank_name' => 'nullable|string|max:100',
+            'bank_name' => 'nullable|string|in:' . $bankCodes,
             'bank_account_number' => 'nullable|string|max:50',
             'bank_account_name' => 'nullable|string|max:150',
         ]);
