@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ApiRajaOngkirController;
 use App\Http\Controllers\Api\ApiWishlistController;
 use App\Http\Controllers\Api\ApiAdminController;
 use App\Http\Controllers\Api\ApiMarketplaceController;
+use App\Http\Controllers\Api\ApiSellerBalanceController;
 use App\Http\Controllers\Api\ApiUserProfileController;
 use App\Http\Controllers\MidtransController;
 use App\Http\Controllers\Api\ApiPaymentMethodController;
@@ -50,8 +51,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/marketplace/my-store', [ApiMarketplaceController::class, 'saveStore']);
     Route::get('/marketplace/seller-orders', [ApiMarketplaceController::class, 'sellerOrders']);
     Route::put('/marketplace/seller-orders/{id}/status', [ApiMarketplaceController::class, 'updateSellerOrderStatus']);
-    Route::get('/marketplace/seller-balance', [ApiMarketplaceController::class, 'sellerBalance']);
-    Route::post('/marketplace/seller-withdrawals', [ApiMarketplaceController::class, 'requestWithdrawal']);
+    Route::get('/marketplace/seller-balance', [ApiSellerBalanceController::class, 'index']);
+    Route::post('/marketplace/seller-withdrawals', [ApiSellerBalanceController::class, 'withdraw']);
     Route::post('/marketplace/reviews', [ApiMarketplaceController::class, 'addReview']);
     Route::get('/marketplace/chats', [ApiMarketplaceController::class, 'conversations']);
     Route::post('/marketplace/chats/start', [ApiMarketplaceController::class, 'startConversation']);
