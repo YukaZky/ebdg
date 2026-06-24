@@ -55,6 +55,15 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
     return {};
   }
 
+  Map<String, dynamic> get _bankAccount {
+    final raw = data?['bank_account'];
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return {};
+  }
+
+  bool get _isSandbox => data?['is_sandbox'] == true;
+
   List<dynamic> get _balances => data?['balances'] as List? ?? [];
   List<dynamic> get _withdrawals => data?['withdrawals'] as List? ?? [];
 
@@ -241,9 +250,9 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
 
   Future<void> _openWithdrawalSheet() async {
     final amountController = TextEditingController(text: _availableBalance.toStringAsFixed(0));
-    final bankController = TextEditingController();
-    final accountNumberController = TextEditingController();
-    final accountNameController = TextEditingController();
+    final bankController = TextEditingController(text: _bankAccount['bank_name']?.toString() ?? '');
+    final accountNumberController = TextEditingController(text: _bankAccount['bank_account_number']?.toString() ?? '');
+    final accountNameController = TextEditingController(text: _bankAccount['bank_account_name']?.toString() ?? '');
 
     final success = await showModalBottomSheet<bool>(
       context: context,
@@ -368,6 +377,13 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
                 child: ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
+                    if (_isSandbox)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFBFDBFE))),
+                        child: const Text('Mode sandbox/developer: saldo dari order settlement langsung menjadi Bisa Ditarik.', style: TextStyle(color: Color(0xFF1D4ED8), fontWeight: FontWeight.w700)),
+                      ),
                     Container(
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
