@@ -178,3 +178,33 @@ Artisan::command('seller-balance:repair-store {--dry-run}', function () {
     $this->info($prefix . "Saldo diperbaiki store_id-nya: {$fixedCount}");
     $this->info($prefix . "Saldo dilewati: {$skippedCount}");
 })->purpose('Perbaiki seller_balances.store_id agar mengikuti products.user_id');
+
+Artisan::command('seller-balance:release-dev {--store_id=} {--dry-run}', function () {
+    if ((bool) config('midtrans.is_production')) {
+        $this->error('Command ini hanya untuk sandbox/development. Set MIDTRANS_IS_PRODUCTION=false jika ingin memakai command ini.');
+        return 1;
+    }
+
+    $storeId = $this->option('store_id');
+    $isDryRun = (bool) $this->option('dry-run');
+
+    $query = SellerBalance::where('status', 'pending');
+    if ($storeId) {
+        $query->where('store_id', $storeId);
+    }
+
+    $count = (clone $query)->count();
+
+    if (! $isDryRun) {
+        $query->update([
+            'status' => 'available',
+            'available_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    $prefix = $isDryRun ? '[DRY RUN] ' : '';
+    $this->info($prefix . "Saldo pending yang akan dibuat available: {$count}");
+
+    return 0;
+})->purpose('Khusus sandbox/development: ubah saldo pending menjadi available tanpa menunggu 3 hari');
