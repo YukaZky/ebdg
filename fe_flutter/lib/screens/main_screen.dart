@@ -110,7 +110,6 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _navItem({required int index, required String label, required Widget Function(bool active, Color color) iconBuilder}) {
     final active = _selectedIndex == index;
-    final color = active ? _activeColor : _inactiveColor;
 
     return Expanded(
       child: GestureDetector(
