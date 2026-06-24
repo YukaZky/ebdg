@@ -113,9 +113,20 @@ class MidtransController extends Controller
         );
     }
 
+    private function sellerBalanceHoldWeekdays(): int
+    {
+        // Di sandbox/development, saldo langsung available agar testing tarik tunai tidak perlu menunggu 3 hari.
+        if (! (bool) config('midtrans.is_production')) {
+            return (int) env('SELLER_BALANCE_HOLD_WEEKDAYS_SANDBOX', 0);
+        }
+
+        return (int) env('SELLER_BALANCE_HOLD_WEEKDAYS', 3);
+    }
+
     private function createSellerBalances(Order $order): void
     {
         $order->loadMissing(['items.product']);
+        $holdWeekdays = $this->sellerBalanceHoldWeekdays();
 
         foreach ($order->items as $item) {
             if (! $item->product || ! $item->product->user_id) {
@@ -138,7 +149,7 @@ class MidtransController extends Controller
             $commissionRate = (float) env('MARKETPLACE_COMMISSION_RATE', 10);
             $platformFee = round($grossAmount * ($commissionRate / 100), 2);
             $sellerNetAmount = round($grossAmount - $platformFee, 2);
-            $holdWeekdays = (int) env('SELLER_BALANCE_HOLD_WEEKDAYS', 3);
+            $isImmediatelyAvailable = $holdWeekdays <= 0;
 
             SellerBalance::create([
                 'store_id' => $store->id,
@@ -148,8 +159,8 @@ class MidtransController extends Controller
                 'platform_fee' => $platformFee,
                 'amount' => $sellerNetAmount,
                 'type' => 'credit',
-                'status' => 'pending',
-                'available_at' => now()->addWeekdays($holdWeekdays),
+                'status' => $isImmediatelyAvailable ? 'available' : 'pending',
+                'available_at' => $isImmediatelyAvailable ? now() : now()->addWeekdays($holdWeekdays),
             ]);
         }
     }
