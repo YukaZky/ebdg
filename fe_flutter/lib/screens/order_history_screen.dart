@@ -99,7 +99,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
   void open(Map<String, dynamic> order) {
     final s = status(order);
-    if (s == 'pending_payment' || s == 'paid_not_checked_out') {
+    if (s == 'pending_payment') {
       Navigator.push(context, MaterialPageRoute(builder: (_) => ResumeOrderCheckoutScreen(order: order))).then((_) => _refresh());
     } else {
       Navigator.push(context, MaterialPageRoute(builder: (_) => OrderConfirmationScreen(order: order))).then((_) => _refresh());
