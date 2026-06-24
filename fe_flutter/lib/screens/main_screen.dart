@@ -22,8 +22,8 @@ class _MainScreenState extends State<MainScreen> {
   DateTime? _lastNavTapAt;
 
   static const Color _activeColor = Color(0xFF6C4DFF);
-  static const Color _inactiveColor = Color(0xFF9CA3AF);
-  static const Color _navDark = Color(0xFF05254F);
+  static const Color _inactiveColor = Color(0xFF8A94A6);
+  static const Color _navTextColor = Color(0xFF0C2442);
   static const Duration _navTapDebounce = Duration(milliseconds: 260);
 
   @override
@@ -38,7 +38,7 @@ class _MainScreenState extends State<MainScreen> {
             key: const PageStorageKey('tab-profile'),
             onProfileUpdated: (String? name) {
               if (!mounted) return;
-              setState(() => _accountLabel = name ?? 'Akun');
+              setState(() => _accountLabel = _shortAccountLabel(name));
               CartBadgeService.refresh();
             },
           ),
@@ -46,6 +46,12 @@ class _MainScreenState extends State<MainScreen> {
     _builtTabs = List<bool>.filled(_screenBuilders.length, false);
     _builtTabs[_selectedIndex] = true;
     CartBadgeService.refresh();
+  }
+
+  String _shortAccountLabel(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty || text == 'Akun') return 'Akun';
+    return text.length > 8 ? '${text.substring(0, 8)}…' : text;
   }
 
   bool _allowNavigationTap(int index) {
@@ -79,15 +85,15 @@ class _MainScreenState extends State<MainScreen> {
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            Icon(Icons.shopping_cart, size: active ? 27 : 24, color: color),
+            Icon(Icons.shopping_cart_rounded, size: active ? 24 : 23, color: color),
             if (count > 0)
               Positioned(
-                right: active ? -11 : -9,
-                top: active ? -10 : -9,
+                right: -10,
+                top: -10,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.red,
+                    color: const Color(0xFFFF3B30),
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(color: Colors.white, width: 1.5),
                   ),
@@ -95,11 +101,7 @@ class _MainScreenState extends State<MainScreen> {
                   child: Text(
                     count > 99 ? '99+' : count.toString(),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        height: 1),
+                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, height: 1),
                   ),
                 ),
               ),
@@ -109,8 +111,8 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _navIcon(int index, IconData icon, {required bool active, required Color color}) {
-    return Icon(icon, size: active ? 27 : 24, color: color);
+  Widget _navIcon(IconData icon, {required bool active, required Color color}) {
+    return Icon(icon, size: active ? 24 : 23, color: color);
   }
 
   Widget _navItem({
@@ -119,67 +121,46 @@ class _MainScreenState extends State<MainScreen> {
     required Widget Function(bool active, Color color) iconBuilder,
   }) {
     final active = _selectedIndex == index;
+    final iconColor = active ? _activeColor : _inactiveColor;
 
     return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _onItemTapped(index),
-        child: Container(
-          color: Colors.transparent, // Memastikan area sentuh penuh
-          height: 82,
-          child: TweenAnimationBuilder<double>(
-            tween: Tween<double>(begin: 0.0, end: active ? 1.0 : 0.0),
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOutBack, // Memberikan efek memantul (bouncing)
-            builder: (context, value, child) {
-              return Stack(
-                alignment: Alignment.center,
-                clipBehavior: Clip.none,
-                children: [
-                  // Latar Belakang (Pill shape ala Material 3)
-                  Positioned(
-                    top: 14 + (4 * (1 - value)), // Bergeser sedikit saat muncul
-                    child: Opacity(
-                      opacity: value.clamp(0.0, 1.0),
-                      child: Container(
-                        width: 40 + (24 * value), // Memanjang ke samping
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: _activeColor.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                    ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => _onItemTapped(index),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            height: 58,
+            margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              color: active ? _activeColor.withOpacity(0.12) : Colors.transparent,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedScale(
+                  scale: active ? 1.04 : 1,
+                  duration: const Duration(milliseconds: 180),
+                  child: iconBuilder(active, iconColor),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: active ? _activeColor : _inactiveColor,
+                    fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                    height: 1,
                   ),
-                  // Ikon
-                  Positioned(
-                    top: 18 - (4 * value), // Naik sedikit saat aktif
-                    child: iconBuilder(
-                      active,
-                      active ? _activeColor : _navDark.withOpacity(0.6),
-                    ),
-                  ),
-                  // Teks Label
-                  Positioned(
-                    bottom: 12,
-                    child: Opacity(
-                      opacity: 0.6 + (0.4 * value), // Transisi opacity
-                      child: Transform.scale(
-                        scale: 0.9 + (0.1 * value), // Membesar sedikit
-                        child: Text(
-                          label,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: active ? _activeColor : _inactiveColor,
-                            fontWeight: active ? FontWeight.bold : FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -190,25 +171,25 @@ class _MainScreenState extends State<MainScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey.shade100)),
+        border: Border(top: BorderSide(color: Colors.grey.shade200, width: 0.8)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          )
+            color: _navTextColor.withOpacity(0.08),
+            blurRadius: 18,
+            offset: const Offset(0, -6),
+          ),
         ],
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          height: 82,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
           child: Row(
             children: [
               _navItem(
                 index: 0,
                 label: 'Beranda',
-                iconBuilder: (active, color) => _navIcon(0, Icons.home, active: active, color: color),
+                iconBuilder: (active, color) => _navIcon(Icons.home_rounded, active: active, color: color),
               ),
               _navItem(
                 index: 1,
@@ -218,12 +199,12 @@ class _MainScreenState extends State<MainScreen> {
               _navItem(
                 index: 2,
                 label: 'Pesanan',
-                iconBuilder: (active, color) => _navIcon(2, Icons.history, active: active, color: color),
+                iconBuilder: (active, color) => _navIcon(Icons.receipt_long_rounded, active: active, color: color),
               ),
               _navItem(
                 index: 3,
                 label: _accountLabel,
-                iconBuilder: (active, color) => _navIcon(3, Icons.person, active: active, color: color),
+                iconBuilder: (active, color) => _navIcon(Icons.person_rounded, active: active, color: color),
               ),
             ],
           ),
