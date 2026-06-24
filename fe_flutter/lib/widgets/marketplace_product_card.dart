@@ -57,40 +57,52 @@ class MarketplaceProductCard extends StatelessWidget {
     return 'Lokasi toko';
   }
 
-  Widget _buildPrice() {
-    return Row(
-      children: [
-        Expanded(
+  Widget _discountRibbon() {
+    if (!_hasPromo) return const SizedBox.shrink();
+
+    return Positioned(
+      top: 12,
+      right: -24,
+      child: Transform.rotate(
+        angle: 0.70,
+        child: Container(
+          width: 92,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFF8A00),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.10),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
           child: Text(
-            'Rp ${_activePrice.toStringAsFixed(0)}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            '-$_discountPercent%',
+            textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Color(0xFFE65100),
+              color: Colors.white,
               fontWeight: FontWeight.w800,
-              fontSize: 14,
+              fontSize: 11,
+              letterSpacing: 0.2,
             ),
           ),
         ),
-        if (_hasPromo) ...[
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFEFE5),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              '-$_discountPercent%',
-              style: const TextStyle(
-                color: Color(0xFFE65100),
-                fontWeight: FontWeight.w800,
-                fontSize: 11,
-              ),
-            ),
-          ),
-        ],
-      ],
+      ),
+    );
+  }
+
+  Widget _buildPrice() {
+    return Text(
+      'Rp ${_activePrice.toStringAsFixed(0)}',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: Color(0xFFE65100),
+        fontWeight: FontWeight.w800,
+        fontSize: 14,
+      ),
     );
   }
 
@@ -125,16 +137,22 @@ class MarketplaceProductCard extends StatelessWidget {
             Expanded(
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                child: Container(
-                  width: double.infinity,
-                  color: Colors.white,
-                  child: imageUrl.isNotEmpty
-                      ? Image.network(
-                          imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
-                        )
-                      : const Icon(Icons.image, size: 50, color: Colors.grey),
+                child: Stack(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      height: double.infinity,
+                      color: Colors.white,
+                      child: imageUrl.isNotEmpty
+                          ? Image.network(
+                              imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                            )
+                          : const Icon(Icons.image, size: 50, color: Colors.grey),
+                    ),
+                    _discountRibbon(),
+                  ],
                 ),
               ),
             ),
@@ -155,9 +173,9 @@ class MarketplaceProductCard extends StatelessWidget {
                   Row(
                     children: [
                       Icon(
-                        isAvailable ? Icons.location_on : Icons.remove_shopping_cart_outlined,
-                        size: 14,
-                        color: isAvailable ? Colors.grey.shade600 : Colors.red,
+                        isAvailable ? Icons.location_on_outlined : Icons.remove_shopping_cart_outlined,
+                        size: isAvailable ? 13 : 14,
+                        color: isAvailable ? Colors.grey.shade500 : Colors.red,
                       ),
                       const SizedBox(width: 4),
                       Expanded(
@@ -167,8 +185,8 @@ class MarketplaceProductCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: isAvailable ? Colors.grey.shade700 : Colors.red,
+                            fontWeight: isAvailable ? FontWeight.w400 : FontWeight.w600,
+                            color: isAvailable ? Colors.grey.shade600 : Colors.red,
                           ),
                         ),
                       ),
