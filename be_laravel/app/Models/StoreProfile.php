@@ -46,4 +46,14 @@ class StoreProfile extends Model
     {
         return $this->hasMany(ProductReview::class, 'store_id');
     }
+
+    public function sellerBalances()
+    {
+        return $this->hasMany(SellerBalance::class, 'store_id');
+    }
+
+    public function sellerWithdrawals()
+    {
+        return $this->hasMany(SellerWithdrawal::class, 'store_id');
+    }
 }
