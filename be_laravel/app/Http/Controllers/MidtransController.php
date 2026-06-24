@@ -22,14 +22,11 @@ class MidtransController extends Controller
         // Buat instance notifikasi otomatis dari Midtrans
         $notification = new MidtransNotification();
 
-        // =========================================================================
-        // PERBAIKAN BUG UTAMA:
-        // Format order_id dari checkout adalah: "ORDER-[ID_ORDER]-[TIMESTAMP]"
-        // Contoh: "ORDER-15-17187123"
-        // Hasil explode: index [0] = 'ORDER', index [1] = '15', index [2] = '17187123'
-        // =========================================================================
-        $orderIdParts = explode('-', $notification->order_id);
-        $orderId = $orderIdParts[1] ?? null; // Diubah ke index 1 untuk mengambil ID numerik asli
+        // Format order_id yang pernah dipakai project ini:
+        // 1. "15-17187123"        => ID order ada di bagian pertama
+        // 2. "ORDER-15-17187123"  => ID order ada di bagian kedua
+        // 3. "15"                 => ID order langsung
+        $orderId = $this->extractOrderId($notification->order_id);
 
         $status = $notification->transaction_status;
         $type = $notification->payment_type;
@@ -83,6 +80,23 @@ class MidtransController extends Controller
         });
 
         return response()->json(['message' => 'Notification handled successfully.']);
+    }
+
+    private function extractOrderId(?string $midtransOrderId): ?int
+    {
+        if (! $midtransOrderId) {
+            return null;
+        }
+
+        if (preg_match('/^ORDER-(\d+)-?/', $midtransOrderId, $matches)) {
+            return (int) $matches[1];
+        }
+
+        if (preg_match('/^(\d+)-?/', $midtransOrderId, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return is_numeric($midtransOrderId) ? (int) $midtransOrderId : null;
     }
 
     private function createSellerBalances(Order $order): void
