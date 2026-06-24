@@ -297,6 +297,14 @@ class CheckoutApiService {
     return _postJson('/orders/$orderId/complete-checkout', {});
   }
 
+  static Future<Map<String, dynamic>?> cancelOrder(String orderId) async {
+    final response = await _postJson('/orders/$orderId/cancel', {});
+    if (response != null && response['success'] == true) {
+      await _clearOrderId();
+    }
+    return response;
+  }
+
   static Future<Map<String, dynamic>?> getOrder(String orderId) {
     return _getJson('/orders/$orderId');
   }
