@@ -33,7 +33,7 @@ class MidtransController extends Controller
         $fraud = $notification->fraud_status;
 
         // Cari data order berdasarkan ID asli
-        $order = Order::with(['items.product.store', 'transaction'])->find($orderId);
+        $order = Order::with(['items.product', 'transaction'])->find($orderId);
 
         if (! $order) {
             return response()->json(['message' => 'Order not found.'], 404);
@@ -99,12 +99,26 @@ class MidtransController extends Controller
         return is_numeric($midtransOrderId) ? (int) $midtransOrderId : null;
     }
 
+    private function sellerStoreFromProduct($product): StoreProfile
+    {
+        // Di project ini pemilik barang/toko dibaca dari products.user_id.
+        // Jadi saldo pendapatan order item harus masuk ke StoreProfile milik user tersebut.
+        return StoreProfile::firstOrCreate(
+            ['user_id' => $product->user_id],
+            [
+                'name' => 'Toko ' . $product->user_id,
+                'slug' => Str::slug('toko-' . $product->user_id),
+                'status' => 'active',
+            ]
+        );
+    }
+
     private function createSellerBalances(Order $order): void
     {
-        $order->loadMissing(['items.product.store']);
+        $order->loadMissing(['items.product']);
 
         foreach ($order->items as $item) {
-            if (! $item->product) {
+            if (! $item->product || ! $item->product->user_id) {
                 continue;
             }
 
@@ -113,14 +127,7 @@ class MidtransController extends Controller
             }
 
             $product = $item->product;
-            $store = $product->store ?: StoreProfile::firstOrCreate(
-                ['user_id' => $product->user_id],
-                [
-                    'name' => 'Toko ' . $product->user_id,
-                    'slug' => Str::slug('toko-' . $product->user_id),
-                    'status' => 'active',
-                ]
-            );
+            $store = $this->sellerStoreFromProduct($product);
 
             $grossAmount = (float) $item->price * (int) $item->quantity;
             if ($grossAmount <= 0) {
