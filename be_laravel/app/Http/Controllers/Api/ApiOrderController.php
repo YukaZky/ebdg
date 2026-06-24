@@ -35,7 +35,7 @@ class ApiOrderController extends Controller
         $transactionStatus = $transaction ? (string) $transaction->status : 'no_transaction';
         $orderStatus = strtolower((string) $order->status);
 
-        $frontendStatus = $this->frontendStatus($orderStatus, $transactionStatus, $details, is_array($paymentInfo) ? $paymentInfo : null);
+        $frontendStatus = $this->frontendStatus($orderStatus, $transactionStatus, $paymentInfo);
         $data['frontend_status'] = $frontendStatus;
         $data['frontend_status_label'] = $this->statusLabel($frontendStatus);
         $data['transaction_status'] = $transactionStatus;
@@ -49,7 +49,7 @@ class ApiOrderController extends Controller
         return $data;
     }
 
-    private function frontendStatus(string $orderStatus, string $transactionStatus, array $details, ?array $paymentInfo): string
+    private function frontendStatus(string $orderStatus, string $transactionStatus, ?array $paymentInfo): string
     {
         if (in_array($orderStatus, ['canceled', 'cancelled'], true) || in_array($transactionStatus, ['declined', 'cancel', 'canceled', 'expire', 'expired'], true)) {
             return 'canceled';
@@ -68,7 +68,7 @@ class ApiOrderController extends Controller
         }
 
         if (in_array($transactionStatus, ['approved', 'settlement', 'capture'], true)) {
-            return (($details['stage'] ?? null) === 'checkout_completed') ? 'packing' : 'paid_not_checked_out';
+            return 'paid_not_checked_out';
         }
 
         if ($transactionStatus === 'pending' || is_array($paymentInfo)) {
@@ -82,7 +82,7 @@ class ApiOrderController extends Controller
     {
         return match ($status) {
             'pending_payment' => 'Pending Payment',
-            'paid_not_checked_out' => 'Dibayar - Lanjutkan Checkout',
+            'paid_not_checked_out' => 'Dibayar',
             'packing' => 'Packing',
             'delivered' => 'Delivered',
             'done' => 'Done',

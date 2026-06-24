@@ -9,6 +9,8 @@ use App\Models\ConversationMessage;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductReview;
+use App\Models\SellerBalance;
+use App\Models\SellerWithdrawal;
 use App\Models\StoreProfile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -120,9 +122,9 @@ class ApiMarketplaceController extends Controller
         return $payload;
     }
 
-    public function myStore(Request $request)
+    private function currentStore(Request $request): StoreProfile
     {
-        $store = StoreProfile::firstOrCreate(
+        return StoreProfile::firstOrCreate(
             ['user_id' => $request->user()->id],
             [
                 'name' => $request->user()->name . ' Store',
@@ -130,6 +132,64 @@ class ApiMarketplaceController extends Controller
                 'status' => 'active',
             ]
         );
+    }
+
+    private function releaseAvailableBalances(int $storeId): void
+    {
+        SellerBalance::where('store_id', $storeId)
+            ->where('status', 'pending')
+            ->whereNotNull('available_at')
+            ->where('available_at', '<=', now())
+            ->update([
+                'status' => 'available',
+                'updated_at' => now(),
+            ]);
+    }
+
+    private function activeWithdrawalAmount(int $storeId): float
+    {
+        return (float) SellerWithdrawal::where('store_id', $storeId)
+            ->whereIn('status', ['pending', 'approved', 'processing'])
+            ->sum('amount');
+    }
+
+    private function sellerAvailableBalance(int $storeId): float
+    {
+        $available = (float) SellerBalance::where('store_id', $storeId)
+            ->where('status', 'available')
+            ->sum('amount');
+
+        return max($available - $this->activeWithdrawalAmount($storeId), 0);
+    }
+
+    private function balanceStatusLabel(?string $status): string
+    {
+        return match ($status) {
+            'pending' => 'Pending 3 Hari Kerja',
+            'available' => 'Bisa Ditarik',
+            'withdraw_requested' => 'Menunggu Pencairan',
+            'withdrawn' => 'Sudah Ditarik',
+            'cancelled', 'canceled' => 'Dibatalkan',
+            default => ucfirst((string) $status),
+        };
+    }
+
+    private function withdrawalStatusLabel(?string $status): string
+    {
+        return match ($status) {
+            'pending' => 'Menunggu Persetujuan',
+            'approved' => 'Disetujui',
+            'processing' => 'Diproses',
+            'paid' => 'Sudah Dibayar',
+            'failed' => 'Gagal',
+            'rejected' => 'Ditolak',
+            default => ucfirst((string) $status),
+        };
+    }
+
+    public function myStore(Request $request)
+    {
+        $store = $this->currentStore($request);
 
         [$store, $address] = $this->mergeStoreAddress($store);
         $store->store_address = $address;
@@ -274,6 +334,120 @@ class ApiMarketplaceController extends Controller
             'message' => 'Status pesanan berhasil diperbarui',
             'data' => $this->sellerOrderPayload($order->fresh()->load('items.product', 'transaction'), $sellerId),
         ]);
+    }
+
+    public function sellerBalance(Request $request)
+    {
+        $store = $this->currentStore($request);
+        $this->releaseAvailableBalances($store->id);
+
+        $pendingBalance = (float) SellerBalance::where('store_id', $store->id)->where('status', 'pending')->sum('amount');
+        $availableGrossBalance = (float) SellerBalance::where('store_id', $store->id)->where('status', 'available')->sum('amount');
+        $requestedBalance = $this->activeWithdrawalAmount($store->id);
+        $availableBalance = max($availableGrossBalance - $requestedBalance, 0);
+        $withdrawnBalance = (float) SellerWithdrawal::where('store_id', $store->id)->where('status', 'paid')->sum('amount');
+        $totalIncome = (float) SellerBalance::where('store_id', $store->id)
+            ->whereNotIn('status', ['cancelled', 'canceled'])
+            ->sum('amount');
+
+        $balances = SellerBalance::with(['order:id,status,created_at', 'orderItem.product:id,name,image,user_id'])
+            ->where('store_id', $store->id)
+            ->latest()
+            ->limit(100)
+            ->get()
+            ->map(function (SellerBalance $balance) {
+                return [
+                    'id' => $balance->id,
+                    'order_id' => $balance->order_id,
+                    'order_item_id' => $balance->order_item_id,
+                    'product_name' => $balance->orderItem?->product?->name ?? 'Produk',
+                    'gross_amount' => $balance->gross_amount,
+                    'platform_fee' => $balance->platform_fee,
+                    'amount' => $balance->amount,
+                    'status' => $balance->status,
+                    'status_label' => $this->balanceStatusLabel($balance->status),
+                    'available_at' => $balance->available_at?->toDateTimeString(),
+                    'created_at' => $balance->created_at?->toDateTimeString(),
+                    'order_status' => $balance->order?->status,
+                ];
+            })
+            ->values();
+
+        $withdrawals = SellerWithdrawal::where('store_id', $store->id)
+            ->latest()
+            ->limit(100)
+            ->get()
+            ->map(function (SellerWithdrawal $withdrawal) {
+                return [
+                    'id' => $withdrawal->id,
+                    'amount' => $withdrawal->amount,
+                    'bank_name' => $withdrawal->bank_name,
+                    'bank_account_number' => $withdrawal->bank_account_number,
+                    'bank_account_name' => $withdrawal->bank_account_name,
+                    'status' => $withdrawal->status,
+                    'status_label' => $this->withdrawalStatusLabel($withdrawal->status),
+                    'note' => $withdrawal->note,
+                    'paid_at' => $withdrawal->paid_at?->toDateTimeString(),
+                    'created_at' => $withdrawal->created_at?->toDateTimeString(),
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'store' => $store,
+                'summary' => [
+                    'total_income' => $totalIncome,
+                    'pending_balance' => $pendingBalance,
+                    'available_balance' => $availableBalance,
+                    'requested_balance' => $requestedBalance,
+                    'withdrawn_balance' => $withdrawnBalance,
+                ],
+                'balances' => $balances,
+                'withdrawals' => $withdrawals,
+            ],
+        ]);
+    }
+
+    public function requestWithdrawal(Request $request)
+    {
+        $request->validate([
+            'amount' => 'required|numeric|min:10000',
+            'bank_name' => 'required|string|max:100',
+            'bank_account_number' => 'required|string|max:50',
+            'bank_account_name' => 'required|string|max:150',
+        ]);
+
+        $store = $this->currentStore($request);
+        $this->releaseAvailableBalances($store->id);
+        $amount = round((float) $request->amount, 2);
+
+        $withdrawal = DB::transaction(function () use ($request, $store, $amount) {
+            $availableBalance = $this->sellerAvailableBalance($store->id);
+
+            if ($amount > $availableBalance) {
+                abort(response()->json([
+                    'success' => false,
+                    'message' => 'Saldo tersedia tidak mencukupi untuk ditarik.',
+                ], 422));
+            }
+
+            return SellerWithdrawal::create([
+                'store_id' => $store->id,
+                'amount' => $amount,
+                'bank_name' => $request->bank_name,
+                'bank_account_number' => $request->bank_account_number,
+                'bank_account_name' => $request->bank_account_name,
+                'status' => 'pending',
+            ]);
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Request tarik saldo berhasil dibuat dan menunggu persetujuan admin.',
+            'data' => $withdrawal,
+        ], 201);
     }
 
     private function sellerOrderPayload(Order $order, int $sellerId): array

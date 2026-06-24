@@ -22,6 +22,9 @@ class StoreProfile extends Model
         'tiktok',
         'facebook',
         'website',
+        'bank_name',
+        'bank_account_number',
+        'bank_account_name',
         'status',
         'rating_average',
         'rating_count',
@@ -45,5 +48,15 @@ class StoreProfile extends Model
     public function reviews()
     {
         return $this->hasMany(ProductReview::class, 'store_id');
+    }
+
+    public function sellerBalances()
+    {
+        return $this->hasMany(SellerBalance::class, 'store_id');
+    }
+
+    public function sellerWithdrawals()
+    {
+        return $this->hasMany(SellerWithdrawal::class, 'store_id');
     }
 }

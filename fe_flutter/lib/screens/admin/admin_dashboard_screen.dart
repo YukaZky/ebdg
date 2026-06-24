@@ -3,6 +3,7 @@ import '../../services/api_service.dart';
 import '../marketplace/chat_list_screen.dart';
 import '../marketplace/store_profile_screen.dart';
 import '../marketplace/toko_pesanan_screen.dart';
+import '../marketplace/toko_saldo_screen.dart';
 import 'admin_brands_screen.dart';
 import 'admin_categories_screen.dart';
 import 'admin_products_screen.dart';
@@ -135,6 +136,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             child: Column(children: [
                               _buildListMenu(context, 'Daftar Pesanan', 'Cek dan proses pesanan masuk', Icons.receipt_long_outlined, Colors.deepOrange, true, () {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => const TokoPesananScreen()));
+                              }),
+                              _buildListMenu(context, 'Saldo & Pendapatan', 'Total saldo, pending, tarik rekening, dan riwayat income order', Icons.account_balance_wallet_outlined, Colors.green, true, () {
+                                Navigator.push(context, MaterialPageRoute(builder: (_) => const TokoSaldoScreen()));
                               }),
                               _buildListMenu(context, 'Pesan Pelanggan', 'Lihat dan balas chat yang masuk ke toko ini', Icons.chat_outlined, Colors.amber, true, _openCustomerMessages),
                               _buildListMenu(context, 'Kupon Diskon', 'Voucher promo', Icons.confirmation_num_outlined, Colors.pink, false, () {}),
