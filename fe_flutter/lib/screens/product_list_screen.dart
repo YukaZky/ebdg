@@ -255,7 +255,6 @@ class _ProductListScreenState extends State<ProductListScreen> with AutomaticKee
             controller: _searchController,
             onChanged: (value) => setState(() => _searchQuery = value),
             decoration: InputDecoration(
-              hintText: 'Cari produk kesukaanmu...',
               hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
               prefixIcon: const Icon(Icons.search, color: Colors.grey),
               suffixIcon: _searchQuery.isEmpty
@@ -291,11 +290,6 @@ class _ProductListScreenState extends State<ProductListScreen> with AutomaticKee
                         builder: (context) => const WishlistScreen()));
               }
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none,
-                color: Colors.white, size: 27),
-            onPressed: () {},
           ),
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline,
