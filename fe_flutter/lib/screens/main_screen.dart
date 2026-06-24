@@ -85,7 +85,7 @@ class _MainScreenState extends State<MainScreen> {
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            Icon(Icons.shopping_cart_rounded, size: active ? 24 : 23, color: color),
+            Icon(Icons.shopping_cart_rounded, size: 24, color: color),
             if (count > 0)
               Positioned(
                 right: -10,
@@ -112,7 +112,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _navIcon(IconData icon, {required bool active, required Color color}) {
-    return Icon(icon, size: active ? 24 : 23, color: color);
+    return Icon(icon, size: 24, color: color);
   }
 
   Widget _navItem({
@@ -124,43 +124,34 @@ class _MainScreenState extends State<MainScreen> {
     final iconColor = active ? _activeColor : _inactiveColor;
 
     return Expanded(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () => _onItemTapped(index),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            height: 58,
-            margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            decoration: BoxDecoration(
-              color: active ? _activeColor.withOpacity(0.12) : Colors.transparent,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                AnimatedScale(
-                  scale: active ? 1.04 : 1,
-                  duration: const Duration(milliseconds: 180),
-                  child: iconBuilder(active, iconColor),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _onItemTapped(index),
+        child: Container(
+          height: 58,
+          margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: active ? _activeColor.withOpacity(0.12) : Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              iconBuilder(active, iconColor),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: active ? _activeColor : _inactiveColor,
+                  fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                  height: 1,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: active ? _activeColor : _inactiveColor,
-                    fontWeight: active ? FontWeight.w800 : FontWeight.w600,
-                    height: 1,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
