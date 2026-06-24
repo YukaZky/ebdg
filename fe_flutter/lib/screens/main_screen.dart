@@ -95,7 +95,11 @@ class _MainScreenState extends State<MainScreen> {
                   child: Text(
                     count > 99 ? '99+' : count.toString(),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, height: 1),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        height: 1),
                   ),
                 ),
               ),
@@ -109,56 +113,73 @@ class _MainScreenState extends State<MainScreen> {
     return Icon(icon, size: active ? 27 : 24, color: color);
   }
 
-  Widget _navItem({required int index, required String label, required Widget Function(bool active, Color color) iconBuilder}) {
+  Widget _navItem({
+    required int index,
+    required String label,
+    required Widget Function(bool active, Color color) iconBuilder,
+  }) {
     final active = _selectedIndex == index;
 
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => _onItemTapped(index),
-        child: SizedBox(
+        child: Container(
+          color: Colors.transparent, // Memastikan area sentuh penuh
           height: 82,
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.topCenter,
-            children: [
-              Positioned(
-                top: active ? -20 : 13,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 240),
-                  curve: Curves.easeOut,
-                  width: active ? 58 : 42,
-                  height: active ? 58 : 42,
-                  decoration: BoxDecoration(
-                    color: active ? _activeColor : Colors.transparent,
-                    shape: BoxShape.circle,
-                    boxShadow: active ? [BoxShadow(color: _activeColor.withOpacity(0.35), blurRadius: 16, offset: const Offset(0, 8))] : [],
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0.0, end: active ? 1.0 : 0.0),
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutBack, // Memberikan efek memantul (bouncing)
+            builder: (context, value, child) {
+              return Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  // Latar Belakang (Pill shape ala Material 3)
+                  Positioned(
+                    top: 14 + (4 * (1 - value)), // Bergeser sedikit saat muncul
+                    child: Opacity(
+                      opacity: value.clamp(0.0, 1.0),
+                      child: Container(
+                        width: 40 + (24 * value), // Memanjang ke samping
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: _activeColor.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
                   ),
-                  child: Center(child: iconBuilder(active, active ? Colors.white : _inactiveColor)),
-                ),
-              ),
-              Positioned(
-                top: active ? 43 : 50,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 240),
-                  width: active ? 24 : 0,
-                  height: 3,
-                  decoration: BoxDecoration(color: _activeColor, borderRadius: BorderRadius.circular(999)),
-                ),
-              ),
-              Positioned(
-                bottom: 6,
-                left: 2,
-                right: 2,
-                child: Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11.5, color: active ? _activeColor : _inactiveColor, fontWeight: active ? FontWeight.w700 : FontWeight.w500),
-                ),
-              ),
-            ],
+                  // Ikon
+                  Positioned(
+                    top: 18 - (4 * value), // Naik sedikit saat aktif
+                    child: iconBuilder(
+                      active,
+                      active ? _activeColor : _navDark.withOpacity(0.6),
+                    ),
+                  ),
+                  // Teks Label
+                  Positioned(
+                    bottom: 12,
+                    child: Opacity(
+                      opacity: 0.6 + (0.4 * value), // Transisi opacity
+                      child: Transform.scale(
+                        scale: 0.9 + (0.1 * value), // Membesar sedikit
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: active ? _activeColor : _inactiveColor,
+                            fontWeight: active ? FontWeight.bold : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -170,7 +191,13 @@ class _MainScreenState extends State<MainScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Colors.grey.shade100)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 18, offset: const Offset(0, -6))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          )
+        ],
       ),
       child: SafeArea(
         top: false,
@@ -178,10 +205,26 @@ class _MainScreenState extends State<MainScreen> {
           height: 82,
           child: Row(
             children: [
-              _navItem(index: 0, label: 'Beranda', iconBuilder: (active, color) => _navIcon(0, Icons.home, active: active, color: active ? color : _navDark)),
-              _navItem(index: 1, label: 'Keranjang', iconBuilder: (active, color) => _cartIconWithBadge(active: active, color: active ? color : _navDark)),
-              _navItem(index: 2, label: 'Pesanan', iconBuilder: (active, color) => _navIcon(2, Icons.history, active: active, color: active ? color : _navDark)),
-              _navItem(index: 3, label: _accountLabel, iconBuilder: (active, color) => _navIcon(3, Icons.person, active: active, color: active ? color : _navDark)),
+              _navItem(
+                index: 0,
+                label: 'Beranda',
+                iconBuilder: (active, color) => _navIcon(0, Icons.home, active: active, color: color),
+              ),
+              _navItem(
+                index: 1,
+                label: 'Keranjang',
+                iconBuilder: (active, color) => _cartIconWithBadge(active: active, color: color),
+              ),
+              _navItem(
+                index: 2,
+                label: 'Pesanan',
+                iconBuilder: (active, color) => _navIcon(2, Icons.history, active: active, color: color),
+              ),
+              _navItem(
+                index: 3,
+                label: _accountLabel,
+                iconBuilder: (active, color) => _navIcon(3, Icons.person, active: active, color: color),
+              ),
             ],
           ),
         ),
