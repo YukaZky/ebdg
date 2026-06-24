@@ -18,6 +18,7 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
   Map<String, dynamic>? data;
   bool loading = true;
   bool savingBank = false;
+  bool editingBank = false;
   String? _selectedBankCode;
 
   static const List<Map<String, String>> _fallbackBankOptions = [
@@ -89,6 +90,7 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
     _selectedBankCode = _validBankCode(code) ?? _selectedBankCode;
     _bankAccountNumberController.text = _bankAccount['bank_account_number']?.toString() ?? '';
     _bankAccountNameController.text = _bankAccount['bank_account_name']?.toString() ?? '';
+    editingBank = !_hasStoredBankAccount;
   }
 
   double _num(dynamic value) {
@@ -123,9 +125,10 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
   }
 
   bool get _isSandbox => data?['is_sandbox'] == true;
-
   List<dynamic> get _balances => data?['balances'] as List? ?? [];
   List<dynamic> get _withdrawals => data?['withdrawals'] as List? ?? [];
+  double get _availableBalance => _num(_summary['available_balance']);
+  double get _minimumWithdrawalAmount => _num(data?['minimum_withdrawal_amount'] ?? (_isSandbox ? 1 : 10000));
 
   List<Map<String, String>> get _bankOptions {
     final raw = data?['bank_options'];
@@ -145,8 +148,6 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
     return _fallbackBankOptions;
   }
 
-  double get _availableBalance => _num(_summary['available_balance']);
-
   String? _validBankCode(String? code) {
     if (code == null || code.trim().isEmpty) return null;
     final cleanCode = code.trim();
@@ -160,10 +161,17 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
     return _bankOptions.firstWhere((bank) => bank['code'] == validCode)['label'] ?? validCode.toUpperCase();
   }
 
-  bool get _hasBankAccount {
+  bool get _hasBankForm {
     return (_validBankCode(_selectedBankCode) != null) &&
         _bankAccountNumberController.text.trim().isNotEmpty &&
         _bankAccountNameController.text.trim().isNotEmpty;
+  }
+
+  bool get _hasStoredBankAccount {
+    final code = _validBankCode(_bankAccount['bank_code']?.toString() ?? _bankAccount['bank_name']?.toString());
+    return code != null &&
+        (_bankAccount['bank_account_number']?.toString().trim().isNotEmpty ?? false) &&
+        (_bankAccount['bank_account_name']?.toString().trim().isNotEmpty ?? false);
   }
 
   Color _balanceStatusColor(String status) {
@@ -340,7 +348,7 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 112, child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
+          SizedBox(width: 122, child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
           Expanded(child: Text(value?.toString() ?? '-', style: TextStyle(fontSize: 12, fontWeight: bold ? FontWeight.w900 : FontWeight.w700, color: bold ? _navy : Colors.black87))),
         ],
       ),
@@ -369,16 +377,29 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(result != null ? 'Data rekening berhasil disimpan' : 'Gagal menyimpan data rekening')),
     );
-    if (result != null) loadBalance();
+
+    if (result != null) {
+      setState(() => editingBank = false);
+      await loadBalance();
+    }
   }
 
   Future<void> _openWithdrawalSheet() async {
-    final amountController = TextEditingController(text: _availableBalance.toStringAsFixed(0));
-    final accountNumberController = TextEditingController(text: _bankAccount['bank_account_number']?.toString() ?? _bankAccountNumberController.text);
-    final accountNameController = TextEditingController(text: _bankAccount['bank_account_name']?.toString() ?? _bankAccountNameController.text);
-    String? selectedBankCode = _validBankCode(_bankAccount['bank_code']?.toString() ?? _bankAccount['bank_name']?.toString()) ?? _validBankCode(_selectedBankCode);
+    if (!_hasStoredBankAccount) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Simpan data rekening toko terlebih dahulu.')));
+      setState(() => editingBank = true);
+      return;
+    }
 
-    final success = await showModalBottomSheet<bool>(
+    if (_availableBalance <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Belum ada saldo yang bisa ditarik.')));
+      return;
+    }
+
+    final amountController = TextEditingController(text: _availableBalance.toStringAsFixed(0));
+    bool submitting = false;
+
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
@@ -396,40 +417,54 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
                     const Text('Tarik Saldo ke Rekening', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _navy)),
                     const SizedBox(height: 6),
                     Text('Saldo tersedia: ${_currency(_availableBalance)}', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
-                    const SizedBox(height: 16),
-                    _input(amountController, 'Nominal tarik', TextInputType.number),
-                    _bankDropdown(
-                      value: selectedBankCode,
-                      label: 'Nama bank',
-                      onChanged: (value) => setModalState(() => selectedBankCode = value),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE5EAF3))),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Rekening tujuan', style: TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 8),
+                          _miniRow('Nama rekening', _bankLabel(_bankAccount['bank_code']?.toString() ?? _bankAccount['bank_name']?.toString())),
+                          _miniRow('Pemilik rekening', _bankAccount['bank_account_name'] ?? '-'),
+                          _miniRow('No. rek', _bankAccount['bank_account_number'] ?? '-'),
+                        ],
+                      ),
                     ),
-                    _input(accountNumberController, 'Nomor rekening', TextInputType.number),
-                    _input(accountNameController, 'Nama pemilik rekening', TextInputType.text),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 14),
+                    _input(amountController, 'Nominal tarik', TextInputType.number),
+                    Text('Minimal tarik: ${_currency(_minimumWithdrawalAmount)}', style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 14),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: () async {
-                          final bankCode = _validBankCode(selectedBankCode);
-                          final amount = double.tryParse(amountController.text.replaceAll('.', '').replaceAll(',', '')) ?? 0;
-                          if (bankCode == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih bank terlebih dahulu.')));
-                            return;
-                          }
+                        onPressed: submitting
+                            ? null
+                            : () async {
+                                final amount = double.tryParse(amountController.text.replaceAll('.', '').replaceAll(',', '')) ?? 0;
+                                if (amount <= 0) {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nominal tarik harus lebih dari 0.')));
+                                  return;
+                                }
 
-                          final ok = await MarketplaceApiService.requestWithdrawal(
-                            amount: amount,
-                            bankName: bankCode,
-                            bankAccountNumber: accountNumberController.text.trim(),
-                            bankAccountName: accountNameController.text.trim(),
-                          );
-                          if (context.mounted) Navigator.pop(context, ok != null);
-                        },
-                        icon: const Icon(Icons.account_balance_wallet_outlined),
-                        label: const Text('Ajukan Penarikan'),
+                                setModalState(() => submitting = true);
+                                final response = await MarketplaceApiService.requestWithdrawal(amount: amount);
+                                setModalState(() => submitting = false);
+
+                                if (context.mounted) {
+                                  Navigator.pop(context, response ?? {'success': false, 'message': 'Gagal membuat request tarik saldo'});
+                                }
+                              },
+                        icon: submitting
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.account_balance_wallet_outlined),
+                        label: Text(submitting ? 'Memproses...' : 'Ajukan Penarikan'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _navy,
                           foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.grey.shade300,
                           minimumSize: const Size.fromHeight(48),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
@@ -445,13 +480,11 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
     );
 
     amountController.dispose();
-    accountNumberController.dispose();
-    accountNameController.dispose();
 
-    if (!mounted || success == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(success ? 'Request tarik saldo berhasil dibuat' : 'Gagal membuat request tarik saldo')),
-    );
+    if (!mounted || result == null) return;
+    final success = result['success'] == true;
+    final message = result['message']?.toString() ?? (success ? 'Request tarik saldo berhasil dibuat' : 'Gagal membuat request tarik saldo');
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     if (success) loadBalance();
   }
 
@@ -499,7 +532,8 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
   }
 
   Widget _bankAccountCard() {
-    final code = _validBankCode(_selectedBankCode);
+    final storedCode = _validBankCode(_bankAccount['bank_code']?.toString() ?? _bankAccount['bank_name']?.toString());
+    final formCode = _validBankCode(_selectedBankCode);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -525,46 +559,89 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Set Rekening Penarikan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _navy)),
+                    Text('Rekening Penarikan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _navy)),
                     SizedBox(height: 3),
-                    Text('Kode bank disimpan sesuai kebutuhan Midtrans/Iris payout.', style: TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w600)),
+                    Text('Data rekening toko untuk request tarik saldo.', style: TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
+              if (_hasStoredBankAccount)
+                TextButton.icon(
+                  onPressed: savingBank
+                      ? null
+                      : () => setState(() {
+                            if (editingBank) _syncBankForm();
+                            editingBank = !editingBank;
+                          }),
+                  icon: Icon(editingBank ? Icons.close : Icons.edit_outlined, size: 16),
+                  label: Text(editingBank ? 'Batal' : 'Edit'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: _navy,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 14),
-          _bankDropdown(
-            value: _selectedBankCode,
-            label: 'Nama bank',
-            onChanged: (value) => setState(() => _selectedBankCode = value),
-          ),
-          _input(_bankAccountNumberController, 'Bank account number / nomor rekening', TextInputType.number),
-          _input(_bankAccountNameController, 'Bank account name / nama pemilik rekening', TextInputType.text),
-          if (code != null)
+          if (!editingBank && _hasStoredBankAccount) ...[
             Container(
               width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12)),
-              child: Text('Value yang dikirim ke Midtrans: bank_name = $code (${_bankLabel(code)})', style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.w700)),
-            ),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: savingBank ? null : _saveBankAccount,
-              icon: savingBank
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.save_outlined),
-              label: Text(savingBank ? 'Menyimpan...' : 'Simpan Rekening'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _navy,
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(46),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE5EAF3))),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _miniRow('Nama rekening', _bankLabel(storedCode)),
+                  _miniRow('Nama pemilik rekening', _bankAccount['bank_account_name'] ?? '-'),
+                  _miniRow('No. rek', _bankAccount['bank_account_number'] ?? '-'),
+                  _miniRow('Kode Midtrans', storedCode ?? '-'),
+                ],
               ),
             ),
-          ),
+          ] else ...[
+            if (!_hasStoredBankAccount)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: const Color(0xFFFFFBEB), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFFDE68A))),
+                child: const Text('Belum ada rekening penarikan. Isi data rekening toko terlebih dahulu.', style: TextStyle(fontSize: 12, color: Color(0xFF92400E), fontWeight: FontWeight.w700)),
+              ),
+            _bankDropdown(
+              value: _selectedBankCode,
+              label: 'Nama bank',
+              onChanged: (value) => setState(() => _selectedBankCode = value),
+            ),
+            _input(_bankAccountNumberController, 'Bank account number / nomor rekening', TextInputType.number),
+            _input(_bankAccountNameController, 'Bank account name / nama pemilik rekening', TextInputType.text),
+            if (formCode != null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12)),
+                child: Text('Value Midtrans/Iris: bank_name = $formCode (${_bankLabel(formCode)})', style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.w700)),
+              ),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: savingBank || !_hasBankForm ? null : _saveBankAccount,
+                icon: savingBank
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.save_outlined),
+                label: Text(savingBank ? 'Menyimpan...' : 'Simpan Rekening'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _navy,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey.shade300,
+                  minimumSize: const Size.fromHeight(46),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -634,8 +711,8 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
                           Text(_currency(_summary['total_income']), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
                           const SizedBox(height: 8),
                           Text(
-                            _hasBankAccount
-                                ? 'Rekening aktif: ${_bankLabel(_selectedBankCode)} • ${_bankAccountNumberController.text}'
+                            _hasStoredBankAccount
+                                ? 'Rekening aktif: ${_bankLabel(_bankAccount['bank_code']?.toString() ?? _bankAccount['bank_name']?.toString())} • ${_bankAccount['bank_account_number']}'
                                 : 'Lengkapi rekening toko sebelum tarik saldo.',
                             style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700),
                           ),
@@ -643,7 +720,7 @@ class _TokoSaldoScreenState extends State<TokoSaldoScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
-                              onPressed: (_availableBalance <= 0 || !_hasBankAccount) ? null : _openWithdrawalSheet,
+                              onPressed: (_availableBalance <= 0 || !_hasStoredBankAccount) ? null : _openWithdrawalSheet,
                               icon: const Icon(Icons.account_balance_outlined),
                               label: const Text('Tarik ke Rekening'),
                               style: ElevatedButton.styleFrom(
