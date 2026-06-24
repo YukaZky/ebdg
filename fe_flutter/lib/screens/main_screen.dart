@@ -16,26 +16,30 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   late int _selectedIndex;
   String _accountLabel = 'Akun';
-  late List<Widget> _screens;
+  late final List<Widget> _screens;
+  final PageStorageBucket _pageStorageBucket = PageStorageBucket();
+  DateTime? _lastNavTapAt;
 
   static const Color _activeColor = Color(0xFF6C4DFF);
   static const Color _inactiveColor = Color(0xFF9CA3AF);
   static const Color _navDark = Color(0xFF05254F);
+  static const Duration _navTapDebounce = Duration(milliseconds: 260);
 
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.initialIndex;
+    _selectedIndex = widget.initialIndex.clamp(0, 3).toInt();
     _initScreens();
     CartBadgeService.refresh();
   }
 
   void _initScreens() {
     _screens = [
-      const ProductListScreen(),
-      const CartScreen(),
-      const OrderHistoryScreen(),
+      const ProductListScreen(key: PageStorageKey('tab-home-products')),
+      const CartScreen(key: PageStorageKey('tab-cart')),
+      const OrderHistoryScreen(key: PageStorageKey('tab-orders')),
       ProfileScreen(
+        key: const PageStorageKey('tab-profile'),
         onProfileUpdated: (String? name) {
           if (mounted) {
             setState(() => _accountLabel = name ?? 'Akun');
@@ -46,7 +50,23 @@ class _MainScreenState extends State<MainScreen> {
     ];
   }
 
+  bool _allowNavigationTap(int index) {
+    if (index == _selectedIndex) return false;
+
+    final now = DateTime.now();
+    final previous = _lastNavTapAt;
+    if (previous != null && now.difference(previous) < _navTapDebounce) {
+      return false;
+    }
+
+    _lastNavTapAt = now;
+    return true;
+  }
+
   void _onItemTapped(int index) {
+    if (!_allowNavigationTap(index)) return;
+
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _selectedIndex = index);
     if (index == 1) CartBadgeService.refresh();
   }
@@ -169,10 +189,26 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  Widget _persistentBody() {
+    return PageStorage(
+      bucket: _pageStorageBucket,
+      child: IndexedStack(
+        index: _selectedIndex,
+        children: List.generate(
+          _screens.length,
+          (index) => TickerMode(
+            enabled: _selectedIndex == index,
+            child: RepaintBoundary(child: _screens[index]),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_selectedIndex],
+      body: _persistentBody(),
       bottomNavigationBar: _bottomNav(),
     );
   }
