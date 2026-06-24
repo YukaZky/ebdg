@@ -62,6 +62,35 @@ class MarketplaceApiService {
     return response.statusCode == 200;
   }
 
+  static Future<Map<String, dynamic>?> sellerBalance() async {
+    final response = await http.get(
+      Uri.parse('${ApiService.baseUrl}/marketplace/seller-balance'),
+      headers: _headers,
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'];
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> requestWithdrawal({
+    required double amount,
+    required String bankName,
+    required String bankAccountNumber,
+    required String bankAccountName,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${ApiService.baseUrl}/marketplace/seller-withdrawals'),
+      headers: _headers,
+      body: jsonEncode({
+        'amount': amount,
+        'bank_name': bankName,
+        'bank_account_number': bankAccountNumber,
+        'bank_account_name': bankAccountName,
+      }),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body)['data'];
+    return null;
+  }
+
   static Future<List<dynamic>> productReviews(int productId) async {
     final response = await http.get(Uri.parse('${ApiService.baseUrl}/products/$productId/reviews'), headers: {'Accept': 'application/json'});
     if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
