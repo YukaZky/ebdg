@@ -19,6 +19,11 @@ class Conversation extends Model
         return $this->belongsTo(User::class, 'seller_id');
     }
 
+    public function store()
+    {
+        return $this->belongsTo(StoreProfile::class, 'seller_id', 'user_id');
+    }
+
     public function product()
     {
         return $this->belongsTo(Product::class, 'product_id');
