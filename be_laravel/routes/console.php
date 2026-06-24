@@ -12,6 +12,15 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote')->hourly();
 
+$sellerBalanceHoldWeekdays = function (): int {
+    // Di sandbox/development, saldo langsung available agar testing tarik tunai tidak perlu menunggu 3 hari.
+    if (! (bool) config('midtrans.is_production')) {
+        return (int) env('SELLER_BALANCE_HOLD_WEEKDAYS_SANDBOX', 0);
+    }
+
+    return (int) env('SELLER_BALANCE_HOLD_WEEKDAYS', 3);
+};
+
 $createSellerBalanceForOrderItem = function ($order, $item, float $commissionRate, int $holdWeekdays, &$createdCount, &$skippedCount) {
     if (! $item->product || ! $item->product->user_id) {
         $skippedCount++;
@@ -44,6 +53,7 @@ $createSellerBalanceForOrderItem = function ($order, $item, float $commissionRat
     $paidAt = $order->transaction?->updated_at ?? $order->updated_at ?? now();
     $platformFee = round($grossAmount * ($commissionRate / 100), 2);
     $sellerNetAmount = round($grossAmount - $platformFee, 2);
+    $isImmediatelyAvailable = $holdWeekdays <= 0;
 
     SellerBalance::create([
         'store_id' => $store->id,
@@ -53,19 +63,19 @@ $createSellerBalanceForOrderItem = function ($order, $item, float $commissionRat
         'platform_fee' => $platformFee,
         'amount' => $sellerNetAmount,
         'type' => 'credit',
-        'status' => 'pending',
-        'available_at' => $paidAt->copy()->addWeekdays($holdWeekdays),
+        'status' => $isImmediatelyAvailable ? 'available' : 'pending',
+        'available_at' => $isImmediatelyAvailable ? now() : $paidAt->copy()->addWeekdays($holdWeekdays),
     ]);
 
     $createdCount++;
 };
 
-Artisan::command('seller-balance:backfill {--order_id=} {--store_user_id=} {--dry-run}', function () use ($createSellerBalanceForOrderItem) {
+Artisan::command('seller-balance:backfill {--order_id=} {--store_user_id=} {--dry-run}', function () use ($createSellerBalanceForOrderItem, $sellerBalanceHoldWeekdays) {
     $orderId = $this->option('order_id');
     $storeUserId = $this->option('store_user_id');
     $isDryRun = (bool) $this->option('dry-run');
     $commissionRate = (float) env('MARKETPLACE_COMMISSION_RATE', 10);
-    $holdWeekdays = (int) env('SELLER_BALANCE_HOLD_WEEKDAYS', 3);
+    $holdWeekdays = $sellerBalanceHoldWeekdays();
 
     $query = Order::with(['items.product', 'transaction'])
         ->whereHas('transaction', function ($transactionQuery) {
@@ -116,6 +126,7 @@ Artisan::command('seller-balance:backfill {--order_id=} {--store_user_id=} {--dr
     $this->info($prefix . "Order dicek: {$orders->count()}");
     $this->info($prefix . "Saldo dibuat: {$createdCount}");
     $this->info($prefix . "Item dilewati: {$skippedCount}");
+    $this->info($prefix . "Hold hari kerja: {$holdWeekdays}");
 })->purpose('Backfill saldo toko dari order yang sudah dibayar berdasarkan products.user_id');
 
 Artisan::command('seller-balance:repair-store {--dry-run}', function () {
