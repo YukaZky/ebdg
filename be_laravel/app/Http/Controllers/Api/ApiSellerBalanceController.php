@@ -49,6 +49,11 @@ class ApiSellerBalanceController extends Controller
         return max($available - $this->activeWithdrawals($storeId), 0);
     }
 
+    private function minimumWithdrawalAmount(): int
+    {
+        return (bool) config('midtrans.is_production') ? 10000 : 1;
+    }
+
     private function bankOptions(): array
     {
         return [
@@ -183,6 +188,7 @@ class ApiSellerBalanceController extends Controller
                 ->values(),
             'bank_account' => $this->bankAccountPayload($store),
             'is_sandbox' => ! (bool) config('midtrans.is_production'),
+            'minimum_withdrawal_amount' => $this->minimumWithdrawalAmount(),
             'summary' => [
                 'total_income' => $total,
                 'pending_balance' => $pending,
@@ -223,12 +229,15 @@ class ApiSellerBalanceController extends Controller
     public function withdraw(Request $request)
     {
         $bankCodes = implode(',', array_keys($this->bankOptions()));
+        $minimumAmount = $this->minimumWithdrawalAmount();
 
         $request->validate([
-            'amount' => 'required|numeric|min:10000',
+            'amount' => 'required|numeric|min:' . $minimumAmount,
             'bank_name' => 'nullable|string|in:' . $bankCodes,
             'bank_account_number' => 'nullable|string|max:50',
             'bank_account_name' => 'nullable|string|max:150',
+        ], [
+            'amount.min' => 'Minimal tarik saldo adalah Rp ' . number_format($minimumAmount, 0, ',', '.') . '.',
         ]);
 
         $store = $this->store($request);
@@ -243,12 +252,16 @@ class ApiSellerBalanceController extends Controller
         }
 
         $amount = round((float) $request->amount, 2);
+        $availableBalance = $this->availableBalance($store->id);
+
+        if ($amount > $availableBalance) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Saldo tersedia tidak mencukupi untuk ditarik. Saldo tersedia: Rp ' . number_format($availableBalance, 0, ',', '.'),
+            ], 422);
+        }
 
         $withdrawal = DB::transaction(function () use ($store, $amount, $bankName, $bankNumber, $bankOwner) {
-            if ($amount > $this->availableBalance($store->id)) {
-                abort(response()->json(['success' => false, 'message' => 'Saldo tersedia tidak mencukupi untuk ditarik.'], 422));
-            }
-
             $store->forceFill([
                 'bank_name' => $bankName,
                 'bank_account_number' => $bankNumber,
