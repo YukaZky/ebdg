@@ -32,32 +32,64 @@ class MarketplaceProductCard extends StatelessWidget {
 
   double get _activePrice => _hasPromo ? product.salePrice! : product.price;
 
+  int get _discountPercent {
+    if (!_hasPromo || product.price <= 0) return 0;
+    final percent = ((product.price - product.salePrice!) / product.price * 100).round();
+    return percent.clamp(1, 99).toInt();
+  }
+
+  String get _sellerCity {
+    final store = product.store;
+    final values = [
+      store?['city_name'],
+      store?['city'],
+      store?['cityName'],
+      store?['regency_name'],
+      store?['regency'],
+      store?['location'],
+    ];
+
+    for (final item in values) {
+      final value = item?.toString().trim() ?? '';
+      if (value.isNotEmpty && value != 'null') return value;
+    }
+
+    return 'Lokasi toko';
+  }
+
   Widget _buildPrice() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        if (_hasPromo)
-          Text(
-            'Rp ${product.price.toStringAsFixed(0)}',
+        Expanded(
+          child: Text(
+            'Rp ${_activePrice.toStringAsFixed(0)}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.grey.shade500,
-              fontSize: 11,
-              decoration: TextDecoration.lineThrough,
-              decorationColor: Colors.grey.shade600,
+            style: const TextStyle(
+              color: Color(0xFFE65100),
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
             ),
           ),
-        Text(
-          'Rp ${_activePrice.toStringAsFixed(0)}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Color(0xFFE65100),
-            fontWeight: FontWeight.w800,
-            fontSize: 14,
-          ),
         ),
+        if (_hasPromo) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFEFE5),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              '-$_discountPercent%',
+              style: const TextStyle(
+                color: Color(0xFFE65100),
+                fontWeight: FontWeight.w800,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -117,25 +149,26 @@ class MarketplaceProductCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 6),
                   _buildPrice(),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Icon(
-                        Icons.check_circle,
+                        isAvailable ? Icons.location_on : Icons.remove_shopping_cart_outlined,
                         size: 14,
-                        color: isAvailable ? Colors.green : Colors.red,
+                        color: isAvailable ? Colors.grey.shade600 : Colors.red,
                       ),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          isAvailable ? 'Stok Tersedia' : 'Habis',
+                          isAvailable ? _sellerCity : 'Habis',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 12,
-                            color: isAvailable ? Colors.green : Colors.red,
+                            fontWeight: FontWeight.w600,
+                            color: isAvailable ? Colors.grey.shade700 : Colors.red,
                           ),
                         ),
                       ),
