@@ -41,24 +41,26 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => isLoggingIn = true);
-    bool success = await ApiService.login(_emailController.text, _passwordController.text);
+    bool success = await ApiService.login(_emailController.text.trim(), _passwordController.text);
     if (!mounted) return;
     setState(() => isLoggingIn = false);
 
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Login Berhasil!'),
+          content: Text('Login berhasil. Sesi akun tersimpan.'),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
+          duration: Duration(milliseconds: 900),
         ),
       );
 
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
-          builder: (context) => const MainScreen(initialIndex: 3),
+          builder: (context) => const MainScreen(initialIndex: 0),
         ),
+        (_) => false,
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
