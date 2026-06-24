@@ -32,6 +32,11 @@ class Order extends Model
         return $this->hasMany(OrderItem::class, 'order_id', 'id');
     }
 
+    public function sellerBalances()
+    {
+        return $this->hasMany(SellerBalance::class);
+    }
+
     /**
      * Relasi ke tabel users
      */
