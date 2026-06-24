@@ -16,7 +16,8 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   late int _selectedIndex;
   String _accountLabel = 'Akun';
-  late final List<Widget> _screens;
+  late final List<Widget Function()> _screenBuilders;
+  late final List<bool> _builtTabs;
   final PageStorageBucket _pageStorageBucket = PageStorageBucket();
   DateTime? _lastNavTapAt;
 
@@ -29,25 +30,22 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex.clamp(0, 3).toInt();
-    _initScreens();
-    CartBadgeService.refresh();
-  }
-
-  void _initScreens() {
-    _screens = [
-      const ProductListScreen(key: PageStorageKey('tab-home-products')),
-      const CartScreen(key: PageStorageKey('tab-cart')),
-      const OrderHistoryScreen(key: PageStorageKey('tab-orders')),
-      ProfileScreen(
-        key: const PageStorageKey('tab-profile'),
-        onProfileUpdated: (String? name) {
-          if (mounted) {
-            setState(() => _accountLabel = name ?? 'Akun');
-            CartBadgeService.refresh();
-          }
-        },
-      ),
+    _screenBuilders = [
+      () => const ProductListScreen(key: PageStorageKey('tab-home-products')),
+      () => const CartScreen(key: PageStorageKey('tab-cart')),
+      () => const OrderHistoryScreen(key: PageStorageKey('tab-orders')),
+      () => ProfileScreen(
+            key: const PageStorageKey('tab-profile'),
+            onProfileUpdated: (String? name) {
+              if (!mounted) return;
+              setState(() => _accountLabel = name ?? 'Akun');
+              CartBadgeService.refresh();
+            },
+          ),
     ];
+    _builtTabs = List<bool>.filled(_screenBuilders.length, false);
+    _builtTabs[_selectedIndex] = true;
+    CartBadgeService.refresh();
   }
 
   bool _allowNavigationTap(int index) {
@@ -67,7 +65,10 @@ class _MainScreenState extends State<MainScreen> {
     if (!_allowNavigationTap(index)) return;
 
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => _selectedIndex = index);
+    setState(() {
+      _selectedIndex = index;
+      _builtTabs[index] = true;
+    });
     if (index == 1) CartBadgeService.refresh();
   }
 
@@ -193,13 +194,13 @@ class _MainScreenState extends State<MainScreen> {
       bucket: _pageStorageBucket,
       child: IndexedStack(
         index: _selectedIndex,
-        children: List.generate(
-          _screens.length,
-          (index) => TickerMode(
+        children: List.generate(_screenBuilders.length, (index) {
+          if (!_builtTabs[index]) return const SizedBox.shrink();
+          return TickerMode(
             enabled: _selectedIndex == index,
-            child: RepaintBoundary(child: _screens[index]),
-          ),
-        ),
+            child: RepaintBoundary(child: _screenBuilders[index]()),
+          );
+        }),
       ),
     );
   }
