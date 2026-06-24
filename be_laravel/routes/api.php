@@ -52,6 +52,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/marketplace/seller-orders', [ApiMarketplaceController::class, 'sellerOrders']);
     Route::put('/marketplace/seller-orders/{id}/status', [ApiMarketplaceController::class, 'updateSellerOrderStatus']);
     Route::get('/marketplace/seller-balance', [ApiSellerBalanceController::class, 'index']);
+    Route::post('/marketplace/seller-bank-account', [ApiSellerBalanceController::class, 'saveBankAccount']);
     Route::post('/marketplace/seller-withdrawals', [ApiSellerBalanceController::class, 'withdraw']);
     Route::post('/marketplace/reviews', [ApiMarketplaceController::class, 'addReview']);
     Route::get('/marketplace/chats', [ApiMarketplaceController::class, 'conversations']);
