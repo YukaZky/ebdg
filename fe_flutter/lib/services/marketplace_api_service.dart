@@ -10,6 +10,15 @@ class MarketplaceApiService {
         if (ApiService.token != null) 'Authorization': 'Bearer ' + ApiService.token!,
       };
 
+  static Map<String, dynamic>? _decodeMap(http.Response response) {
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    return null;
+  }
+
   static Future<Map<String, dynamic>?> myStore() async {
     final response = await http.get(Uri.parse('${ApiService.baseUrl}/marketplace/my-store'), headers: _headers);
     if (response.statusCode == 200) return jsonDecode(response.body)['data'];
@@ -85,28 +94,39 @@ class MarketplaceApiService {
         'bank_account_name': bankAccountName,
       }),
     );
-    if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body)['data'];
+    final decoded = _decodeMap(response);
+    if ((response.statusCode == 200 || response.statusCode == 201) && decoded != null) return decoded['data'];
     return null;
   }
 
   static Future<Map<String, dynamic>?> requestWithdrawal({
     required double amount,
-    required String bankName,
-    required String bankAccountNumber,
-    required String bankAccountName,
+    String? bankName,
+    String? bankAccountNumber,
+    String? bankAccountName,
   }) async {
+    final payload = <String, dynamic>{'amount': amount};
+    if (bankName != null && bankName.trim().isNotEmpty) payload['bank_name'] = bankName.trim();
+    if (bankAccountNumber != null && bankAccountNumber.trim().isNotEmpty) payload['bank_account_number'] = bankAccountNumber.trim();
+    if (bankAccountName != null && bankAccountName.trim().isNotEmpty) payload['bank_account_name'] = bankAccountName.trim();
+
     final response = await http.post(
       Uri.parse('${ApiService.baseUrl}/marketplace/seller-withdrawals'),
       headers: _headers,
-      body: jsonEncode({
-        'amount': amount,
-        'bank_name': bankName,
-        'bank_account_number': bankAccountNumber,
-        'bank_account_name': bankAccountName,
-      }),
+      body: jsonEncode(payload),
     );
-    if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body)['data'];
-    return null;
+
+    final decoded = _decodeMap(response);
+    if (decoded != null) {
+      decoded['http_status'] = response.statusCode;
+      return decoded;
+    }
+
+    return {
+      'success': false,
+      'http_status': response.statusCode,
+      'message': 'Gagal terhubung ke server. Status: ${response.statusCode}',
+    };
   }
 
   static Future<List<dynamic>> productReviews(int productId) async {
