@@ -7,7 +7,7 @@ class MarketplaceApiService {
   static Map<String, String> get _headers => {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
-        if (ApiService.token != null) 'Authorization': 'Bearer ${ApiService.token}',
+        if (ApiService.token != null) 'Authorization': 'Bearer ' + ApiService.token!,
       };
 
   static Future<Map<String, dynamic>?> myStore() async {
@@ -19,7 +19,7 @@ class MarketplaceApiService {
   static Future<Map<String, dynamic>?> saveStore(Map<String, dynamic> data, {XFile? logo, XFile? banner}) async {
     final request = http.MultipartRequest('POST', Uri.parse('${ApiService.baseUrl}/marketplace/my-store'));
     request.headers['Accept'] = 'application/json';
-    if (ApiService.token != null) request.headers['Authorization'] = 'Bearer ${ApiService.token}';
+    if (ApiService.token != null) request.headers['Authorization'] = 'Bearer ' + ApiService.token!;
 
     data.forEach((key, value) {
       request.fields[key] = value?.toString() ?? '';
@@ -68,6 +68,24 @@ class MarketplaceApiService {
       headers: _headers,
     );
     if (response.statusCode == 200) return jsonDecode(response.body)['data'];
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> saveSellerBankAccount({
+    required String bankName,
+    required String bankAccountNumber,
+    required String bankAccountName,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${ApiService.baseUrl}/marketplace/seller-bank-account'),
+      headers: _headers,
+      body: jsonEncode({
+        'bank_name': bankName,
+        'bank_account_number': bankAccountNumber,
+        'bank_account_name': bankAccountName,
+      }),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body)['data'];
     return null;
   }
 
