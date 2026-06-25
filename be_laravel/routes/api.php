@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\ApiWishlistController;
 use App\Http\Controllers\Api\ApiAdminController;
 use App\Http\Controllers\Api\ApiMarketplaceController;
 use App\Http\Controllers\Api\ApiSellerBalanceController;
+use App\Http\Controllers\Api\ApiMarketplaceChatController;
 use App\Http\Controllers\Api\ApiUserProfileController;
 use App\Http\Controllers\MidtransController;
 use App\Http\Controllers\Api\ApiPaymentMethodController;
@@ -55,10 +56,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/marketplace/seller-bank-account', [ApiSellerBalanceController::class, 'saveBankAccount']);
     Route::post('/marketplace/seller-withdrawals', [ApiSellerBalanceController::class, 'withdraw']);
     Route::post('/marketplace/reviews', [ApiMarketplaceController::class, 'addReview']);
-    Route::get('/marketplace/chats', [ApiMarketplaceController::class, 'conversations']);
-    Route::post('/marketplace/chats/start', [ApiMarketplaceController::class, 'startConversation']);
-    Route::get('/marketplace/chats/{conversationId}/messages', [ApiMarketplaceController::class, 'messages']);
-    Route::post('/marketplace/chats/{conversationId}/messages', [ApiMarketplaceController::class, 'sendMessage']);
+    Route::get('/marketplace/chats', [ApiMarketplaceChatController::class, 'conversations']);
+    Route::post('/marketplace/chats/start', [ApiMarketplaceChatController::class, 'startConversation']);
+    Route::get('/marketplace/chats/{conversationId}/messages', [ApiMarketplaceChatController::class, 'messages']);
+    Route::post('/marketplace/chats/{conversationId}/messages', [ApiMarketplaceChatController::class, 'sendMessage']);
 
     Route::get('/wishlist', [ApiWishlistController::class, 'index']);
     Route::post('/wishlist/add', [ApiWishlistController::class, 'add']);

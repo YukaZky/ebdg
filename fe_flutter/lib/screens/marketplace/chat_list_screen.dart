@@ -42,31 +42,49 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return null;
   }
 
+  String _clean(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text == 'null') return '';
+    return text;
+  }
+
   String _conversationTitle(Map<String, dynamic> chat) {
+    final displayName = _clean(chat['display_name']);
+    if (displayName.isNotEmpty) return displayName;
+
     final counterpart = _asMap(chat['counterpart']);
-    final counterpartName = counterpart?['name']?.toString().trim() ?? '';
-    if (counterpartName.isNotEmpty && counterpartName != 'null') return counterpartName;
+    final counterpartName = _clean(counterpart?['name']);
+    if (counterpartName.isNotEmpty) return counterpartName;
+
+    final store = _asMap(chat['store']);
+    final storeName = _clean(store?['name']);
+    if (storeName.isNotEmpty) return storeName;
 
     final seller = _asMap(chat['seller']);
-    final sellerName = seller?['name']?.toString().trim() ?? '';
-    if (sellerName.isNotEmpty && sellerName != 'null') return sellerName;
+    final sellerName = _clean(seller?['name']);
+    if (sellerName.isNotEmpty) return sellerName;
 
     final buyer = _asMap(chat['buyer']);
-    final buyerName = buyer?['name']?.toString().trim() ?? '';
-    if (buyerName.isNotEmpty && buyerName != 'null') return buyerName;
+    final buyerName = _clean(buyer?['name']);
+    if (buyerName.isNotEmpty) return buyerName;
 
     return 'Chat #${chat['id'] ?? ''}';
   }
 
-  String _productName(Map<String, dynamic> chat) {
-    final product = _asMap(chat['product']);
-    final name = product?['name']?.toString().trim() ?? '';
-    return name == 'null' ? '' : name;
+  String _conversationSubtitle(Map<String, dynamic> chat) {
+    final subtitle = _clean(chat['display_subtitle']);
+    final product = _asMap(chat['product_context']) ?? _asMap(chat['product']);
+    final productName = _clean(product?['name']);
+
+    if (subtitle.isNotEmpty && productName.isNotEmpty) return '$subtitle • $productName';
+    if (subtitle.isNotEmpty) return subtitle;
+    if (productName.isNotEmpty) return productName;
+    return '';
   }
 
   String _lastMessage(Map<String, dynamic> chat) {
-    final message = chat['last_message']?.toString().trim() ?? '';
-    if (message.isNotEmpty && message != 'null') return message;
+    final message = _clean(chat['last_message_text']).isNotEmpty ? _clean(chat['last_message_text']) : _clean(chat['last_message']);
+    if (message.isNotEmpty) return message;
     return 'Mulai percakapan dengan mengirim pesan.';
   }
 
@@ -76,6 +94,20 @@ class _ChatListScreenState extends State<ChatListScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(color: Colors.deepOrange, borderRadius: BorderRadius.circular(999)),
       child: Text(count > 99 ? '99+' : count.toString(), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _emptyState() {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        const SizedBox(height: 180),
+        Icon(Icons.chat_bubble_outline, size: 70, color: Colors.grey.shade400),
+        const SizedBox(height: 12),
+        Center(child: Text(widget.emptyText, style: TextStyle(color: Colors.grey.shade700))),
+        const SizedBox(height: 6),
+        Center(child: Text('Chat toko akan muncul di sini.', style: TextStyle(color: Colors.grey.shade500, fontSize: 12))),
+      ],
     );
   }
 
@@ -93,24 +125,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
           : RefreshIndicator(
               onRefresh: loadChats,
               child: chats.isEmpty
-                  ? ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: [
-                        const SizedBox(height: 180),
-                        const Icon(Icons.chat_bubble_outline, size: 70, color: Colors.grey),
-                        const SizedBox(height: 12),
-                        Center(child: Text(widget.emptyText)),
-                      ],
-                    )
+                  ? _emptyState()
                   : ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.all(16),
                       itemCount: chats.length,
                       itemBuilder: (context, index) {
                         final chat = Map<String, dynamic>.from(chats[index] as Map);
-                        final id = int.tryParse(chat['id'].toString()) ?? 0;
+                        final id = int.tryParse(chat['id']?.toString() ?? '') ?? 0;
                         final title = _conversationTitle(chat);
-                        final productName = _productName(chat);
+                        final subtitle = _conversationSubtitle(chat);
                         final lastMessage = _lastMessage(chat);
                         final unreadCount = int.tryParse(chat['unread_count']?.toString() ?? '0') ?? 0;
                         final initial = title.isNotEmpty ? title[0].toUpperCase() : 'C';
@@ -129,19 +153,20 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (productName.isNotEmpty)
+                                if (subtitle.isNotEmpty)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 2, bottom: 2),
-                                    child: Text(productName, style: TextStyle(fontSize: 12, color: Colors.grey.shade700), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    child: Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey.shade700), maxLines: 1, overflow: TextOverflow.ellipsis),
                                   ),
-                                Text(lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                Text(lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: unreadCount > 0 ? Colors.black87 : Colors.grey.shade700, fontWeight: unreadCount > 0 ? FontWeight.w700 : FontWeight.normal)),
                               ],
                             ),
                             trailing: _unreadBadge(unreadCount),
                             onTap: () {
+                              if (id <= 0) return;
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(builder: (_) => ChatRoomScreen(conversationId: id, title: title)),
+                                MaterialPageRoute(builder: (_) => ChatRoomScreen(conversationId: id, title: title, initialConversation: chat)),
                               ).then((_) => loadChats());
                             },
                           ),
