@@ -8,7 +8,7 @@ import '../models/product_model.dart';
 import '../models/payment_method_model.dart';
 
 class ApiService {
-  static const String baseUrl = "https://plug-unlined-smugness.ngrok-free.dev/api";
+  static const String baseUrl = "https://ebdg.sidome.id/api";
   static const String _tokenStorageKey = 'auth_access_token';
   static String? _token;
   static bool _sessionRestored = false;
