@@ -6,6 +6,7 @@ import '../marketplace/toko_pesanan_screen.dart';
 import 'admin_brands_screen.dart';
 import 'admin_categories_screen.dart';
 import 'admin_products_screen.dart';
+import 'admin_store_location_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({Key? key}) : super(key: key);
@@ -46,6 +47,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           role: 'seller',
         ),
       ),
+    ).then((_) => _fetchDashboardData());
+  }
+
+  Future<void> _openStoreLocation() async {
+    final response = await ApiService.getAdminStoreLocation();
+    final existingAddress = response?['data'] is Map
+        ? Map<String, dynamic>.from(response!['data'])
+        : null;
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => AdminStoreLocationScreen(existingAddress: existingAddress)),
     ).then((_) => _fetchDashboardData());
   }
 
@@ -112,9 +126,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           Container(
                             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade200)),
                             child: Column(children: [
-                              _buildListMenu(context, 'Informasi Toko', 'Nama, deskripsi, maps, alamat, dan sosial media', Icons.store_mall_directory_outlined, Colors.deepOrange, true, () {
+                              _buildListMenu(context, 'Informasi Toko', 'Nama, deskripsi, logo, dan sosial media', Icons.store_mall_directory_outlined, Colors.deepOrange, true, () {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => const StoreProfileScreen()));
                               }),
+                              _buildListMenu(context, 'Alamat Toko', 'Atur origin ongkir, kecamatan, dan titik maps toko', Icons.location_on_outlined, Colors.redAccent, true, _openStoreLocation),
                               _buildListMenu(context, 'Kelola Produk', 'Tambah, edit, hapus barang', Icons.shopping_bag_outlined, Colors.teal, true, () {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminProductsScreen()));
                               }),
