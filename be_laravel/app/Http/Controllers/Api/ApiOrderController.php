@@ -75,8 +75,8 @@ class ApiOrderController extends Controller
             return 'packing';
         }
 
-        if (in_array($transactionStatus, ['approved', 'settlement', 'capture'], true)) {
-            return (($details['stage'] ?? null) === 'checkout_completed') ? 'packing' : 'paid_not_checked_out';
+        if (in_array($orderStatus, ['paid', 'dibayar'], true) || in_array($transactionStatus, ['approved', 'settlement', 'capture'], true)) {
+            return 'paid_not_checked_out';
         }
 
         if ($transactionStatus === 'pending' || is_array($paymentInfo)) {
