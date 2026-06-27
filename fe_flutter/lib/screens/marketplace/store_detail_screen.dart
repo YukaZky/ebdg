@@ -7,7 +7,6 @@ import '../../widgets/marketplace_product_card.dart';
 
 class StoreDetailScreen extends StatefulWidget {
   final String slug;
-
   const StoreDetailScreen({Key? key, required this.slug}) : super(key: key);
 
   @override
@@ -23,6 +22,9 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
   Map<String, String> categoryImages = {};
   String selectedCategory = 'Semua';
   bool loading = true;
+  bool loadingReview = false;
+  double ratingAverage = 0;
+  int ratingCount = 0;
   final Set<int> takingCouponIds = {};
 
   @override
@@ -34,11 +36,11 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
   Future<void> loadStore() async {
     final data = await MarketplaceApiService.storeDetail(widget.slug);
     final couponData = await MarketplaceApiService.storeCoupons(widget.slug);
+    final reviewSummary = await MarketplaceApiService.storeReviewSummary(widget.slug);
     if (!mounted) return;
     if (data != null) {
       final rawProducts = data['products'] as List? ?? [];
       final imageMap = <String, String>{};
-
       for (final item in rawProducts) {
         if (item is Map && item['category'] is Map) {
           final category = Map<String, dynamic>.from(item['category']);
@@ -47,12 +49,16 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
           if (name.isNotEmpty && image.isNotEmpty) imageMap[name] = image;
         }
       }
-
+      final storeMap = Map<String, dynamic>.from(data['store'] ?? {});
+      storeMap['rating_average'] = reviewSummary['average'];
+      storeMap['rating_count'] = reviewSummary['count'];
       setState(() {
-        store = Map<String, dynamic>.from(data['store'] ?? {});
+        store = storeMap;
         storeAddress = data['store_address'] is Map ? Map<String, dynamic>.from(data['store_address']) : null;
         products = rawProducts.map((item) => Product.fromJson(Map<String, dynamic>.from(item))).toList();
-        reviews = data['reviews'] as List? ?? [];
+        reviews = reviewSummary['data'] as List? ?? [];
+        ratingAverage = double.tryParse(reviewSummary['average']?.toString() ?? '0') ?? 0;
+        ratingCount = int.tryParse(reviewSummary['count']?.toString() ?? '0') ?? 0;
         coupons = couponData.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
         categoryImages = imageMap;
         loading = false;
@@ -128,12 +134,13 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
   }
 
   List<Product> get filteredProducts => selectedCategory == 'Semua' ? products : products.where((product) => product.categoryName == selectedCategory).toList();
-  double get ratingAverage => double.tryParse(store?['rating_average']?.toString() ?? '0') ?? 0;
 
   String _money(dynamic value) {
     final number = double.tryParse(value?.toString() ?? '0') ?? 0;
     return 'Rp ${number.toStringAsFixed(0)}';
   }
+
+  Widget _stars(double rating, {double size = 16}) => Row(mainAxisSize: MainAxisSize.min, children: List.generate(5, (index) => Icon(index < rating.round() ? Icons.star_rounded : Icons.star_border_rounded, color: Colors.amber, size: size)));
 
   String _couponValue(Map<String, dynamic> coupon) {
     final value = double.tryParse(coupon['value']?.toString() ?? '0') ?? 0;
@@ -175,7 +182,48 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     if (result == null) loadStore();
   }
 
-  Widget _stars(double rating, {double size = 16}) => Row(mainAxisSize: MainAxisSize.min, children: List.generate(5, (index) => Icon(index < rating.round() ? Icons.star : Icons.star_border, color: Colors.amber, size: size)));
+  void _showStoreReviewSheet() {
+    if (ApiService.token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Silakan login dulu untuk memberi ulasan toko.')));
+      return;
+    }
+    final storeId = int.tryParse(store?['id']?.toString() ?? '') ?? 0;
+    if (storeId <= 0) return;
+    int rating = 5;
+    final controller = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (_) => StatefulBuilder(builder: (context, setSheetState) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(18, 16, 18, 18 + MediaQuery.of(context).viewInsets.bottom),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Beri Ulasan Toko', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 10),
+            Text(store?['name']?.toString() ?? 'Toko', style: TextStyle(color: Colors.grey.shade700)),
+            const SizedBox(height: 12),
+            Row(children: List.generate(5, (index) => IconButton(onPressed: () => setSheetState(() => rating = index + 1), icon: Icon(index < rating ? Icons.star_rounded : Icons.star_border_rounded, color: Colors.amber, size: 34)))),
+            TextField(controller: controller, maxLines: 4, decoration: const InputDecoration(labelText: 'Komentar', hintText: 'Tulis pengalaman kamu dengan toko ini', border: OutlineInputBorder())),
+            const SizedBox(height: 14),
+            SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: loadingReview ? null : () async {
+              setSheetState(() => loadingReview = true);
+              final response = await MarketplaceApiService.addStoreReview(storeId: storeId, rating: rating, review: controller.text.trim());
+              if (!mounted) return;
+              setSheetState(() => loadingReview = false);
+              Navigator.pop(context);
+              if (response != null) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ulasan toko berhasil disimpan.')));
+                loadStore();
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(MarketplaceApiService.lastError ?? 'Gagal menyimpan ulasan toko.')));
+              }
+            }, icon: loadingReview ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.star_rounded), label: const Text('KIRIM ULASAN'))),
+          ]),
+        );
+      }),
+    ).whenComplete(controller.dispose);
+  }
 
   Widget _logoAvatar({double radius = 34}) {
     final logoUrl = _mediaUrl(store?['logo'], folder: 'stores');
@@ -189,34 +237,14 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     return InkWell(
       onTap: link ? () => _openUrl(raw) : null,
       borderRadius: BorderRadius.circular(10),
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, size: 18, color: Colors.deepOrange),
-          const SizedBox(width: 8),
-          Expanded(child: Text('$label: $shown', style: TextStyle(height: 1.35, color: link ? Colors.deepOrange : Colors.black87, fontWeight: link ? FontWeight.w600 : FontWeight.normal))),
-          if (link) const Icon(Icons.open_in_new, size: 16, color: Colors.deepOrange),
-        ]),
-      ),
+      child: Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, size: 18, color: Colors.deepOrange), const SizedBox(width: 8), Expanded(child: Text('$label: $shown', style: TextStyle(height: 1.35, color: link ? Colors.deepOrange : Colors.black87, fontWeight: link ? FontWeight.w600 : FontWeight.normal))), if (link) const Icon(Icons.open_in_new, size: 16, color: Colors.deepOrange)])),
     );
   }
 
   Widget _mapPreview() {
     final url = _staticMapUrl;
     if (url.isEmpty && _mapsUrl.trim().isEmpty) return const SizedBox.shrink();
-    return InkWell(
-      onTap: () => _openUrl(_mapsUrl),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 14),
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.deepOrange.withOpacity(0.18))),
-        child: Stack(children: [
-          if (url.isNotEmpty) Image.network(url, width: double.infinity, height: 150, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _mapFallback()) else _mapFallback(),
-          Positioned(right: 10, top: 10, child: Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6), decoration: BoxDecoration(color: Colors.white.withOpacity(0.92), borderRadius: BorderRadius.circular(999)), child: const Row(mainAxisSize: MainAxisSize.min, children: [Text('Buka Maps', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.deepOrange)), SizedBox(width: 4), Icon(Icons.open_in_new, size: 13, color: Colors.deepOrange)]))),
-        ]),
-      ),
-    );
+    return InkWell(onTap: () => _openUrl(_mapsUrl), borderRadius: BorderRadius.circular(16), child: Container(margin: const EdgeInsets.only(bottom: 14), clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.deepOrange.withOpacity(0.18))), child: url.isNotEmpty ? Image.network(url, width: double.infinity, height: 150, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _mapFallback()) : _mapFallback()));
   }
 
   Widget _mapFallback() => Container(width: double.infinity, height: 150, color: const Color(0xFFFFF3E0), child: const Center(child: Icon(Icons.map, size: 46, color: Colors.deepOrange)));
@@ -229,45 +257,18 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
       padding: const EdgeInsets.all(18),
       decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0C2442), Color(0xFFE65100)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.vertical(bottom: Radius.circular(24))),
       child: SafeArea(bottom: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [_logoAvatar(radius: 34), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: 4), Text([city, province].where((e) => e.isNotEmpty && e != 'null').join(', '), style: const TextStyle(color: Colors.white70)), const SizedBox(height: 8), Row(children: [_stars(ratingAverage), const SizedBox(width: 6), Text('${ratingAverage.toStringAsFixed(1)} (${store?['rating_count'] ?? 0} ulasan)', style: const TextStyle(color: Colors.white))])]))]),
+        Row(children: [_logoAvatar(radius: 34), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: 4), Text([city, province].where((e) => e.isNotEmpty && e != 'null').join(', '), style: const TextStyle(color: Colors.white70)), const SizedBox(height: 8), Row(children: [_stars(ratingAverage), const SizedBox(width: 6), Text('${ratingAverage.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(color: Colors.white))])])), TextButton.icon(onPressed: _showStoreReviewSheet, icon: const Icon(Icons.star_border_rounded, color: Colors.white), label: const Text('Ulas', style: TextStyle(color: Colors.white)))]),
         const SizedBox(height: 16),
         Text(store?['description']?.toString() ?? 'Belum ada deskripsi toko.', style: const TextStyle(color: Colors.white, height: 1.4)),
       ])),
     );
   }
 
-  Widget _storeInfo() => Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Informasi Toko', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          _mapPreview(),
-          _infoRow(Icons.phone, 'HP', store?['phone']),
-          _infoRow(Icons.location_on, 'Alamat', store?['address']),
-          _infoRow(Icons.map, 'Google Maps', _mapsUrl, link: true, displayText: 'Lihat lokasi toko'),
-          _infoRow(Icons.camera_alt, 'Instagram', store?['instagram'], link: true, displayText: _usernameFromLink(store?['instagram'])),
-          _infoRow(Icons.music_note, 'TikTok', store?['tiktok'], link: true, displayText: _usernameFromLink(store?['tiktok'])),
-          _infoRow(Icons.facebook, 'Facebook', store?['facebook'], link: true, displayText: _usernameFromLink(store?['facebook'])),
-          _infoRow(Icons.public, 'Website', store?['website'], link: true, displayText: _usernameFromLink(store?['website'])),
-        ]),
-      );
+  Widget _storeInfo() => Container(margin: const EdgeInsets.all(16), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Informasi Toko', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), const SizedBox(height: 12), _mapPreview(), _infoRow(Icons.phone, 'HP', store?['phone']), _infoRow(Icons.location_on, 'Alamat', store?['address']), _infoRow(Icons.map, 'Google Maps', _mapsUrl, link: true, displayText: 'Lihat lokasi toko'), _infoRow(Icons.camera_alt, 'Instagram', store?['instagram'], link: true, displayText: _usernameFromLink(store?['instagram'])), _infoRow(Icons.music_note, 'TikTok', store?['tiktok'], link: true, displayText: _usernameFromLink(store?['tiktok'])), _infoRow(Icons.facebook, 'Facebook', store?['facebook'], link: true, displayText: _usernameFromLink(store?['facebook'])), _infoRow(Icons.public, 'Website', store?['website'], link: true, displayText: _usernameFromLink(store?['website']))]));
 
   Widget _couponSection() {
     if (coupons.isEmpty) return const SizedBox.shrink();
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Kupon Tersedia', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        Text('Geser kanan-kiri untuk melihat kupon toko.', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-        const SizedBox(height: 12),
-        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: coupons.map(_couponCard).toList())),
-      ]),
-    );
+    return Container(margin: const EdgeInsets.fromLTRB(16, 0, 16, 16), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Kupon Tersedia', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), const SizedBox(height: 4), Text('Geser kanan-kiri untuk melihat kupon toko.', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)), const SizedBox(height: 12), SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: coupons.map(_couponCard).toList()))]));
   }
 
   Widget _couponCard(Map<String, dynamic> coupon) {
@@ -276,105 +277,37 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     final loading = takingCouponIds.contains(id);
     final remaining = _remainingLimit(coupon);
     final empty = remaining != null && remaining <= 0;
-    return Container(
-      width: 236,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFFF3E0), Color(0xFFFFFBF7)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.deepOrange.withOpacity(.25))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [const Icon(Icons.confirmation_number_rounded, color: Colors.deepOrange), const SizedBox(width: 8), Expanded(child: Text(coupon['code']?.toString() ?? '-', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.w900)))]),
-        const SizedBox(height: 10),
-        Text(_couponValue(coupon), style: const TextStyle(fontSize: 22, color: Color(0xFFE65100), fontWeight: FontWeight.w900)),
-        const SizedBox(height: 4),
-        Text(coupon['name']?.toString() ?? 'Kupon toko', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 4),
-        Text('Min. belanja ${_money(coupon['min_purchase'])}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
-        const SizedBox(height: 3),
-        Text('Sisa limit: ${_limitText(coupon)}', style: TextStyle(fontSize: 11.5, color: empty ? Colors.red : const Color(0xFF64748B), fontWeight: FontWeight.w700)),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: taken || loading || empty ? null : () => _takeCoupon(coupon),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, disabledBackgroundColor: const Color(0xFFE2E8F0), disabledForegroundColor: Colors.grey, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            child: Text(loading ? 'Mengambil...' : taken ? 'Sudah Diambil' : empty ? 'Habis' : 'Ambil'),
-          ),
-        ),
-      ]),
-    );
+    return Container(width: 236, margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.all(14), decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFFF3E0), Color(0xFFFFFBF7)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.deepOrange.withOpacity(.25))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.confirmation_number_rounded, color: Colors.deepOrange), const SizedBox(width: 8), Expanded(child: Text(coupon['code']?.toString() ?? '-', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.w900)))]), const SizedBox(height: 10), Text(_couponValue(coupon), style: const TextStyle(fontSize: 22, color: Color(0xFFE65100), fontWeight: FontWeight.w900)), const SizedBox(height: 4), Text(coupon['name']?.toString() ?? 'Kupon toko', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)), const SizedBox(height: 4), Text('Min. belanja ${_money(coupon['min_purchase'])}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))), const SizedBox(height: 3), Text('Sisa limit: ${_limitText(coupon)}', style: TextStyle(fontSize: 11.5, color: empty ? Colors.red : const Color(0xFF64748B), fontWeight: FontWeight.w700)), const SizedBox(height: 12), SizedBox(width: double.infinity, child: ElevatedButton(onPressed: taken || loading || empty ? null : () => _takeCoupon(coupon), style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, disabledBackgroundColor: const Color(0xFFE2E8F0), disabledForegroundColor: Colors.grey, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text(loading ? 'Mengambil...' : taken ? 'Sudah Diambil' : empty ? 'Habis' : 'Ambil')))]));
   }
 
   Widget _categoryCard(String category) {
     final selected = selectedCategory == category;
     final image = _categoryImage(category);
     final count = _categoryCount(category);
-    return InkWell(
-      onTap: () => setState(() => selectedCategory = category),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 118,
-        margin: const EdgeInsets.only(right: 10),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: selected ? Colors.deepOrange.shade50 : Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: selected ? Colors.deepOrange : Colors.grey.shade200, width: selected ? 1.4 : 1)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(height: 64, width: double.infinity, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)), child: image.isNotEmpty ? Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.category, color: Colors.deepOrange)) : const Icon(Icons.category, color: Colors.deepOrange)),
-          const SizedBox(height: 8),
-          Text(category, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-          const SizedBox(height: 2),
-          Text('$count produk', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
-        ]),
-      ),
-    );
+    return InkWell(onTap: () => setState(() => selectedCategory = category), borderRadius: BorderRadius.circular(16), child: Container(width: 118, margin: const EdgeInsets.only(right: 10), padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: selected ? Colors.deepOrange.shade50 : Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: selected ? Colors.deepOrange : Colors.grey.shade200, width: selected ? 1.4 : 1)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(height: 64, width: double.infinity, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)), child: image.isNotEmpty ? Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.category, color: Colors.deepOrange)) : const Icon(Icons.category, color: Colors.deepOrange)), const SizedBox(height: 8), Text(category, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)), const SizedBox(height: 2), Text('$count produk', style: TextStyle(color: Colors.grey.shade600, fontSize: 11))])));
   }
 
-  Widget _categorySection() => Container(
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Filter Produk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Align(alignment: Alignment.centerLeft, child: ChoiceChip(label: Text('Semua Produk (${products.length})'), selected: selectedCategory == 'Semua', selectedColor: Colors.deepOrange.shade100, onSelected: (_) => setState(() => selectedCategory = 'Semua'))),
-          const SizedBox(height: 16),
-          const Text('Kategori Produk', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          if (categories.isEmpty) Text('Belum ada kategori produk.', style: TextStyle(color: Colors.grey.shade600)) else SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: categories.map(_categoryCard).toList())),
-        ]),
-      );
+  Widget _categorySection() => Container(margin: const EdgeInsets.fromLTRB(16, 0, 16, 16), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Filter Produk', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), const SizedBox(height: 12), Align(alignment: Alignment.centerLeft, child: ChoiceChip(label: Text('Semua Produk (${products.length})'), selected: selectedCategory == 'Semua', selectedColor: Colors.deepOrange.shade100, onSelected: (_) => setState(() => selectedCategory = 'Semua'))), const SizedBox(height: 16), const Text('Kategori Produk', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)), const SizedBox(height: 10), if (categories.isEmpty) Text('Belum ada kategori produk.', style: TextStyle(color: Colors.grey.shade600)) else SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: categories.map(_categoryCard).toList()))]));
 
   Widget _productSection() {
     final items = filteredProducts;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(selectedCategory == 'Semua' ? 'Semua Produk Toko' : 'Produk $selectedCategory', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
-        if (items.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('Belum ada produk di kategori ini.'))) else GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.72, crossAxisSpacing: 12, mainAxisSpacing: 12), itemCount: items.length, itemBuilder: (context, index) => MarketplaceProductCard(product: items[index])),
-      ]),
-    );
+    return Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(selectedCategory == 'Semua' ? 'Semua Produk Toko' : 'Produk $selectedCategory', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), const SizedBox(height: 12), if (items.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('Belum ada produk di kategori ini.'))) else GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.72, crossAxisSpacing: 12, mainAxisSpacing: 12), itemCount: items.length, itemBuilder: (context, index) => MarketplaceProductCard(product: items[index]))]));
   }
 
-  Widget _reviewsSection() => Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Ulasan Toko', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          if (reviews.isEmpty) const Text('Belum ada ulasan untuk toko ini.') else ...reviews.take(5).map((review) { final user = review['user'] ?? {}; final product = review['product'] ?? {}; final rating = double.tryParse(review['rating']?.toString() ?? '0') ?? 0; return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(0xFFF8F8F8), borderRadius: BorderRadius.circular(12)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Expanded(child: Text(user['name']?.toString() ?? 'Pembeli', style: const TextStyle(fontWeight: FontWeight.bold))), _stars(rating, size: 14)]), const SizedBox(height: 4), Text(product['name']?.toString() ?? '', style: TextStyle(color: Colors.grey.shade700, fontSize: 12)), const SizedBox(height: 6), Text(review['review']?.toString() ?? '-') ])); }),
-        ]),
-      );
+  Widget _reviewsSection() => Container(margin: const EdgeInsets.all(16), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [const Expanded(child: Text('Ulasan Toko', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))), TextButton.icon(onPressed: _showStoreReviewSheet, icon: const Icon(Icons.star_border_rounded, size: 18), label: const Text('Beri Ulasan'))]),
+        const SizedBox(height: 6),
+        Row(children: [_stars(ratingAverage), const SizedBox(width: 8), Text('${ratingAverage.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(fontWeight: FontWeight.w800))]),
+        const SizedBox(height: 12),
+        if (reviews.isEmpty) const Text('Belum ada ulasan untuk toko ini.') else ...reviews.take(8).map((review) { final user = review['user'] ?? {}; final rating = double.tryParse(review['rating']?.toString() ?? '0') ?? 0; return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(0xFFF8F8F8), borderRadius: BorderRadius.circular(12)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Expanded(child: Text(user['name']?.toString() ?? 'Pengulas', style: const TextStyle(fontWeight: FontWeight.bold))), _stars(rating, size: 14)]), const SizedBox(height: 6), Text(review['review']?.toString() ?? '-') ])); }),
+      ]));
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(title: const Text('Detail Toko'), backgroundColor: Colors.white, foregroundColor: Colors.black87),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : store == null
-              ? const Center(child: Text('Toko tidak ditemukan.'))
-              : RefreshIndicator(onRefresh: loadStore, child: ListView(children: [_header(), _storeInfo(), _couponSection(), _categorySection(), _productSection(), _reviewsSection(), const SizedBox(height: 20)])),
+      body: loading ? const Center(child: CircularProgressIndicator()) : store == null ? const Center(child: Text('Toko tidak ditemukan.')) : RefreshIndicator(onRefresh: loadStore, child: ListView(children: [_header(), _storeInfo(), _couponSection(), _categorySection(), _productSection(), _reviewsSection(), const SizedBox(height: 20)])),
     );
   }
 }
