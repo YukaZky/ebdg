@@ -12,6 +12,11 @@ class ListKuponScreen extends StatefulWidget {
 class _ListKuponScreenState extends State<ListKuponScreen> {
   late Future<List<dynamic>> _future;
 
+  static const Color _primary = Color(0xFF0C2442);
+  static const Color _accent = Color(0xFFF39C12);
+  static const Color _purple = Color(0xFF6C4DFF);
+  static const Color _surface = Color(0xFFF7F8FC);
+
   @override
   void initState() {
     super.initState();
@@ -51,11 +56,12 @@ class _ListKuponScreenState extends State<ListKuponScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Hapus kupon?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('Hapus kupon?', style: TextStyle(fontWeight: FontWeight.w900)),
         content: Text('Kupon ${coupon['name'] ?? coupon['code'] ?? ''} akan dihapus dari toko kamu.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white), child: const Text('Hapus')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Hapus', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w900))),
         ],
       ),
     );
@@ -67,58 +73,60 @@ class _ListKuponScreenState extends State<ListKuponScreen> {
   }
 
   Widget _couponCard(Map<String, dynamic> coupon) {
-    final active = coupon['status']?.toString() == 'active';
+    final active = coupon['status']?.toString() == 'active' || coupon['status'] == 1;
     final typeText = coupon['type']?.toString() == 'discount' ? 'Discount' : 'Fixed';
-    return InkWell(
-      onTap: () => _openDetail(coupon),
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: active ? Colors.deepOrange.withOpacity(.22) : Colors.grey.shade300),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(.04), blurRadius: 12, offset: const Offset(0, 5))],
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
+    return _card(
+      padding: EdgeInsets.zero,
+      child: InkWell(
+        onTap: () => _openDetail(coupon),
+        borderRadius: BorderRadius.circular(22),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(width: 50, height: 50, decoration: BoxDecoration(color: _purple.withOpacity(0.10), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.confirmation_number_rounded, color: _primary, size: 26)),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(coupon['name']?.toString() ?? 'Kupon', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.black87)),
+                const SizedBox(height: 4),
+                Text(coupon['code']?.toString() ?? '-', style: const TextStyle(fontSize: 12, color: _accent, fontWeight: FontWeight.w900, letterSpacing: .4)),
+              ])),
+              PopupMenuButton<String>(
+                color: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                onSelected: (value) {
+                  if (value == 'detail') _openDetail(coupon);
+                  if (value == 'edit') _openAdd(coupon: coupon);
+                  if (value == 'delete') _delete(coupon);
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'detail', child: Text('Detail')),
+                  PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  PopupMenuItem(value: 'delete', child: Text('Hapus')),
+                ],
+              ),
+            ]),
+            const SizedBox(height: 14),
             Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(color: active ? const Color(0xFFFFF3E0) : const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(14)),
-              child: Icon(Icons.confirmation_number_rounded, color: active ? Colors.deepOrange : Colors.grey, size: 26),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(18)),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Nilai Kupon', style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text(_discountLabel(coupon), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: _primary)),
+                ])),
+                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  _badge(typeText, _primary),
+                  const SizedBox(height: 6),
+                  _badge(active ? 'Aktif' : 'Nonaktif', active ? Colors.green : Colors.grey),
+                ]),
+              ]),
             ),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(coupon['name']?.toString() ?? 'Kupon', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 3),
-              Text(coupon['code']?.toString() ?? '-', style: const TextStyle(fontSize: 12, color: Colors.deepOrange, fontWeight: FontWeight.w800)),
-            ])),
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'detail') _openDetail(coupon);
-                if (value == 'edit') _openAdd(coupon: coupon);
-                if (value == 'delete') _delete(coupon);
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'detail', child: Text('Detail')),
-                PopupMenuItem(value: 'edit', child: Text('Edit')),
-                PopupMenuItem(value: 'delete', child: Text('Hapus')),
-              ],
-            ),
+            const SizedBox(height: 10),
+            Text('Min. belanja ${_money(coupon['min_purchase'])} • Diambil ${coupon['taken_count'] ?? 0}x', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
           ]),
-          const SizedBox(height: 12),
-          Row(children: [
-            _badge(typeText, Colors.blueGrey),
-            const SizedBox(width: 8),
-            _badge(active ? 'Aktif' : 'Nonaktif', active ? Colors.green : Colors.grey),
-            const Spacer(),
-            Text(_discountLabel(coupon), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.deepOrange)),
-          ]),
-          const SizedBox(height: 8),
-          Text('Min. belanja ${_money(coupon['min_purchase'])} • Diambil ${coupon['taken_count'] ?? 0}x', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-        ]),
+        ),
       ),
     );
   }
@@ -126,45 +134,109 @@ class _ListKuponScreenState extends State<ListKuponScreen> {
   Widget _badge(String text, Color color) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(color: color.withOpacity(.10), borderRadius: BorderRadius.circular(99)),
-        child: Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+        child: Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900)),
       );
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
-      appBar: AppBar(title: const Text('List Kupon'), backgroundColor: Colors.white, foregroundColor: Colors.black87),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openAdd(),
-        backgroundColor: Colors.deepOrange,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('Tambah'),
-      ),
+      backgroundColor: _surface,
       body: RefreshIndicator(
         onRefresh: _refresh,
+        color: _accent,
         child: FutureBuilder<List<dynamic>>(
           future: _future,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.deepOrange));
             final data = (snapshot.data ?? []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-            if (data.isEmpty) {
-              return ListView(
-                padding: const EdgeInsets.all(24),
-                children: const [
-                  SizedBox(height: 120),
-                  Icon(Icons.confirmation_number_outlined, size: 72, color: Colors.deepOrange),
-                  SizedBox(height: 14),
-                  Center(child: Text('Belum ada kupon toko.', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
-                  SizedBox(height: 6),
-                  Center(child: Text('Tekan tombol Tambah untuk membuat kupon pertama.', textAlign: TextAlign.center, style: TextStyle(color: Colors.black54))),
-                ],
-              );
-            }
-            return ListView.builder(padding: const EdgeInsets.fromLTRB(16, 16, 16, 92), itemCount: data.length, itemBuilder: (_, index) => _couponCard(data[index]));
+            return CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+              slivers: [
+                SliverToBoxAdapter(child: _header(data.length, snapshot.connectionState == ConnectionState.waiting)),
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  const SliverFillRemaining(child: Center(child: CircularProgressIndicator(color: _accent)))
+                else if (data.isEmpty)
+                  SliverFillRemaining(hasScrollBody: false, child: _emptyState())
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 96),
+                    sliver: SliverList(delegate: SliverChildBuilderDelegate((context, index) => Padding(padding: const EdgeInsets.only(bottom: 12), child: _couponCard(data[index])), childCount: data.length)),
+                  ),
+              ],
+            );
           },
         ),
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _openAdd(),
+        backgroundColor: _primary,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Tambah'),
+      ),
+    );
+  }
+
+  Widget _header(int count, bool isLoading) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(colors: [_primary, Color(0xFF123A68)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          child: Column(children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              _circleAction(Icons.arrow_back_rounded, () => Navigator.pop(context)),
+              const Text('List Kupon', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+              _circleAction(Icons.add_rounded, () => _openAdd()),
+            ]),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(26), border: Border.all(color: Colors.white.withOpacity(0.16))),
+              child: Row(children: [
+                Container(width: 64, height: 64, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: const Icon(Icons.local_activity_rounded, color: _primary, size: 34)),
+                const SizedBox(width: 14),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Kupon Diskon Toko', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 5),
+                  Text('$count kupon tersedia untuk dikelola', style: TextStyle(color: Colors.white.withOpacity(0.78), fontSize: 12)),
+                ])),
+              ]),
+            ),
+            if (isLoading)
+              Padding(padding: const EdgeInsets.only(top: 12), child: LinearProgressIndicator(minHeight: 3, backgroundColor: Colors.white.withOpacity(0.20), color: _accent)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _circleAction(IconData icon, VoidCallback? onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.white.withOpacity(0.14), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.12))), child: Icon(icon, color: Colors.white, size: 21)),
+    );
+  }
+
+  Widget _card({required Widget child, EdgeInsetsGeometry padding = const EdgeInsets.all(16)}) {
+    return Container(padding: padding, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: Colors.grey.shade200), boxShadow: [BoxShadow(color: _primary.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 8))]), child: child);
+  }
+
+  Widget _emptyState() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Container(width: 84, height: 84, decoration: BoxDecoration(color: _accent.withOpacity(.12), shape: BoxShape.circle), child: const Icon(Icons.confirmation_number_outlined, size: 44, color: _primary)),
+        const SizedBox(height: 16),
+        const Text('Belum ada kupon toko.', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87)),
+        const SizedBox(height: 6),
+        Text('Tekan tombol Tambah untuk membuat kupon pertama.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
+      ]),
     );
   }
 }
@@ -173,6 +245,10 @@ class CouponDetailScreen extends StatelessWidget {
   final Map<String, dynamic> coupon;
 
   const CouponDetailScreen({Key? key, required this.coupon}) : super(key: key);
+
+  static const Color _primary = Color(0xFF0C2442);
+  static const Color _accent = Color(0xFFF39C12);
+  static const Color _surface = Color(0xFFF7F8FC);
 
   String _money(dynamic value) {
     final number = double.tryParse(value?.toString() ?? '0') ?? 0;
@@ -188,7 +264,18 @@ class CouponDetailScreen extends StatelessWidget {
   Future<void> _delete(BuildContext context) async {
     final id = int.tryParse(coupon['id']?.toString() ?? '');
     if (id == null) return;
-    final ok = await showDialog<bool>(context: context, builder: (_) => AlertDialog(title: const Text('Hapus kupon?'), content: const Text('Kupon ini akan dihapus permanen.'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')), ElevatedButton(onPressed: () => Navigator.pop(context, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white), child: const Text('Hapus'))]));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('Hapus kupon?', style: TextStyle(fontWeight: FontWeight.w900)),
+        content: const Text('Kupon ini akan dihapus permanen.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Hapus', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w900))),
+        ],
+      ),
+    );
     if (ok != true) return;
     final deleted = await MarketplaceApiService.deleteCoupon(id);
     if (!context.mounted) return;
@@ -204,48 +291,95 @@ class CouponDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final type = coupon['type']?.toString() == 'discount' ? 'Discount / persen' : 'Fixed / nominal';
-    final active = coupon['status']?.toString() == 'active';
+    final active = coupon['status']?.toString() == 'active' || coupon['status'] == 1;
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
-      appBar: AppBar(title: const Text('Detail Kupon'), backgroundColor: Colors.white, foregroundColor: Colors.black87),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFE65100), Color(0xFFFF8A00)]), borderRadius: BorderRadius.circular(20)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(coupon['code']?.toString() ?? '-', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
-              const SizedBox(height: 10),
-              Text(_value(), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 6),
-              Text(coupon['name']?.toString() ?? 'Kupon', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
-            ]),
+      backgroundColor: _surface,
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        slivers: [
+          SliverToBoxAdapter(child: _header(context)),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                _card(child: Column(children: [
+                  _row('Tipe', type),
+                  _row('Status', active ? 'Aktif' : 'Nonaktif'),
+                  _row('Minimal Belanja', _money(coupon['min_purchase'])),
+                  _row('Maksimal Potongan', coupon['max_discount'] == null ? '-' : _money(coupon['max_discount'])),
+                  _row('Limit Pengambilan', coupon['usage_limit']?.toString() ?? '-'),
+                  _row('Total Diambil', '${coupon['taken_count'] ?? 0}x'),
+                  _row('Deskripsi', coupon['description']?.toString().isNotEmpty == true ? coupon['description'].toString() : '-'),
+                ])),
+                const SizedBox(height: 18),
+                ElevatedButton.icon(onPressed: () => _edit(context), icon: const Icon(Icons.edit_rounded), label: const Text('Edit Kupon'), style: ElevatedButton.styleFrom(backgroundColor: _primary, foregroundColor: Colors.white, elevation: 0, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)))),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(onPressed: () => _delete(context), icon: const Icon(Icons.delete_outline_rounded), label: const Text('Hapus Kupon'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: BorderSide(color: Colors.red.shade200), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)))),
+              ]),
+            ),
           ),
-          const SizedBox(height: 16),
-          _row('Tipe', type),
-          _row('Status', active ? 'Aktif' : 'Nonaktif'),
-          _row('Minimal Belanja', _money(coupon['min_purchase'])),
-          _row('Maksimal Potongan', coupon['max_discount'] == null ? '-' : _money(coupon['max_discount'])),
-          _row('Limit Pengambilan', coupon['usage_limit']?.toString() ?? '-'),
-          _row('Total Diambil', '${coupon['taken_count'] ?? 0}x'),
-          _row('Deskripsi', coupon['description']?.toString().isNotEmpty == true ? coupon['description'].toString() : '-'),
-          const SizedBox(height: 18),
-          ElevatedButton.icon(onPressed: () => _edit(context), icon: const Icon(Icons.edit), label: const Text('Edit Kupon'), style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 13))),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(onPressed: () => _delete(context), icon: const Icon(Icons.delete_outline), label: const Text('Hapus Kupon'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red), padding: const EdgeInsets.symmetric(vertical: 13))),
-        ]),
+        ],
       ),
     );
+  }
+
+  Widget _header(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(colors: [_primary, Color(0xFF123A68)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          child: Column(children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              _circleAction(Icons.arrow_back_rounded, () => Navigator.pop(context)),
+              const Text('Detail Kupon', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+              _circleAction(Icons.edit_rounded, () => _edit(context)),
+            ]),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(26), border: Border.all(color: Colors.white.withOpacity(0.16))),
+              child: Row(children: [
+                Container(width: 66, height: 66, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: const Icon(Icons.local_activity_rounded, color: _primary, size: 36)),
+                const SizedBox(width: 14),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(coupon['code']?.toString() ?? '-', style: const TextStyle(color: _accent, fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: .8)),
+                  const SizedBox(height: 5),
+                  Text(_value(), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 4),
+                  Text(coupon['name']?.toString() ?? 'Kupon', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withOpacity(.78), fontSize: 12, fontWeight: FontWeight.w700)),
+                ])),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _circleAction(IconData icon, VoidCallback? onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.white.withOpacity(0.14), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.12))), child: Icon(icon, color: Colors.white, size: 21)),
+    );
+  }
+
+  Widget _card({required Widget child}) {
+    return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: Colors.grey.shade200), boxShadow: [BoxShadow(color: _primary.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 8))]), child: child);
   }
 
   Widget _row(String label, String value) => Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))),
+        decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(16)),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(width: 130, child: Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)))),
-          Expanded(child: Text(value, textAlign: TextAlign.right, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800))),
+          SizedBox(width: 130, child: Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w700))),
+          Expanded(child: Text(value, textAlign: TextAlign.right, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.black87))),
         ]),
       );
 }
