@@ -17,7 +17,9 @@ use App\Models\About;
 use App\Models\Address;
 use App\Models\StoreProfile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class ApiAdminController extends Controller
 {
@@ -62,37 +64,109 @@ class ApiAdminController extends Controller
         return $product;
     }
 
-    private function normalizeArrayInput($value): array
+    private function normalizeIndexedInput(Request $request, string $key): array
     {
-        if (is_array($value)) return $value;
-        if ($value === null) return [];
+        $value = $request->input($key, []);
+
+        if (is_array($value)) {
+            ksort($value);
+            return $value;
+        }
+
+        $items = [];
+        foreach ($request->all() as $fieldKey => $fieldValue) {
+            if (preg_match('/^' . preg_quote($key, '/') . '\\[(\\d+)\\]$/', (string) $fieldKey, $matches)) {
+                $items[(int) $matches[1]] = $fieldValue;
+            }
+        }
+
+        if (! empty($items)) {
+            ksort($items);
+            return $items;
+        }
+
+        if ($value === null || $value === '') return [];
         return [$value];
     }
 
-    private function arrayValue(array $items, $index, $default = null)
+    private function arrayValue(array $items, int $index, $default = null)
     {
         return array_key_exists($index, $items) ? $items[$index] : $default;
     }
 
+    private function cleanNumber($value, $default = 0)
+    {
+        if ($value === null) return $default;
+
+        $value = trim((string) $value);
+        if ($value === '' || strtolower($value) === 'null') return $default;
+
+        $value = str_replace(['Rp', 'rp', 'IDR', 'idr', ' '], '', $value);
+
+        if (preg_match('/^\d{1,3}(\.\d{3})+(,\d+)?$/', $value)) {
+            $value = str_replace('.', '', $value);
+            $value = str_replace(',', '.', $value);
+        } elseif (str_contains($value, ',') && str_contains($value, '.')) {
+            $value = str_replace('.', '', $value);
+            $value = str_replace(',', '.', $value);
+        } elseif (str_contains($value, ',')) {
+            $value = str_replace(',', '.', $value);
+        }
+
+        $value = preg_replace('/[^0-9.\-]/', '', $value);
+
+        return is_numeric($value) ? $value : $default;
+    }
+
+    private function cleanNullableNumber($value)
+    {
+        if ($value === null) return null;
+        $value = trim((string) $value);
+        if ($value === '' || strtolower($value) === 'null') return null;
+        return $this->cleanNumber($value, null);
+    }
+
+    private function normalizeProductRequestNumbers(Request $request): void
+    {
+        $request->merge([
+            'regular_price' => $this->cleanNumber($request->input('regular_price'), 0),
+            'sale_price' => $this->cleanNullableNumber($request->input('sale_price')),
+            'weight' => $this->cleanNumber($request->input('weight'), 0),
+            'quantity' => $this->cleanNumber($request->input('quantity'), 0),
+        ]);
+    }
+
+    private function variationImageFile(Request $request, int $index)
+    {
+        $files = $request->file('variation_images', []);
+
+        if (is_array($files) && array_key_exists($index, $files)) {
+            return $files[$index];
+        }
+
+        return $request->file("variation_images.$index") ?: $request->file("variation_images[$index]");
+    }
+
     private function syncProductVariations(Request $request, Product $product): void
     {
-        $names = $this->normalizeArrayInput($request->input('variation_names', []));
-        $variationIds = $this->normalizeArrayInput($request->input('variation_ids', []));
-        $regularPrices = $this->normalizeArrayInput($request->input('variation_regular_prices', []));
-        $salePrices = $this->normalizeArrayInput($request->input('variation_sale_prices', []));
-        $weights = $this->normalizeArrayInput($request->input('variation_weights', []));
-        $quantities = $this->normalizeArrayInput($request->input('variation_quantities', []));
+        $names = $this->normalizeIndexedInput($request, 'variation_names');
+        $variationIds = $this->normalizeIndexedInput($request, 'variation_ids');
+        $regularPrices = $this->normalizeIndexedInput($request, 'variation_regular_prices');
+        $salePrices = $this->normalizeIndexedInput($request, 'variation_sale_prices');
+        $weights = $this->normalizeIndexedInput($request, 'variation_weights');
+        $quantities = $this->normalizeIndexedInput($request, 'variation_quantities');
 
         $savedIds = [];
 
         foreach ($names as $index => $name) {
+            $index = (int) $index;
             $name = trim((string) $name);
             if ($name === '') continue;
 
             $variationId = $this->arrayValue($variationIds, $index);
             $variation = null;
 
-            if (! empty($variationId)) {
+            if ($variationId !== null && $variationId !== '' && strtolower((string) $variationId) !== 'null') {
                 $variation = ProductVariation::where('product_id', $product->id)
                     ->where('id', $variationId)
                     ->first();
@@ -103,20 +177,16 @@ class ApiAdminController extends Controller
                 $variation->product_id = $product->id;
             }
 
-            $regularPrice = $this->arrayValue($regularPrices, $index, 0);
-            $salePrice = $this->arrayValue($salePrices, $index);
-            $weight = $this->arrayValue($weights, $index, 0);
-            $quantity = $this->arrayValue($quantities, $index, 0);
-
             $variation->name = $name;
-            $variation->regular_price = $regularPrice !== null && $regularPrice !== '' ? $regularPrice : 0;
-            $variation->sale_price = $salePrice !== null && $salePrice !== '' && $salePrice !== 'null' ? $salePrice : null;
-            $variation->weight = $weight !== null && $weight !== '' ? $weight : 0;
-            $variation->quantity = $quantity !== null && $quantity !== '' ? $quantity : 0;
+            $variation->regular_price = $this->cleanNumber($this->arrayValue($regularPrices, $index), 0);
+            $variation->sale_price = $this->cleanNullableNumber($this->arrayValue($salePrices, $index));
+            $variation->weight = (int) $this->cleanNumber($this->arrayValue($weights, $index), 0);
+            $variation->quantity = (int) $this->cleanNumber($this->arrayValue($quantities, $index), 0);
 
-            $varImage = $request->file("variation_images.$index");
+            $varImage = $this->variationImageFile($request, $index);
             if ($varImage) {
-                $varImageName = time() . "_var_{$product->id}_$index." . $varImage->extension();
+                $extension = $varImage->getClientOriginalExtension() ?: $varImage->extension() ?: 'jpg';
+                $varImageName = time() . "_var_{$product->id}_$index." . $extension;
                 $varImage->move(public_path('uploads/products'), $varImageName);
                 $variation->image = $varImageName;
             }
@@ -172,98 +242,118 @@ class ApiAdminController extends Controller
 
     public function storeProduct(Request $request)
     {
+        $this->normalizeProductRequestNumbers($request);
+
         $request->validate([
             'name' => 'required|string|max:255',
             'regular_price' => 'required|numeric',
             'category_id' => 'required|exists:categories,id',
             'brand_id' => 'required|exists:brands,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
         ]);
 
-        $product = DB::transaction(function () use ($request) {
-            $product = new Product();
-            $product->user_id = auth()->id();
-            $product->name = $request->name;
-            $product->slug = Str::slug($request->name) . '-' . auth()->id();
-            $product->short_description = $request->short_description;
-            $product->description = $request->description;
-            $product->regular_price = $request->regular_price;
-            $product->sale_price = $request->sale_price;
-            $product->SKU = 'PRD' . time();
-            $product->stock_status = $request->stock_status;
-            $product->quantity = $request->quantity ?? '0';
-            $product->weight = $request->weight ?? '0';
-            $product->exp_date = $request->exp_date;
-            $product->category_id = $request->category_id;
-            $product->brand_id = $request->brand_id;
+        try {
+            $product = DB::transaction(function () use ($request) {
+                $product = new Product();
+                $product->user_id = auth()->id();
+                $product->name = $request->name;
+                $product->slug = Str::slug($request->name) . '-' . auth()->id();
+                $product->short_description = $request->short_description;
+                $product->description = $request->description;
+                $product->regular_price = $request->regular_price;
+                $product->sale_price = $request->sale_price;
+                $product->SKU = 'PRD' . time();
+                $product->stock_status = $request->stock_status;
+                $product->quantity = $request->quantity ?? '0';
+                $product->weight = $request->weight ?? '0';
+                $product->exp_date = $request->exp_date;
+                $product->category_id = $request->category_id;
+                $product->brand_id = $request->brand_id;
 
-            if ($request->hasFile('image')) {
-                $imageName = time() . '.' . $request->image->extension();
-                $request->image->move(public_path('uploads/products'), $imageName);
-                $product->image = $imageName;
-            }
+                if ($request->hasFile('image')) {
+                    $imageName = time() . '.' . $request->image->extension();
+                    $request->image->move(public_path('uploads/products'), $imageName);
+                    $product->image = $imageName;
+                }
 
-            $product->save();
-            $this->syncProductVariations($request, $product);
+                $product->save();
+                $this->syncProductVariations($request, $product);
 
-            return $product;
-        });
+                return $product;
+            });
 
-        $product = $this->productPayload($product);
+            $product = $this->productPayload($product);
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Product created successfully!',
-            'variation_count' => $product->variations->count(),
-            'data' => $product,
-        ], 201);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Product created successfully!',
+                'variation_count' => $product->variations->count(),
+                'data' => $product,
+            ], 201);
+        } catch (Throwable $e) {
+            Log::error('Gagal menyimpan produk admin', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Gagal menyimpan produk: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function updateProduct(Request $request, $id)
     {
+        $this->normalizeProductRequestNumbers($request);
+
         $request->validate([
             'name' => 'required|string|max:255',
             'regular_price' => 'required|numeric',
             'category_id' => 'required|exists:categories,id',
             'brand_id' => 'required|exists:brands,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
         ]);
 
-        $product = Product::where('user_id', auth()->id())->findOrFail($id);
+        try {
+            $product = Product::where('user_id', auth()->id())->findOrFail($id);
 
-        DB::transaction(function () use ($request, $product) {
-            $product->name = $request->name;
-            $product->slug = Str::slug($request->name) . '-' . auth()->id();
-            $product->short_description = $request->short_description;
-            $product->description = $request->description;
-            $product->regular_price = $request->regular_price;
-            $product->sale_price = $request->sale_price;
-            $product->SKU = $product->SKU ?: 'PRD' . time();
-            $product->stock_status = $request->stock_status;
-            $product->quantity = $request->quantity ?? '0';
-            $product->weight = $request->weight ?? '0';
-            $product->exp_date = $request->exp_date;
-            $product->category_id = $request->category_id;
-            $product->brand_id = $request->brand_id;
+            DB::transaction(function () use ($request, $product) {
+                $product->name = $request->name;
+                $product->slug = Str::slug($request->name) . '-' . auth()->id();
+                $product->short_description = $request->short_description;
+                $product->description = $request->description;
+                $product->regular_price = $request->regular_price;
+                $product->sale_price = $request->sale_price;
+                $product->SKU = $product->SKU ?: 'PRD' . time();
+                $product->stock_status = $request->stock_status;
+                $product->quantity = $request->quantity ?? '0';
+                $product->weight = $request->weight ?? '0';
+                $product->exp_date = $request->exp_date;
+                $product->category_id = $request->category_id;
+                $product->brand_id = $request->brand_id;
 
-            if ($request->hasFile('image')) {
-                $imageName = time() . '.' . $request->image->extension();
-                $request->image->move(public_path('uploads/products'), $imageName);
-                $product->image = $imageName;
-            }
+                if ($request->hasFile('image')) {
+                    $imageName = time() . '.' . $request->image->extension();
+                    $request->image->move(public_path('uploads/products'), $imageName);
+                    $product->image = $imageName;
+                }
 
-            $product->save();
-            $this->syncProductVariations($request, $product);
-        });
+                $product->save();
+                $this->syncProductVariations($request, $product);
+            });
 
-        $product = $this->productPayload($product->fresh());
+            $product = $this->productPayload($product->fresh());
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Product updated successfully!',
-            'variation_count' => $product->variations->count(),
-            'data' => $product,
-        ], 200);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Product updated successfully!',
+                'variation_count' => $product->variations->count(),
+                'data' => $product,
+            ], 200);
+        } catch (Throwable $e) {
+            Log::error('Gagal memperbarui produk admin', ['product_id' => $id, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Gagal memperbarui produk: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function deleteProduct($id)
