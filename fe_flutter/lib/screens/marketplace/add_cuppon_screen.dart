@@ -20,6 +20,11 @@ class _AddCupponScreenState extends State<AddCupponScreen> {
   final _usageLimitCtrl = TextEditingController();
   final _descriptionCtrl = TextEditingController();
 
+  static const Color _primary = Color(0xFF0C2442);
+  static const Color _accent = Color(0xFFF39C12);
+  static const Color _purple = Color(0xFF6C4DFF);
+  static const Color _surface = Color(0xFFF7F8FC);
+
   String _type = 'fixed';
   String _status = 'active';
   bool _saving = false;
@@ -87,7 +92,8 @@ class _AddCupponScreenState extends State<AddCupponScreen> {
     if (!mounted) return;
 
     setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result != null ? 'Kupon berhasil disimpan.' : 'Gagal menyimpan kupon.')));
+    final message = result != null ? 'Kupon berhasil disimpan.' : (MarketplaceApiService.lastError ?? 'Gagal menyimpan kupon.');
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     if (result != null) Navigator.pop(context, true);
   }
 
@@ -97,50 +103,129 @@ class _AddCupponScreenState extends State<AddCupponScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
-      appBar: AppBar(title: Text(_isEdit ? 'Edit Kupon' : 'Tambah Kupon'), backgroundColor: Colors.white, foregroundColor: Colors.black87),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.deepOrange, borderRadius: BorderRadius.circular(18)), child: const Text('Kupon akan terhubung ke toko kamu melalui id_user. Type fixed berarti potongan nominal, type discount berarti potongan persen.', style: TextStyle(color: Colors.white, height: 1.4))),
-            const SizedBox(height: 16),
-            _field('Nama Kupon', _nameCtrl, required: true),
-            _field('Kode Kupon', _codeCtrl, hint: 'Contoh: HEMAT10'),
-            DropdownButtonFormField<String>(
-              value: _type,
-              decoration: _decoration('Tipe Kupon'),
-              items: const [DropdownMenuItem(value: 'fixed', child: Text('Fixed - potongan nominal')), DropdownMenuItem(value: 'discount', child: Text('Discount - potongan persen'))],
-              onChanged: (value) => setState(() => _type = value ?? 'fixed'),
+      backgroundColor: _surface,
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        slivers: [
+          SliverToBoxAdapter(child: _header()),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+              child: Form(
+                key: _formKey,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _sectionHeader('Informasi Kupon'),
+                  const SizedBox(height: 10),
+                  _card(child: Column(children: [
+                    _field('Nama Kupon', _nameCtrl, required: true, icon: Icons.local_activity_rounded),
+                    _field('Kode Kupon', _codeCtrl, hint: 'Contoh: HEMAT10', icon: Icons.qr_code_2_rounded),
+                    DropdownButtonFormField<String>(
+                      value: _type,
+                      decoration: _decoration('Tipe Kupon', icon: Icons.discount_rounded),
+                      items: const [
+                        DropdownMenuItem(value: 'fixed', child: Text('Fixed - potongan nominal')),
+                        DropdownMenuItem(value: 'discount', child: Text('Discount - potongan persen')),
+                      ],
+                      onChanged: (value) => setState(() => _type = value ?? 'fixed'),
+                    ),
+                  ])),
+                  const SizedBox(height: 14),
+                  _sectionHeader('Nilai Diskon'),
+                  const SizedBox(height: 10),
+                  _card(child: Column(children: [
+                    _field(_valueLabel, _valueCtrl, required: true, keyboardType: TextInputType.number, hint: _valueHint, icon: _type == 'fixed' ? Icons.payments_rounded : Icons.percent_rounded, validator: (value) {
+                      final number = _toDouble(value ?? '');
+                      if (number <= 0) return 'Nilai kupon wajib lebih dari 0';
+                      if (_type == 'discount' && number > 100) return 'Diskon maksimal 100%';
+                      return null;
+                    }),
+                    _field('Minimum Belanja', _minPurchaseCtrl, keyboardType: TextInputType.number, hint: 'Opsional, contoh: 50000', icon: Icons.shopping_bag_rounded),
+                    if (_type == 'discount') _field('Maksimal Potongan', _maxDiscountCtrl, keyboardType: TextInputType.number, hint: 'Opsional, contoh: 25000', icon: Icons.savings_rounded),
+                    _field('Limit Pengambilan', _usageLimitCtrl, keyboardType: TextInputType.number, hint: 'Opsional', icon: Icons.group_rounded),
+                    DropdownButtonFormField<String>(
+                      value: _status,
+                      decoration: _decoration('Status', icon: Icons.toggle_on_rounded),
+                      items: const [
+                        DropdownMenuItem(value: 'active', child: Text('Aktif')),
+                        DropdownMenuItem(value: 'inactive', child: Text('Nonaktif')),
+                      ],
+                      onChanged: (value) => setState(() => _status = value ?? 'active'),
+                    ),
+                    const SizedBox(height: 14),
+                    _field('Deskripsi', _descriptionCtrl, maxLines: 3, hint: 'Contoh: Berlaku untuk semua produk toko', icon: Icons.notes_rounded),
+                  ])),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _saving ? null : _save,
+                      icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save_rounded),
+                      label: Text(_saving ? 'Menyimpan...' : _isEdit ? 'Simpan Perubahan' : 'Tambah Kupon'),
+                      style: ElevatedButton.styleFrom(backgroundColor: _primary, foregroundColor: Colors.white, elevation: 0, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                    ),
+                  ),
+                ]),
+              ),
             ),
-            const SizedBox(height: 14),
-            _field(_valueLabel, _valueCtrl, required: true, keyboardType: TextInputType.number, hint: _valueHint, validator: (value) {
-              final number = _toDouble(value ?? '');
-              if (number <= 0) return 'Nilai kupon wajib lebih dari 0';
-              if (_type == 'discount' && number > 100) return 'Diskon maksimal 100%';
-              return null;
-            }),
-            _field('Minimum Belanja', _minPurchaseCtrl, keyboardType: TextInputType.number, hint: 'Opsional, contoh: 50000'),
-            if (_type == 'discount') _field('Maksimal Potongan', _maxDiscountCtrl, keyboardType: TextInputType.number, hint: 'Opsional, contoh: 25000'),
-            _field('Limit Pengambilan', _usageLimitCtrl, keyboardType: TextInputType.number, hint: 'Opsional'),
-            DropdownButtonFormField<String>(
-              value: _status,
-              decoration: _decoration('Status'),
-              items: const [DropdownMenuItem(value: 'active', child: Text('Aktif')), DropdownMenuItem(value: 'inactive', child: Text('Nonaktif'))],
-              onChanged: (value) => setState(() => _status = value ?? 'active'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _header() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(colors: [_primary, Color(0xFF123A68)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              _circleAction(Icons.arrow_back_rounded, () => Navigator.pop(context)),
+              Text(_isEdit ? 'Edit Kupon' : 'Tambah Kupon', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+              _circleAction(Icons.confirmation_number_rounded, null),
+            ]),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(26), border: Border.all(color: Colors.white.withOpacity(0.16))),
+              child: Row(children: [
+                Container(width: 58, height: 58, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: const Icon(Icons.local_activity_rounded, color: _primary, size: 32)),
+                const SizedBox(width: 14),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(_isEdit ? 'Perbarui voucher toko' : 'Buat voucher toko', style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 5),
+                  Text('Fixed untuk nominal, discount untuk persen.', style: TextStyle(color: Colors.white.withOpacity(0.78), fontSize: 12, height: 1.35)),
+                ])),
+              ]),
             ),
-            const SizedBox(height: 14),
-            _field('Deskripsi', _descriptionCtrl, maxLines: 3, hint: 'Contoh: Berlaku untuk semua produk toko'),
-            const SizedBox(height: 8),
-            ElevatedButton(onPressed: _saving ? null : _save, style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))), child: Text(_saving ? 'Menyimpan...' : _isEdit ? 'Simpan Perubahan' : 'Tambah Kupon')),
           ]),
         ),
       ),
     );
   }
 
-  Widget _field(String label, TextEditingController controller, {bool required = false, int maxLines = 1, String? hint, TextInputType? keyboardType, String? Function(String?)? validator}) {
+  Widget _circleAction(IconData icon, VoidCallback? onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.white.withOpacity(0.14), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.12))), child: Icon(icon, color: Colors.white, size: 21)),
+    );
+  }
+
+  Widget _card({required Widget child}) {
+    return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: Colors.grey.shade200), boxShadow: [BoxShadow(color: _primary.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 8))]), child: child);
+  }
+
+  Widget _sectionHeader(String title) {
+    return Row(children: [Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87)), const SizedBox(width: 10), Expanded(child: Divider(color: Colors.grey.shade300))]);
+  }
+
+  Widget _field(String label, TextEditingController controller, {bool required = false, int maxLines = 1, String? hint, TextInputType? keyboardType, String? Function(String?)? validator, IconData? icon}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: TextFormField(
@@ -148,21 +233,23 @@ class _AddCupponScreenState extends State<AddCupponScreen> {
         maxLines: maxLines,
         keyboardType: keyboardType,
         textCapitalization: label == 'Kode Kupon' ? TextCapitalization.characters : TextCapitalization.sentences,
-        decoration: _decoration(label, hint: hint),
+        decoration: _decoration(label, hint: hint, icon: icon),
         validator: validator ?? ((value) => required && (value == null || value.trim().isEmpty) ? '$label wajib diisi' : null),
       ),
     );
   }
 
-  InputDecoration _decoration(String label, {String? hint}) {
+  InputDecoration _decoration(String label, {String? hint, IconData? icon}) {
     return InputDecoration(
       labelText: label,
       hintText: hint,
+      prefixIcon: icon == null ? null : Icon(icon, color: _primary, size: 20),
       filled: true,
-      fillColor: Colors.white,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Colors.grey.shade200)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.deepOrange)),
+      fillColor: _surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade200)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: _accent, width: 1.4)),
     );
   }
 }
