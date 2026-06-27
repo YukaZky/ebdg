@@ -20,8 +20,31 @@ class ProductVariation extends Model
         'image',
     ];
 
+    protected $appends = ['image_url'];
+
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function getImageUrlAttribute()
+    {
+        $image = trim((string) $this->image);
+
+        if ($image === '' || strtolower($image) === 'null') {
+            return null;
+        }
+
+        if (str_starts_with($image, 'http://') || str_starts_with($image, 'https://')) {
+            return $image;
+        }
+
+        $cleanImage = ltrim($image, '/');
+
+        if (str_starts_with($cleanImage, 'uploads/') || str_starts_with($cleanImage, 'storage/')) {
+            return asset($cleanImage);
+        }
+
+        return asset('uploads/products/' . $cleanImage);
     }
 }
