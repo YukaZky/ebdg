@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 import '../../services/marketplace_api_service.dart';
-import '../admin/address_list_screen.dart';
+import '../admin/admin_store_location_screen.dart';
 
 class StoreProfileScreen extends StatefulWidget {
   const StoreProfileScreen({Key? key}) : super(key: key);
@@ -85,8 +85,18 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
     setState(() => _loading = false);
   }
 
-  Future<void> _openAddressPage() async {
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressListScreen()));
+  Future<void> _openStoreLocationPage() async {
+    final response = await ApiService.getAdminStoreLocation();
+    final existingAddress = response?['data'] is Map
+        ? Map<String, dynamic>.from(response!['data'])
+        : null;
+
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => AdminStoreLocationScreen(existingAddress: existingAddress)),
+    );
+
     if (!mounted) return;
     await _loadStore();
   }
@@ -168,12 +178,12 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
       padding: const EdgeInsets.all(14),
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(color: const Color(0xFFFFF7ED), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.deepOrange.withOpacity(0.2))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Icon(Icons.lock_outline, color: Colors.deepOrange, size: 22),
-        const SizedBox(width: 10),
-        const Expanded(
+      child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(Icons.lock_outline, color: Colors.deepOrange, size: 22),
+        SizedBox(width: 10),
+        Expanded(
           child: Text(
-            'Lokasi toko tidak diubah dari form ini. Atur melalui Alamat Saya, lalu aktifkan pilihan Atur sebagai alamat toko.',
+            'Lokasi toko tidak diubah dari form profil ini. Gunakan tombol di bawah untuk membuka halaman khusus Pengaturan Alamat Toko.',
             style: TextStyle(fontSize: 12.5, height: 1.4, color: Colors.black87),
           ),
         ),
@@ -199,7 +209,7 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(color: Colors.deepOrange, borderRadius: BorderRadius.circular(18)),
-                      child: const Text('Lokasi toko akan otomatis mengikuti alamat yang ditandai sebagai Alamat Toko di menu Alamat Saya. Di sini kamu bisa melengkapi logo, deskripsi, dan link sosial media.', style: TextStyle(color: Colors.white, height: 1.4)),
+                      child: const Text('Alamat toko diatur dari halaman khusus Pengaturan Alamat Toko. Di sini kamu bisa melengkapi logo, deskripsi, dan link sosial media.', style: TextStyle(color: Colors.white, height: 1.4)),
                     ),
                     const SizedBox(height: 16),
                     _logoPreview(),
@@ -208,16 +218,16 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
                     _field('Nama Toko', _nameCtrl, required: true),
                     _field('Nomor HP Toko', _phoneCtrl),
                     _field('Deskripsi Toko', _descriptionCtrl, maxLines: 4),
-                    _section('Lokasi Toko dari Alamat Saya'),
+                    _section('Lokasi Toko'),
                     _lockedLocationNotice(),
                     _field('Kota', _cityCtrl, readOnly: true),
                     _field('Provinsi', _provinceCtrl, readOnly: true),
                     _field('Alamat Toko', _addressCtrl, maxLines: 3, readOnly: true),
                     _field('Link Google Maps / Maps Toko', _mapsCtrl, maxLines: 2, readOnly: true),
                     OutlinedButton.icon(
-                      onPressed: _openAddressPage,
+                      onPressed: _openStoreLocationPage,
                       icon: const Icon(Icons.location_on_outlined),
-                      label: const Text('Buka Alamat Saya untuk Atur Alamat Toko'),
+                      label: const Text('Atur Alamat Toko'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.deepOrange,
                         side: const BorderSide(color: Colors.deepOrange),
