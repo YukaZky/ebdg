@@ -19,6 +19,11 @@ class ApiMarketplaceCouponController extends Controller
         return Schema::hasTable('coupons') && Schema::hasColumn('coupons', $column);
     }
 
+    private function hasTakeTable(): bool
+    {
+        return Schema::hasTable('cuppon_takes');
+    }
+
     private function couponQueryForStore(int $sellerId)
     {
         $query = Coupon::query();
@@ -59,9 +64,15 @@ class ApiMarketplaceCouponController extends Controller
 
     private function payload(Coupon $coupon, ?int $userId = null): array
     {
-        $take = $userId
-            ? CouponTake::where('id_cuppon', $coupon->id)->where('id_user', $userId)->first()
-            : null;
+        $take = null;
+        $takenCount = 0;
+
+        if ($this->hasTakeTable()) {
+            $take = $userId
+                ? CouponTake::where('id_cuppon', $coupon->id)->where('id_user', $userId)->first()
+                : null;
+            $takenCount = CouponTake::where('id_cuppon', $coupon->id)->count();
+        }
 
         $data = $coupon->toArray();
         $data['name'] = $data['name'] ?? ($data['title'] ?? ($data['code'] ?? 'Kupon Toko'));
@@ -73,7 +84,7 @@ class ApiMarketplaceCouponController extends Controller
         $data['status'] = $data['status'] ?? 'active';
         $data['take_status'] = $take?->status;
         $data['is_taken'] = (bool) $take;
-        $data['taken_count'] = CouponTake::where('id_cuppon', $coupon->id)->count();
+        $data['taken_count'] = $takenCount;
         return $data;
     }
 
@@ -140,7 +151,9 @@ class ApiMarketplaceCouponController extends Controller
     public function destroy(Request $request, $id)
     {
         $coupon = $this->couponQueryForStore($request->user()->id)->findOrFail($id);
-        CouponTake::where('id_cuppon', $coupon->id)->delete();
+        if ($this->hasTakeTable()) {
+            CouponTake::where('id_cuppon', $coupon->id)->delete();
+        }
         $coupon->delete();
         return response()->json(['success' => true, 'message' => 'Kupon berhasil dihapus.']);
     }
@@ -160,6 +173,10 @@ class ApiMarketplaceCouponController extends Controller
 
     public function take(Request $request, $id)
     {
+        if (! $this->hasTakeTable()) {
+            return response()->json(['success' => false, 'message' => 'Tabel cuppon_takes belum dimigrate.'], 422);
+        }
+
         $coupon = Coupon::query()
             ->when($this->hasCouponColumn('status'), fn ($query) => $query->where(function ($query) {
                 $query->where('status', 'active')->orWhereNull('status');
