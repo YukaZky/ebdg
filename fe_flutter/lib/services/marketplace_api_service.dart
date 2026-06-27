@@ -87,9 +87,7 @@ class MarketplaceApiService {
   static Future<Map<String, dynamic>?> saveCoupon(Map<String, dynamic> data, {int? id}) async {
     lastError = null;
     final uri = id == null ? Uri.parse('${ApiService.baseUrl}/marketplace/coupons') : Uri.parse('${ApiService.baseUrl}/marketplace/coupons/$id');
-    final response = id == null
-        ? await http.post(uri, headers: _headers, body: jsonEncode(data))
-        : await http.put(uri, headers: _headers, body: jsonEncode(data));
+    final response = id == null ? await http.post(uri, headers: _headers, body: jsonEncode(data)) : await http.put(uri, headers: _headers, body: jsonEncode(data));
     if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body)['data'];
     lastError = _messageFromBody(response.body, fallback: 'Gagal menyimpan kupon. Kode: ${response.statusCode}');
     return null;
@@ -124,27 +122,66 @@ class MarketplaceApiService {
   }
 
   static Future<bool> updateOrderStatus(int orderId, String status) async {
-    final response = await http.put(
-      Uri.parse('${ApiService.baseUrl}/marketplace/seller-orders/$orderId/status'),
-      headers: _headers,
-      body: jsonEncode({'status': status}),
-    );
+    final response = await http.put(Uri.parse('${ApiService.baseUrl}/marketplace/seller-orders/$orderId/status'), headers: _headers, body: jsonEncode({'status': status}));
     return response.statusCode == 200;
   }
 
-  static Future<List<dynamic>> productReviews(int productId) async {
+  static Future<Map<String, dynamic>> productReviewSummary(int productId) async {
     final response = await http.get(Uri.parse('${ApiService.baseUrl}/products/$productId/reviews'), headers: {'Accept': 'application/json'});
-    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
-    return [];
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      return {
+        'average': double.tryParse(decoded['average']?.toString() ?? '0') ?? 0.0,
+        'count': int.tryParse(decoded['count']?.toString() ?? '0') ?? 0,
+        'data': decoded['data'] ?? [],
+      };
+    }
+    return {'average': 0.0, 'count': 0, 'data': []};
   }
 
-  static Future<bool> addReview({required int productId, int? orderId, required int rating, String? review}) async {
-    final response = await http.post(
-      Uri.parse('${ApiService.baseUrl}/marketplace/reviews'),
-      headers: _headers,
-      body: jsonEncode({'product_id': productId, 'order_id': orderId, 'rating': rating, 'review': review}),
-    );
-    return response.statusCode == 200 || response.statusCode == 201;
+  static Future<List<dynamic>> productReviews(int productId) async {
+    final summary = await productReviewSummary(productId);
+    return summary['data'] as List? ?? [];
+  }
+
+  static Future<bool> addProductReview({required int productId, int? orderId, required int rating, String? review}) async {
+    lastError = null;
+    final payload = {'product_id': productId, 'rating': rating, 'review': review};
+    if (orderId != null) payload['order_id'] = orderId;
+    final response = await http.post(Uri.parse('${ApiService.baseUrl}/marketplace/reviews'), headers: _headers, body: jsonEncode(payload));
+    if (response.statusCode == 200 || response.statusCode == 201) return true;
+    lastError = _messageFromBody(response.body, fallback: 'Gagal menyimpan ulasan produk. Kode: ${response.statusCode}');
+    return false;
+  }
+
+  static Future<bool> addReview({required int productId, int? orderId, required int rating, String? review}) {
+    return addProductReview(productId: productId, orderId: orderId, rating: rating, review: review);
+  }
+
+  static Future<Map<String, dynamic>> storeReviewSummary(String slug) async {
+    final response = await http.get(Uri.parse('${ApiService.baseUrl}/stores/$slug/reviews'), headers: {'Accept': 'application/json'});
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      return {
+        'average': double.tryParse(decoded['average']?.toString() ?? '0') ?? 0.0,
+        'count': int.tryParse(decoded['count']?.toString() ?? '0') ?? 0,
+        'data': decoded['data'] ?? [],
+      };
+    }
+    return {'average': 0.0, 'count': 0, 'data': []};
+  }
+
+  static Future<List<dynamic>> storeReviews(String slug) async {
+    final summary = await storeReviewSummary(slug);
+    return summary['data'] as List? ?? [];
+  }
+
+  static Future<Map<String, dynamic>?> addStoreReview({required int storeId, required int rating, String? review}) async {
+    lastError = null;
+    final response = await http.post(Uri.parse('${ApiService.baseUrl}/marketplace/stores/$storeId/reviews'), headers: _headers, body: jsonEncode({'rating': rating, 'review': review}));
+    if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body);
+    lastError = _messageFromBody(response.body, fallback: 'Gagal menyimpan ulasan toko. Kode: ${response.statusCode}');
+    return null;
   }
 
   static Future<List<dynamic>> conversations({String? role}) async {
@@ -156,11 +193,7 @@ class MarketplaceApiService {
   }
 
   static Future<Map<String, dynamic>?> startConversation({required int sellerId, int? productId}) async {
-    final response = await http.post(
-      Uri.parse('${ApiService.baseUrl}/marketplace/chats/start'),
-      headers: _headers,
-      body: jsonEncode({'seller_id': sellerId, 'product_id': productId}),
-    );
+    final response = await http.post(Uri.parse('${ApiService.baseUrl}/marketplace/chats/start'), headers: _headers, body: jsonEncode({'seller_id': sellerId, 'product_id': productId}));
     if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body)['data'];
     return null;
   }
@@ -172,11 +205,7 @@ class MarketplaceApiService {
   }
 
   static Future<bool> sendMessage(int conversationId, String message) async {
-    final response = await http.post(
-      Uri.parse('${ApiService.baseUrl}/marketplace/chats/$conversationId/messages'),
-      headers: _headers,
-      body: jsonEncode({'message': message}),
-    );
+    final response = await http.post(Uri.parse('${ApiService.baseUrl}/marketplace/chats/$conversationId/messages'), headers: _headers, body: jsonEncode({'message': message}));
     return response.statusCode == 200 || response.statusCode == 201;
   }
 }
