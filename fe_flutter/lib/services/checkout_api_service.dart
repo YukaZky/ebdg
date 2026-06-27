@@ -93,6 +93,7 @@ class CheckoutApiService {
     required List<Map<String, dynamic>> cartItems,
     required String paymentType,
     String? bankCode,
+    int? couponTakeId,
   }) {
     final cleanPaymentType = _cleanPaymentType(paymentType);
     final cleanBankCode = _cleanBankCode(bankCode, cleanPaymentType);
@@ -105,6 +106,7 @@ class CheckoutApiService {
       'shipping_cost': shippingCost.toInt(),
       'payment_type': cleanPaymentType,
       'bank': cleanBankCode,
+      'coupon_take_id': couponTakeId,
       'items': _signatureItems(cartItems),
     };
     return json.encode(payload);
@@ -159,10 +161,14 @@ class CheckoutApiService {
         return json.decode(response.body) as Map<String, dynamic>;
       }
       debugPrint('Checkout POST gagal ${response.statusCode}: ${response.body}');
-      return null;
+      try {
+        return json.decode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        return {'success': false, 'message': 'Checkout gagal. Kode: ${response.statusCode}'};
+      }
     } catch (e) {
       debugPrint('Checkout POST exception: $e');
-      return null;
+      return {'success': false, 'message': 'Checkout exception: $e'};
     }
   }
 
@@ -195,6 +201,7 @@ class CheckoutApiService {
     required double shippingCost,
     required List<Map<String, dynamic>> cartItems,
     String? checkoutSignature,
+    int? couponTakeId,
   }) {
     final payload = <String, dynamic>{
       'address': address,
@@ -207,6 +214,7 @@ class CheckoutApiService {
     };
     if (orderId != null && orderId.isNotEmpty) payload['order_id'] = orderId;
     if (checkoutSignature != null && checkoutSignature.isNotEmpty) payload['checkout_signature'] = checkoutSignature;
+    if (couponTakeId != null && couponTakeId > 0) payload['coupon_take_id'] = couponTakeId;
     return payload;
   }
 
@@ -267,8 +275,9 @@ class CheckoutApiService {
     required String courier,
     required double shippingCost,
     required List<Map<String, dynamic>> cartItems,
+    int? couponTakeId,
   }) {
-    return _postJson('/checkout/finalize', _shippingPayload(orderId: orderId, address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems));
+    return _postJson('/checkout/finalize', _shippingPayload(orderId: orderId, address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems, couponTakeId: couponTakeId));
   }
 
   static Future<Map<String, dynamic>?> setPaymentMethod({
@@ -312,10 +321,11 @@ class CheckoutApiService {
     required List<Map<String, dynamic>> cartItems,
     required String paymentType,
     String? bankCode,
+    int? couponTakeId,
   }) async {
     final cleanPaymentType = _cleanPaymentType(paymentType);
     final cleanBankCode = _cleanBankCode(bankCode, cleanPaymentType);
-    final signature = _checkoutSignature(address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems, paymentType: cleanPaymentType, bankCode: cleanBankCode);
+    final signature = _checkoutSignature(address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems, paymentType: cleanPaymentType, bankCode: cleanBankCode, couponTakeId: couponTakeId);
     final cachedOrderId = await _cachedOrderId();
     final cachedSignature = await _cachedSignature();
     var reusableOrderId = orderId ?? cachedOrderId;
@@ -336,7 +346,7 @@ class CheckoutApiService {
       }
     }
 
-    final payload = _shippingPayload(orderId: reusableOrderId, address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems, checkoutSignature: signature);
+    final payload = _shippingPayload(orderId: reusableOrderId, address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems, checkoutSignature: signature, couponTakeId: couponTakeId);
     payload['payment_type'] = cleanPaymentType;
     if (cleanBankCode != null) payload['bank'] = cleanBankCode;
 
