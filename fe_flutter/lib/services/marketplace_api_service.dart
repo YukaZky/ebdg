@@ -4,11 +4,30 @@ import 'package:image_picker/image_picker.dart';
 import 'api_service.dart';
 
 class MarketplaceApiService {
+  static String? lastError;
+
   static Map<String, String> get _headers => {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         if (ApiService.token != null) 'Authorization': 'Bearer ${ApiService.token}',
       };
+
+  static String _messageFromBody(String body, {String fallback = 'Terjadi kesalahan.'}) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map) {
+        final message = decoded['message']?.toString();
+        if (message != null && message.isNotEmpty) return message;
+        final errors = decoded['errors'];
+        if (errors is Map && errors.isNotEmpty) {
+          final first = errors.values.first;
+          if (first is List && first.isNotEmpty) return first.first.toString();
+          return first.toString();
+        }
+      }
+    } catch (_) {}
+    return fallback;
+  }
 
   static Future<Map<String, dynamic>?> myStore() async {
     final response = await http.get(Uri.parse('${ApiService.baseUrl}/marketplace/my-store'), headers: _headers);
@@ -60,11 +79,13 @@ class MarketplaceApiService {
   }
 
   static Future<Map<String, dynamic>?> saveCoupon(Map<String, dynamic> data, {int? id}) async {
+    lastError = null;
     final uri = id == null ? Uri.parse('${ApiService.baseUrl}/marketplace/coupons') : Uri.parse('${ApiService.baseUrl}/marketplace/coupons/$id');
     final response = id == null
         ? await http.post(uri, headers: _headers, body: jsonEncode(data))
         : await http.put(uri, headers: _headers, body: jsonEncode(data));
     if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body)['data'];
+    lastError = _messageFromBody(response.body, fallback: 'Gagal menyimpan kupon. Kode: ${response.statusCode}');
     return null;
   }
 
