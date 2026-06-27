@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\ApiMarketplaceChatController;
 use App\Http\Controllers\Api\ApiMarketplaceCouponController;
 use App\Http\Controllers\Api\ApiMarketplaceCouponTakeController;
 use App\Http\Controllers\Api\ApiMarketplaceClaimedCouponController;
+use App\Http\Controllers\Api\ApiMarketplaceReviewController;
 use App\Http\Controllers\Api\ApiUserProfileController;
 use App\Http\Controllers\Api\ApiMediaController;
 use App\Http\Controllers\Api\ApiProductVariationImageController;
@@ -29,7 +30,8 @@ Route::get('/products/{slug}', [ApiProductController::class, 'show']);
 Route::get('/product-image/{filename}', [ApiMediaController::class, 'productImage']);
 Route::get('/stores/{slug}', [ApiMarketplaceController::class, 'storeDetail']);
 Route::get('/stores/{slug}/coupons', [ApiMarketplaceCouponController::class, 'storeCoupons']);
-Route::get('/products/{productId}/reviews', [ApiMarketplaceController::class, 'productReviews']);
+Route::get('/stores/{slug}/reviews', [ApiMarketplaceReviewController::class, 'storeReviews']);
+Route::get('/products/{productId}/reviews', [ApiMarketplaceReviewController::class, 'productReviews']);
 Route::post('/midtrans/notification', [MidtransController::class, 'notificationHandler']);
 Route::get('/payment-methods', [ApiPaymentMethodController::class, 'index']);
 
@@ -58,7 +60,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/marketplace/my-store', [ApiMarketplaceController::class, 'saveStore']);
     Route::get('/marketplace/seller-orders', [ApiMarketplaceController::class, 'sellerOrders']);
     Route::put('/marketplace/seller-orders/{id}/status', [ApiMarketplaceController::class, 'updateSellerOrderStatus']);
-    Route::post('/marketplace/reviews', [ApiMarketplaceController::class, 'addReview']);
+    Route::post('/marketplace/reviews', [ApiMarketplaceReviewController::class, 'addProductReview']);
+    Route::post('/marketplace/stores/{id}/reviews', [ApiMarketplaceReviewController::class, 'addStoreReview']);
     Route::get('/marketplace/coupons', [ApiMarketplaceCouponController::class, 'index']);
     Route::post('/marketplace/coupons', [ApiMarketplaceCouponController::class, 'store']);
     Route::get('/marketplace/coupons/claimed', [ApiMarketplaceClaimedCouponController::class, 'index']);
