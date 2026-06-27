@@ -12,6 +12,7 @@ import 'claimed_coupon_screen.dart';
 import 'login_screen.dart';
 import 'order_history_screen.dart';
 import 'register_screen.dart';
+import 'review_history_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final Function(String?) onProfileUpdated;
@@ -219,8 +220,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _openOrderStatus(bool isLoggedIn, String statusKey) {
     _guard(isLoggedIn, () {
-      final target = statusKey == 'review' ? 'done' : statusKey;
-      Navigator.push(context, MaterialPageRoute(builder: (_) => OrderHistoryScreen(initialStatus: target))).then((_) => _loadOrderSummary());
+      if (statusKey == 'review') {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const ReviewHistoryScreen())).then((_) => _loadOrderSummary());
+        return;
+      }
+      Navigator.push(context, MaterialPageRoute(builder: (_) => OrderHistoryScreen(initialStatus: statusKey))).then((_) => _loadOrderSummary());
     });
   }
 
