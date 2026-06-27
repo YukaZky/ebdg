@@ -469,6 +469,16 @@ class ApiService {
     return null;
   }
 
+  static String _safeUploadFileName(XFile file, int index, String prefix) {
+    final rawName = file.name.trim();
+    if (rawName.isNotEmpty && rawName.contains('.')) return rawName;
+
+    final pathName = file.path.split('/').last.split('\\').last.trim();
+    if (pathName.isNotEmpty && pathName.contains('.')) return pathName;
+
+    return '${prefix}_${DateTime.now().millisecondsSinceEpoch}_$index.jpg';
+  }
+
   static Future<List<dynamic>> getAdminProducts() async {
     if (_token == null) return [];
     final response = await http.get(Uri.parse("$baseUrl/admin/products?_=${DateTime.now().millisecondsSinceEpoch}"),
@@ -511,16 +521,26 @@ class ApiService {
     }
 
     if (mainImage != null) {
-      request.files.add(http.MultipartFile.fromBytes(
-          'image', await mainImage.readAsBytes(),
-          filename: mainImage.name));
+      final bytes = await mainImage.readAsBytes();
+      if (bytes.isNotEmpty) {
+        request.files.add(http.MultipartFile.fromBytes(
+          'image',
+          bytes,
+          filename: _safeUploadFileName(mainImage, 0, 'product'),
+        ));
+      }
     }
 
     if (galleryImages != null) {
-      for (final file in galleryImages) {
+      for (int i = 0; i < galleryImages.length; i++) {
+        final file = galleryImages[i];
+        final bytes = await file.readAsBytes();
+        if (bytes.isEmpty) continue;
         request.files.add(http.MultipartFile.fromBytes(
-            'images[]', await file.readAsBytes(),
-            filename: file.name));
+          'images[]',
+          bytes,
+          filename: _safeUploadFileName(file, i, 'gallery'),
+        ));
       }
     }
 
@@ -546,6 +566,17 @@ class ApiService {
         if (variationQuantities != null && i < variationQuantities.length) {
           request.fields['variation_quantities[$i]'] =
               variationQuantities[i].isEmpty ? '0' : variationQuantities[i];
+        }
+        if (variationImages != null && i < variationImages.length && variationImages[i] != null) {
+          final file = variationImages[i]!;
+          final bytes = await file.readAsBytes();
+          if (bytes.isNotEmpty) {
+            request.files.add(http.MultipartFile.fromBytes(
+              'variation_images[$i]',
+              bytes,
+              filename: _safeUploadFileName(file, i, 'variation'),
+            ));
+          }
         }
       }
     }
