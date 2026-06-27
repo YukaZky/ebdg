@@ -15,7 +15,7 @@ class ApiMarketplaceReviewController extends Controller
 {
     private function productReviewQuery(?int $productId = null)
     {
-        $query = ProductReview::with(['user:id,name', 'product:id,name'])->latest();
+        $query = ProductReview::with(['user:id,name', 'product:id,name,slug', 'store:id,name,slug'])->latest();
         if ($productId) $query->where('product_id', $productId);
         return $query;
     }
@@ -83,7 +83,7 @@ class ApiMarketplaceReviewController extends Controller
             ['store_id' => $store->id, 'rating' => (int) $request->rating, 'review' => $request->review]
         );
 
-        return response()->json(['success' => true, 'message' => 'Ulasan produk berhasil disimpan.', 'data' => $review->load(['user:id,name', 'product:id,name'])], 200);
+        return response()->json(['success' => true, 'message' => 'Ulasan produk berhasil disimpan.', 'data' => $review->load(['user:id,name', 'product:id,name,slug', 'store:id,name,slug'])], 200);
     }
 
     public function storeReviews($slug)
@@ -135,5 +135,78 @@ class ApiMarketplaceReviewController extends Controller
             'count' => (int) $store->rating_count,
             'data' => $this->storeReviewQuery($store->id),
         ], 200);
+    }
+
+    public function myReviews(Request $request)
+    {
+        $userId = (int) $request->user()->id;
+
+        $productReviews = ProductReview::with(['product:id,name,slug', 'store:id,name,slug'])
+            ->where('user_id', $userId)
+            ->latest()
+            ->get()
+            ->map(fn ($item) => [
+                'id' => $item->id,
+                'type' => 'product',
+                'target_id' => $item->product_id,
+                'target_name' => $item->product?->name ?? 'Produk',
+                'target_slug' => $item->product?->slug,
+                'store_name' => $item->store?->name,
+                'rating' => (int) $item->rating,
+                'review' => $item->review,
+                'created_at' => optional($item->created_at)->toDateTimeString(),
+                'updated_at' => optional($item->updated_at)->toDateTimeString(),
+            ]);
+
+        $storeReviews = collect();
+        if (Schema::hasTable('store_reviews')) {
+            $storeReviews = DB::table('store_reviews')
+                ->leftJoin('store_profiles', 'store_profiles.id', '=', 'store_reviews.store_id')
+                ->where('store_reviews.user_id', $userId)
+                ->orderByDesc('store_reviews.id')
+                ->select('store_reviews.*', 'store_profiles.name as store_name', 'store_profiles.slug as store_slug')
+                ->get()
+                ->map(fn ($item) => [
+                    'id' => $item->id,
+                    'type' => 'store',
+                    'target_id' => $item->store_id,
+                    'target_name' => $item->store_name ?: 'Toko',
+                    'target_slug' => $item->store_slug,
+                    'store_name' => $item->store_name,
+                    'rating' => (int) $item->rating,
+                    'review' => $item->review,
+                    'created_at' => $item->created_at,
+                    'updated_at' => $item->updated_at,
+                ]);
+        }
+
+        $data = $productReviews->concat($storeReviews)
+            ->sortByDesc(fn ($item) => $item['created_at'] ?? '')
+            ->values();
+
+        return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    public function deleteProductReview(Request $request, $id)
+    {
+        $review = ProductReview::where('id', $id)->where('user_id', $request->user()->id)->firstOrFail();
+        $review->delete();
+        return response()->json(['success' => true, 'message' => 'Ulasan produk berhasil dihapus.']);
+    }
+
+    public function deleteStoreReview(Request $request, $id)
+    {
+        if (! Schema::hasTable('store_reviews')) {
+            return response()->json(['success' => false, 'message' => 'Tabel store_reviews belum tersedia.'], 422);
+        }
+
+        $review = DB::table('store_reviews')->where('id', $id)->where('user_id', $request->user()->id)->first();
+        if (! $review) abort(404);
+
+        DB::table('store_reviews')->where('id', $review->id)->delete();
+        $store = StoreProfile::find($review->store_id);
+        if ($store) $this->refreshStoreRating($store);
+
+        return response()->json(['success' => true, 'message' => 'Ulasan toko berhasil dihapus.']);
     }
 }
