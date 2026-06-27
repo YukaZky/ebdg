@@ -110,8 +110,10 @@ class MarketplaceApiService {
   }
 
   static Future<Map<String, dynamic>?> takeCoupon(int id) async {
+    lastError = null;
     final response = await http.post(Uri.parse('${ApiService.baseUrl}/marketplace/coupons/$id/take'), headers: _headers);
     if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body)['coupon'] ?? jsonDecode(response.body)['data'];
+    lastError = _messageFromBody(response.body, fallback: 'Gagal mengambil kupon. Kode: ${response.statusCode}');
     return null;
   }
 
