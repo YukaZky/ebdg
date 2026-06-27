@@ -42,7 +42,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     {'key': 'paid_not_checked_out', 'title': 'Dibayar', 'icon': Icons.verified_outlined},
     {'key': 'packing', 'title': 'Dikemas', 'icon': Icons.inventory_2_outlined},
     {'key': 'delivered', 'title': 'Dikirim', 'icon': Icons.local_shipping_outlined},
-    {'key': 'done', 'title': 'Selesai', 'icon': Icons.star_border_rounded},
+    {'key': 'done', 'title': 'Selesai', 'icon': Icons.check_circle_outline_rounded},
+    {'key': 'review', 'title': 'Penilaian', 'icon': Icons.star_border_rounded},
     {'key': 'canceled', 'title': 'Dibatalkan', 'icon': Icons.cancel_outlined},
   ];
 
@@ -90,7 +91,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) setState(() => _orders = []);
       return;
     }
-
     setState(() => _loadingOrders = true);
     try {
       final data = await ApiService.getOrders();
@@ -131,7 +131,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return 'pending_payment';
   }
 
-  int _orderCount(String statusKey) => _orders.where((order) => _orderStatusKey(order) == statusKey).length;
+  int _orderCount(String statusKey) {
+    if (statusKey == 'review') return _orders.where((order) => ['delivered', 'done'].contains(_orderStatusKey(order))).length;
+    return _orders.where((order) => _orderStatusKey(order) == statusKey).length;
+  }
 
   int get _activeOrderCount => _orderCount('pending_payment') + _orderCount('paid_not_checked_out') + _orderCount('packing') + _orderCount('delivered');
 
@@ -153,10 +156,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _openAccountSettings() async {
     if (userProfile == null) return;
-    final updated = await Navigator.push<Map<String, dynamic>>(
-      context,
-      MaterialPageRoute(builder: (_) => AccountSettingsScreen(userProfile: userProfile!)),
-    );
+    final updated = await Navigator.push<Map<String, dynamic>>(context, MaterialPageRoute(builder: (_) => AccountSettingsScreen(userProfile: userProfile!)));
     if (!mounted) return;
     if (updated != null) {
       setState(() => userProfile = updated);
@@ -170,7 +170,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (ApiService.token == null) return;
     final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (picked == null) return;
-
     setState(() => isUploadingPhoto = true);
     final updatedProfile = await ProfilePhotoService.savePhoto(picked);
     if (!mounted) return;
@@ -178,9 +177,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (updatedProfile != null) userProfile = updatedProfile;
       isUploadingPhoto = false;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(updatedProfile != null ? 'Foto profil berhasil diperbarui' : 'Gagal memperbarui foto profil')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(updatedProfile != null ? 'Foto profil berhasil diperbarui' : 'Gagal memperbarui foto profil')));
   }
 
   Future<void> _handleLogout() async {
@@ -197,7 +194,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (confirm != true) return;
-
     setState(() => isLoading = true);
     final success = await ApiService.logout();
     if (!mounted) return;
@@ -209,9 +205,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     });
     if (success) widget.onProfileUpdated('Akun');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(success ? 'Berhasil keluar dari akun' : 'Gagal keluar, periksa koneksi Anda.')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'Berhasil keluar dari akun' : 'Gagal keluar, periksa koneksi Anda.')));
   }
 
   void _guard(bool isLoggedIn, VoidCallback action) {
@@ -225,7 +219,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _openOrderStatus(bool isLoggedIn, String statusKey) {
     _guard(isLoggedIn, () {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => OrderHistoryScreen(initialStatus: statusKey))).then((_) => _loadOrderSummary());
+      final target = statusKey == 'review' ? 'done' : statusKey;
+      Navigator.push(context, MaterialPageRoute(builder: (_) => OrderHistoryScreen(initialStatus: target))).then((_) => _loadOrderSummary());
     });
   }
 
@@ -259,10 +254,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _sectionHeader('Mungkin Kamu Suka'),
                   const SizedBox(height: 12),
                   _productGrid(),
-                  if (isLoggedIn) ...[
-                    const SizedBox(height: 20),
-                    _logoutButton(),
-                  ],
+                  if (isLoggedIn) ...[const SizedBox(height: 20), _logoutButton()],
                   const SizedBox(height: 16),
                 ]),
               ),
@@ -280,10 +272,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final avatarUrl = ProfilePhotoService.imageUrl(userProfile?['avatar']);
 
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [_primary, Color(0xFF123A68)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
-      ),
+      decoration: const BoxDecoration(gradient: LinearGradient(colors: [_primary, Color(0xFF123A68)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.vertical(bottom: Radius.circular(30))),
       child: SafeArea(
         bottom: false,
         child: Padding(
@@ -291,13 +280,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const Text('Akun Saya', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
-              Row(children: [
-                _circleAction(Icons.settings_rounded, isLoggedIn ? _openAccountSettings : null),
-                if (isLoggedIn) ...[
-                  const SizedBox(width: 8),
-                  _circleAction(Icons.logout_rounded, _handleLogout),
-                ],
-              ]),
+              Row(children: [_circleAction(Icons.settings_rounded, isLoggedIn ? _openAccountSettings : null), if (isLoggedIn) ...[const SizedBox(width: 8), _circleAction(Icons.logout_rounded, _handleLogout)]]),
             ]),
             const SizedBox(height: 20),
             Container(
@@ -307,23 +290,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 GestureDetector(
                   onTap: isLoggedIn ? _changeProfilePhoto : null,
                   child: Stack(clipBehavior: Clip.none, children: [
-                    Container(
-                      width: 78,
-                      height: 78,
-                      clipBehavior: Clip.antiAlias,
-                      decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
-                      child: avatarUrl.isNotEmpty ? Image.network(avatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, size: 48, color: _primary)) : const Icon(Icons.person_rounded, size: 48, color: _primary),
-                    ),
-                    if (isLoggedIn)
-                      Positioned(
-                        right: -2,
-                        bottom: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(color: _accent, shape: BoxShape.circle),
-                          child: isUploadingPhoto ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.camera_alt_rounded, size: 14, color: Colors.white),
-                        ),
-                      ),
+                    Container(width: 78, height: 78, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: avatarUrl.isNotEmpty ? Image.network(avatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, size: 48, color: _primary)) : const Icon(Icons.person_rounded, size: 48, color: _primary)),
+                    if (isLoggedIn) Positioned(right: -2, bottom: 0, child: Container(padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: _accent, shape: BoxShape.circle), child: isUploadingPhoto ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.camera_alt_rounded, size: 14, color: Colors.white))),
                   ]),
                 ),
                 const SizedBox(width: 14),
@@ -335,37 +303,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Text(phone, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withOpacity(0.72), fontSize: 12)),
                   if (!isLoggedIn) ...[
                     const SizedBox(height: 12),
-                    Row(children: [
-                      _miniAuthButton('Login', Colors.white, _primary, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())).then((_) => _refreshAll())),
-                      const SizedBox(width: 8),
-                      _miniAuthButton('Daftar', _accent, Colors.white, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())).then((_) => _refreshAll())),
-                    ]),
+                    Row(children: [_miniAuthButton('Login', Colors.white, _primary, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())).then((_) => _refreshAll())), const SizedBox(width: 8), _miniAuthButton('Daftar', _accent, Colors.white, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())).then((_) => _refreshAll()))]),
                   ],
                 ])),
               ]),
             ),
-            if (isLoading)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: LinearProgressIndicator(minHeight: 3, backgroundColor: Colors.white.withOpacity(0.20), color: _accent),
-              ),
+            if (isLoading) Padding(padding: const EdgeInsets.only(top: 12), child: LinearProgressIndicator(minHeight: 3, backgroundColor: Colors.white.withOpacity(0.20), color: _accent)),
           ]),
         ),
       ),
     );
   }
 
-  Widget _circleAction(IconData icon, VoidCallback? onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.white.withOpacity(0.14), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.12))), child: Icon(icon, color: Colors.white, size: 21)),
-    );
-  }
-
-  Widget _miniAuthButton(String text, Color bg, Color fg, VoidCallback onTap) {
-    return SizedBox(height: 34, child: ElevatedButton(onPressed: onTap, style: ElevatedButton.styleFrom(backgroundColor: bg, foregroundColor: fg, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text(text, style: const TextStyle(fontWeight: FontWeight.w900))));
-  }
+  Widget _circleAction(IconData icon, VoidCallback? onTap) => InkWell(onTap: onTap, borderRadius: BorderRadius.circular(999), child: Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.white.withOpacity(0.14), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.12))), child: Icon(icon, color: Colors.white, size: 21)));
+  Widget _miniAuthButton(String text, Color bg, Color fg, VoidCallback onTap) => SizedBox(height: 34, child: ElevatedButton(onPressed: onTap, style: ElevatedButton.styleFrom(backgroundColor: bg, foregroundColor: fg, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text(text, style: const TextStyle(fontWeight: FontWeight.w900))));
 
   Widget _orderCard(bool isLoggedIn) {
     final visibleStatuses = _ordersExpanded ? _orderStatuses : _orderStatuses.take(4).toList();
@@ -373,19 +324,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Row(children: [
           const Text('Pesanan Saya', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87)),
-          if (_loadingOrders) ...[
-            const SizedBox(width: 8),
-            const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-          ] else if (_activeOrderCount > 0) ...[
-            const SizedBox(width: 8),
-            _smallCountBadge(_activeOrderCount, _accent),
-          ],
+          if (_loadingOrders) ...[const SizedBox(width: 8), const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))] else if (_activeOrderCount > 0) ...[const SizedBox(width: 8), _smallCountBadge(_activeOrderCount, _accent)],
         ]),
-        TextButton.icon(
-          onPressed: () => _guard(isLoggedIn, () => setState(() => _ordersExpanded = !_ordersExpanded)),
-          icon: Icon(_ordersExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, size: 18),
-          label: Text(_ordersExpanded ? 'Tutup' : 'Lihat Semua'),
-        ),
+        TextButton.icon(onPressed: () => _guard(isLoggedIn, () => setState(() => _ordersExpanded = !_ordersExpanded)), icon: Icon(_ordersExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, size: 18), label: Text(_ordersExpanded ? 'Tutup' : 'Lihat Semua')),
       ]),
       const SizedBox(height: 8),
       AnimatedSize(
@@ -406,31 +347,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ]));
   }
 
-  Widget _smallCountBadge(int count, Color color) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),
-      child: Text(count > 99 ? '99+' : '$count', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
-    );
-  }
+  Widget _smallCountBadge(int count, Color color) => Container(constraints: const BoxConstraints(minWidth: 22, minHeight: 22), padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)), child: Text(count > 99 ? '99+' : '$count', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)));
 
   Widget _orderItem(IconData icon, String title, String statusKey, bool isLoggedIn) {
     final count = _orderCount(statusKey);
     final isCanceled = statusKey == 'canceled';
+    final isReview = statusKey == 'review';
     final badgeColor = isCanceled ? _danger : _accent;
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => _openOrderStatus(isLoggedIn, statusKey),
       child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Column(children: [
         Stack(clipBehavior: Clip.none, children: [
-          Container(width: 48, height: 48, decoration: BoxDecoration(color: (isCanceled ? _danger : _purple).withOpacity(0.10), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: isCanceled ? _danger : _primary, size: 24)),
-          if (count > 0)
-            Positioned(
-              right: -7,
-              top: -7,
-              child: _smallCountBadge(count, badgeColor),
-            ),
+          Container(width: 48, height: 48, decoration: BoxDecoration(color: (isCanceled ? _danger : isReview ? _accent : _purple).withOpacity(0.10), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: isCanceled ? _danger : isReview ? _accent : _primary, size: 24)),
+          if (count > 0) Positioned(right: -7, top: -7, child: _smallCountBadge(count, badgeColor)),
         ]),
         const SizedBox(height: 8),
         Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontWeight: FontWeight.w700), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -438,52 +368,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _serviceTile(String title, String subtitle, IconData icon, VoidCallback onTap) {
-    return _card(padding: const EdgeInsets.all(14), child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(width: 42, height: 42, decoration: BoxDecoration(color: _accent.withOpacity(0.12), borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: _primary, size: 22)),
-        const SizedBox(height: 12),
-        Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.black87)),
-        const SizedBox(height: 3),
-        Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-      ]),
-    ));
-  }
+  Widget _serviceTile(String title, String subtitle, IconData icon, VoidCallback onTap) => _card(padding: const EdgeInsets.all(14), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: _accent.withOpacity(0.12), borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: _primary, size: 22)), const SizedBox(height: 12), Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.black87)), const SizedBox(height: 3), Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Colors.grey.shade600))])));
 
-  Widget _storeCard(bool isLoggedIn) {
-    return InkWell(
-      onTap: () => _guard(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboardScreen()))),
-      borderRadius: BorderRadius.circular(22),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(gradient: const LinearGradient(colors: [_primary, Color(0xFF174C7E)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(22), boxShadow: [BoxShadow(color: _primary.withOpacity(0.18), blurRadius: 18, offset: const Offset(0, 8))]),
-        child: Row(children: [
-          Container(width: 50, height: 50, decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 27)),
-          const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Toko Saya', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 4),
-            Text('Kelola produk, pesanan, dan bisnis Anda', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12)),
-          ])),
-          const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 17),
-        ]),
-      ),
-    );
-  }
-
-  Widget _card({required Widget child, EdgeInsetsGeometry padding = const EdgeInsets.all(16)}) {
-    return Container(padding: padding, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: Colors.grey.shade200), boxShadow: [BoxShadow(color: _primary.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 8))]), child: child);
-  }
-
-  Widget _sectionHeader(String title) {
-    return Row(children: [Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87)), const SizedBox(width: 10), Expanded(child: Divider(color: Colors.grey.shade300))]);
-  }
-
-  Widget _logoutButton() {
-    return SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _handleLogout, icon: const Icon(Icons.logout_rounded), label: const Text('Keluar Akun'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: BorderSide(color: Colors.red.shade200), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)))));
-  }
+  Widget _storeCard(bool isLoggedIn) => InkWell(onTap: () => _guard(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboardScreen()))), borderRadius: BorderRadius.circular(22), child: Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(gradient: const LinearGradient(colors: [_primary, Color(0xFF174C7E)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(22), boxShadow: [BoxShadow(color: _primary.withOpacity(0.18), blurRadius: 18, offset: const Offset(0, 8))]), child: Row(children: [Container(width: 50, height: 50, decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 27)), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Toko Saya', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 4), Text('Kelola produk, pesanan, dan bisnis Anda', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12))])), const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 17)])));
+  Widget _card({required Widget child, EdgeInsetsGeometry padding = const EdgeInsets.all(16)}) => Container(padding: padding, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: Colors.grey.shade200), boxShadow: [BoxShadow(color: _primary.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 8))]), child: child);
+  Widget _sectionHeader(String title) => Row(children: [Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87)), const SizedBox(width: 10), Expanded(child: Divider(color: Colors.grey.shade300))]);
+  Widget _logoutButton() => SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _handleLogout, icon: const Icon(Icons.logout_rounded), label: const Text('Keluar Akun'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: BorderSide(color: Colors.red.shade200), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)))));
 
   Widget _productGrid() {
     return FutureBuilder<List<Product>>(
@@ -493,13 +383,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (snapshot.hasError) return _card(child: Text('Produk rekomendasi belum bisa dimuat.', style: TextStyle(color: Colors.grey.shade700)));
         final products = (snapshot.data ?? <Product>[]).take(4).toList();
         if (products.isEmpty) return _card(child: Text('Belum ada produk tersedia.', style: TextStyle(color: Colors.grey.shade700)));
-        return GridView.builder(
-          physics: const NeverScrollableScrollPhysics(),
-          shrinkWrap: true,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.72, crossAxisSpacing: 12, mainAxisSpacing: 12),
-          itemCount: products.length,
-          itemBuilder: (context, index) => MarketplaceProductCard(product: products[index]),
-        );
+        return GridView.builder(physics: const NeverScrollableScrollPhysics(), shrinkWrap: true, gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.72, crossAxisSpacing: 12, mainAxisSpacing: 12), itemCount: products.length, itemBuilder: (context, index) => MarketplaceProductCard(product: products[index]));
       },
     );
   }
