@@ -190,6 +190,29 @@ class ApiAdminController extends Controller
         return $imageName;
     }
 
+    private function mainProductImageFile(Request $request)
+    {
+        return $request->file('image')
+            ?: $request->file('main_image')
+            ?: $request->file('product_image');
+    }
+
+    private function syncProductMainImage(Request $request, Product $product): void
+    {
+        $prefix = 'product_' . ($product->id ?: auth()->id());
+
+        $savedImage = $this->saveUploadedProductImage($this->mainProductImageFile($request), $prefix)
+            ?: $this->saveBase64ProductImage(
+                $request->input('image_base64') ?: $request->input('main_image_base64') ?: $request->input('product_image_base64'),
+                $request->input('image_filename') ?: $request->input('main_image_filename') ?: $request->input('product_image_filename'),
+                $prefix
+            );
+
+        if ($savedImage) {
+            $product->image = $savedImage;
+        }
+    }
+
     private function variationImageFile(Request $request, int $index)
     {
         $files = $request->file('variation_images', []);
@@ -330,6 +353,9 @@ class ApiAdminController extends Controller
             'regular_price' => 'required|numeric',
             'category_id' => 'required|exists:categories,id',
             'brand_id' => 'required|exists:brands,id',
+            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp,gif|max:5120',
+            'main_image' => 'nullable|image|mimes:jpg,jpeg,png,webp,gif|max:5120',
+            'product_image' => 'nullable|image|mimes:jpg,jpeg,png,webp,gif|max:5120',
         ]);
 
         try {
@@ -350,6 +376,8 @@ class ApiAdminController extends Controller
                 $product->category_id = $request->category_id;
                 $product->brand_id = $request->brand_id;
 
+                $product->save();
+                $this->syncProductMainImage($request, $product);
                 $product->save();
                 $this->syncProductVariations($request, $product);
 
@@ -382,6 +410,9 @@ class ApiAdminController extends Controller
             'regular_price' => 'required|numeric',
             'category_id' => 'required|exists:categories,id',
             'brand_id' => 'required|exists:brands,id',
+            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp,gif|max:5120',
+            'main_image' => 'nullable|image|mimes:jpg,jpeg,png,webp,gif|max:5120',
+            'product_image' => 'nullable|image|mimes:jpg,jpeg,png,webp,gif|max:5120',
         ]);
 
         try {
@@ -401,6 +432,7 @@ class ApiAdminController extends Controller
                 $product->exp_date = $request->exp_date;
                 $product->category_id = $request->category_id;
                 $product->brand_id = $request->brand_id;
+                $this->syncProductMainImage($request, $product);
 
                 $product->save();
                 $this->syncProductVariations($request, $product);
