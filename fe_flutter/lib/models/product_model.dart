@@ -19,6 +19,12 @@ class ProductVariation {
     this.image,
   });
 
+  static String? _cleanImage(dynamic value) {
+    final image = value?.toString().trim();
+    if (image == null || image.isEmpty || image == 'null') return null;
+    return image;
+  }
+
   factory ProductVariation.fromJson(Map<String, dynamic> json) {
     return ProductVariation(
       id: int.tryParse(json['id'].toString()) ?? 0,
@@ -28,7 +34,7 @@ class ProductVariation {
       salePrice: json['sale_price'] != null ? double.tryParse(json['sale_price'].toString()) : null,
       weight: json['weight'] != null ? int.tryParse(json['weight'].toString()) ?? 0 : 0,
       quantity: json['quantity'] != null ? int.tryParse(json['quantity'].toString()) ?? 0 : 0,
-      image: json['image'],
+      image: _cleanImage(json['image_url']) ?? _cleanImage(json['image']),
     );
   }
 }
