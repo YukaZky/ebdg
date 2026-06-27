@@ -85,6 +85,10 @@ class ApiMarketplaceCouponController extends Controller
             $query->where(function ($query) {
                 $query->whereNull('expires_at')->orWhere('expires_at', '>=', now());
             });
+        } elseif ($this->hasCouponColumn('expiry_date')) {
+            $query->where(function ($query) {
+                $query->whereNull('expiry_date')->orWhere('expiry_date', '>=', now()->toDateString());
+            });
         }
 
         return $query;
@@ -103,11 +107,12 @@ class ApiMarketplaceCouponController extends Controller
         }
 
         $data = $coupon->toArray();
+        $rawType = $data['type'] ?? ($data['coupon_type'] ?? 'fixed');
         $data['name'] = $data['name'] ?? ($data['title'] ?? ($data['coupon_name'] ?? ($data['code'] ?? ($data['coupon_code'] ?? 'Kupon Toko'))));
         $data['code'] = $data['code'] ?? ($data['coupon_code'] ?? ('KUPON' . $coupon->id));
-        $data['type'] = $data['type'] ?? ($data['coupon_type'] ?? 'fixed');
+        $data['type'] = $rawType === 'percent' ? 'discount' : $rawType;
         $data['value'] = $data['value'] ?? ($data['amount'] ?? ($data['discount'] ?? ($data['discount_amount'] ?? 0)));
-        $data['min_purchase'] = $data['min_purchase'] ?? ($data['minimum_purchase'] ?? ($data['min_order'] ?? 0));
+        $data['min_purchase'] = $data['min_purchase'] ?? ($data['cart_value'] ?? ($data['minimum_purchase'] ?? ($data['min_order'] ?? 0)));
         $data['max_discount'] = $data['max_discount'] ?? null;
         $data['status'] = $data['status'] ?? 'active';
         $data['take_status'] = $take?->status;
@@ -121,7 +126,7 @@ class ApiMarketplaceCouponController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'code' => 'nullable|string|max:80',
-            'type' => ['required', 'string', Rule::in(['fixed', 'discount'])],
+            'type' => ['required', 'string', Rule::in(['fixed', 'discount', 'percent'])],
             'value' => 'required|numeric|min:0',
             'min_purchase' => 'nullable|numeric|min:0',
             'max_discount' => 'nullable|numeric|min:0',
@@ -132,7 +137,7 @@ class ApiMarketplaceCouponController extends Controller
             'expires_at' => 'nullable|date',
         ]);
 
-        if ($data['type'] === 'discount' && (float) $data['value'] > 100) {
+        if (in_array($data['type'], ['discount', 'percent'], true) && (float) $data['value'] > 100) {
             throw ValidationException::withMessages(['value' => 'Diskon persen maksimal 100%.']);
         }
 
@@ -146,6 +151,7 @@ class ApiMarketplaceCouponController extends Controller
     private function couponAttributes(array $data): array
     {
         $payload = [];
+        $storedType = in_array($data['type'], ['discount', 'percent'], true) ? 'percent' : 'fixed';
 
         $this->putIfColumn($payload, 'id_user', auth()->id());
         $this->putIfColumn($payload, 'user_id', auth()->id());
@@ -154,13 +160,14 @@ class ApiMarketplaceCouponController extends Controller
         $this->putIfColumn($payload, 'coupon_name', $data['name']);
         $this->putIfColumn($payload, 'code', $data['code']);
         $this->putIfColumn($payload, 'coupon_code', $data['code']);
-        $this->putIfColumn($payload, 'type', $data['type']);
+        $this->putIfColumn($payload, 'type', $storedType);
         $this->putIfColumn($payload, 'coupon_type', $data['type']);
         $this->putIfColumn($payload, 'value', $data['value']);
         $this->putIfColumn($payload, 'amount', $data['value']);
         $this->putIfColumn($payload, 'discount', $data['value']);
         $this->putIfColumn($payload, 'discount_amount', $data['value']);
         $this->putIfColumn($payload, 'min_purchase', $data['min_purchase']);
+        $this->putIfColumn($payload, 'cart_value', $data['min_purchase']);
         $this->putIfColumn($payload, 'minimum_purchase', $data['min_purchase']);
         $this->putIfColumn($payload, 'min_order', $data['min_purchase']);
         $this->putIfColumn($payload, 'max_discount', $data['max_discount'] ?? null);
@@ -168,6 +175,7 @@ class ApiMarketplaceCouponController extends Controller
         $this->putIfColumn($payload, 'description', $data['description'] ?? null);
         $this->putIfColumn($payload, 'starts_at', $data['starts_at'] ?? null);
         $this->putIfColumn($payload, 'expires_at', $data['expires_at'] ?? null);
+        $this->putIfColumn($payload, 'expiry_date', $data['expires_at'] ?? now()->addYear()->toDateString());
 
         $status = ($data['status'] ?? 'active') === 'active' ? 'active' : 'inactive';
         $this->putIfColumn($payload, 'status', $status);
@@ -251,6 +259,8 @@ class ApiMarketplaceCouponController extends Controller
         }
 
         if ($this->hasCouponColumn('expires_at') && $coupon->expires_at && $coupon->expires_at->isPast()) {
+            return response()->json(['success' => false, 'message' => 'Kupon sudah kedaluwarsa.'], 422);
+        } elseif ($this->hasCouponColumn('expiry_date') && $coupon->expiry_date && $coupon->expiry_date < now()->toDateString()) {
             return response()->json(['success' => false, 'message' => 'Kupon sudah kedaluwarsa.'], 422);
         }
 
