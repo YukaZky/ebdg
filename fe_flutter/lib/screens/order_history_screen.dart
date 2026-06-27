@@ -14,6 +14,7 @@ class OrderHistoryScreen extends StatefulWidget {
 
 class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   static const Color navy = Color(0xFF0B1F4D);
+  static const Color danger = Color(0xFFB91C1C);
   late Future<List<dynamic>> _future;
   Timer? _timer;
   String _tab = 'all';
@@ -70,7 +71,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     if (direct != null && direct.isNotEmpty) return direct;
     final trx = map(order['transaction'])['status']?.toString();
     final raw = order['status']?.toString().toLowerCase() ?? '';
-    if (raw == 'canceled') return 'canceled';
+    if (raw == 'canceled' || raw == 'cancelled') return 'canceled';
     if (raw == 'delivered') return 'delivered';
     if (trx == 'approved' || trx == 'settlement' || trx == 'capture') return 'paid_not_checked_out';
     return 'pending_payment';
@@ -99,7 +100,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
   void open(Map<String, dynamic> order) {
     final s = status(order);
-    if (s == 'pending_payment') {
+    if (s == 'pending_payment' || s == 'canceled') {
       Navigator.push(context, MaterialPageRoute(builder: (_) => ResumeOrderCheckoutScreen(order: order))).then((_) => _refresh());
     } else {
       Navigator.push(context, MaterialPageRoute(builder: (_) => OrderConfirmationScreen(order: order))).then((_) => _refresh());
@@ -114,7 +115,9 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
       body: Column(children: [
         Container(color: Colors.white, padding: const EdgeInsets.all(12), child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: tabs.map((t) {
           final selected = _tab == t[0];
-          return Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(label: Text(t[1], style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: selected ? Colors.white : navy)), selected: selected, selectedColor: navy, backgroundColor: const Color(0xFFEAF0FF), onSelected: (_) => setState(() => _tab = t[0])));
+          final isCanceled = t[0] == 'canceled';
+          final selectedColor = isCanceled ? danger : navy;
+          return Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(label: Text(t[1], style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: selected ? Colors.white : selectedColor)), selected: selected, selectedColor: selectedColor, backgroundColor: isCanceled ? const Color(0xFFFEE2E2) : const Color(0xFFEAF0FF), onSelected: (_) => setState(() => _tab = t[0])));
         }).toList()))),
         Expanded(child: RefreshIndicator(onRefresh: _refresh, child: FutureBuilder<List<dynamic>>(
           future: _future,
@@ -134,21 +137,23 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     final items = order['items'] is List ? order['items'] as List : [];
     final product = items.isNotEmpty ? map(map(items.first)['product']) : {};
     final s = status(order);
+    final color = s == 'canceled' ? danger : navy;
     return InkWell(onTap: () => open(order), child: Container(
       margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: s == 'canceled' ? const Color(0xFFFCA5A5) : const Color(0xFFE2E8F0))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.receipt_long_rounded, color: navy), const SizedBox(width: 10),
+          Icon(Icons.receipt_long_rounded, color: color), const SizedBox(width: 10),
           Expanded(child: Text('#ORDER-${order['id']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900))),
-          Text(label(order), style: const TextStyle(fontSize: 11, color: navy, fontWeight: FontWeight.w900)),
+          Text(label(order), style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w900)),
         ]),
         const SizedBox(height: 10),
         Text(product['name']?.toString() ?? '${items.length} item produk', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
         Text('${items.length} item • ${order['mode_pengiriman'] ?? '-'} ${order['jenis_pengiriman'] ?? ''}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
         if (s == 'pending_payment') Padding(padding: const EdgeInsets.only(top: 8), child: Text('Sisa waktu pembayaran: ${timerText(order)}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF92400E), fontWeight: FontWeight.w800))),
+        if (s == 'canceled') const Padding(padding: EdgeInsets.only(top: 8), child: Text('Pesanan ini sudah dibatalkan.', style: TextStyle(fontSize: 11.5, color: danger, fontWeight: FontWeight.w800))),
         const Divider(height: 22),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Total Order', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))), Text(money(order['total']), style: const TextStyle(fontSize: 15, color: navy, fontWeight: FontWeight.w900))]),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Total Order', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))), Text(money(order['total']), style: TextStyle(fontSize: 15, color: color, fontWeight: FontWeight.w900))]),
       ]),
     ));
   }
