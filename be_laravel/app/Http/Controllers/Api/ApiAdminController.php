@@ -149,17 +149,6 @@ class ApiAdminController extends Controller
         return $extension !== '' ? $extension : $fallback;
     }
 
-    private function variationImageFile(Request $request, int $index)
-    {
-        $files = $request->file('variation_images', []);
-
-        if (is_array($files) && array_key_exists($index, $files)) {
-            return $files[$index];
-        }
-
-        return $request->file("variation_images.$index") ?: $request->file("variation_images[$index]");
-    }
-
     private function syncProductVariations(Request $request, Product $product): void
     {
         $names = $this->normalizeIndexedInput($request, 'variation_names');
@@ -196,13 +185,9 @@ class ApiAdminController extends Controller
             $variation->weight = (int) $this->cleanNumber($this->arrayValue($weights, $index), 0);
             $variation->quantity = (int) $this->cleanNumber($this->arrayValue($quantities, $index), 0);
 
-            $varImage = $this->variationImageFile($request, $index);
-            if ($varImage && method_exists($varImage, 'isValid') && $varImage->isValid()) {
-                $extension = $this->uploadedFileExtension($varImage, 'jpg');
-                $varImageName = time() . "_var_{$product->id}_$index." . $extension;
-                $varImage->move(public_path('uploads/products'), $varImageName);
-                $variation->image = $varImageName;
-            }
+            // File gambar variasi dari Android sengaja tidak dibaca di endpoint ini.
+            // Tujuannya agar Symfony/Laravel tidak crash saat menerima upload dengan path/mime kosong.
+            // Jika variasi lama punya image, nilainya tetap dipertahankan.
 
             $variation->save();
             $savedIds[] = $variation->id;
@@ -262,7 +247,6 @@ class ApiAdminController extends Controller
             'regular_price' => 'required|numeric',
             'category_id' => 'required|exists:categories,id',
             'brand_id' => 'required|exists:brands,id',
-            'image' => 'nullable|file|max:4096',
         ]);
 
         try {
@@ -283,11 +267,7 @@ class ApiAdminController extends Controller
                 $product->category_id = $request->category_id;
                 $product->brand_id = $request->brand_id;
 
-                if ($request->hasFile('image') && $request->file('image')->isValid()) {
-                    $imageName = time() . '.' . $this->uploadedFileExtension($request->file('image'), 'jpg');
-                    $request->image->move(public_path('uploads/products'), $imageName);
-                    $product->image = $imageName;
-                }
+                // File gambar utama tidak diproses di endpoint simpan/edit produk mobile agar tidak memicu error mime kosong dari Android.
 
                 $product->save();
                 $this->syncProductVariations($request, $product);
@@ -321,7 +301,6 @@ class ApiAdminController extends Controller
             'regular_price' => 'required|numeric',
             'category_id' => 'required|exists:categories,id',
             'brand_id' => 'required|exists:brands,id',
-            'image' => 'nullable|file|max:4096',
         ]);
 
         try {
@@ -342,11 +321,7 @@ class ApiAdminController extends Controller
                 $product->category_id = $request->category_id;
                 $product->brand_id = $request->brand_id;
 
-                if ($request->hasFile('image') && $request->file('image')->isValid()) {
-                    $imageName = time() . '.' . $this->uploadedFileExtension($request->file('image'), 'jpg');
-                    $request->image->move(public_path('uploads/products'), $imageName);
-                    $product->image = $imageName;
-                }
+                // File gambar utama tidak diproses di endpoint simpan/edit produk mobile agar tidak memicu error mime kosong dari Android.
 
                 $product->save();
                 $this->syncProductVariations($request, $product);
