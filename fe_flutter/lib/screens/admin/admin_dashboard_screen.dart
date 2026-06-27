@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../marketplace/chat_list_screen.dart';
+import '../marketplace/list_kupon_screen.dart';
 import '../marketplace/store_profile_screen.dart';
 import '../marketplace/toko_pesanan_screen.dart';
 import 'admin_brands_screen.dart';
@@ -47,6 +48,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ),
       ),
     ).then((_) => _fetchDashboardData());
+  }
+
+  void _openCoupons() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const ListKuponScreen())).then((_) => _fetchDashboardData());
   }
 
   @override
@@ -137,7 +142,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => const TokoPesananScreen()));
                               }),
                               _buildListMenu(context, 'Pesan Pelanggan', 'Lihat dan balas chat yang masuk ke toko ini', Icons.chat_outlined, Colors.amber, true, _openCustomerMessages),
-                              _buildListMenu(context, 'Kupon Diskon', 'Voucher promo', Icons.confirmation_num_outlined, Colors.pink, false, () {}),
+                              _buildListMenu(context, 'Kupon Diskon', 'List, tambah, edit, dan hapus voucher promo', Icons.confirmation_num_outlined, Colors.pink, false, _openCoupons),
                             ]),
                           ),
                           const SizedBox(height: 40),
