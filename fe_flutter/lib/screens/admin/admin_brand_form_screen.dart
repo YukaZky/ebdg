@@ -1,13 +1,14 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../services/admin_brand_api_service.dart';
 
 class AdminBrandFormScreen extends StatefulWidget {
   final Map<String, dynamic>? brand;
 
-  AdminBrandFormScreen({this.brand});
+  const AdminBrandFormScreen({Key? key, this.brand}) : super(key: key);
 
   @override
   _AdminBrandFormScreenState createState() => _AdminBrandFormScreenState();
@@ -28,7 +29,7 @@ class _AdminBrandFormScreenState extends State<AdminBrandFormScreen> {
   void initState() {
     super.initState();
     if (widget.brand != null) {
-      _nameController.text = widget.brand!['name'];
+      _nameController.text = widget.brand!['name']?.toString() ?? '';
       if (widget.brand!['category_id'] != null) {
         _selectedCategoryId = widget.brand!['category_id'].toString();
       }
@@ -36,19 +37,27 @@ class _AdminBrandFormScreenState extends State<AdminBrandFormScreen> {
     _fetchCategories();
   }
 
-  // Mengambil data kategori untuk dropdown
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
   Future<void> _fetchCategories() async {
     final categories = await ApiService.getAdminCategories();
+    if (!mounted) return;
     setState(() {
       _categories = categories;
+      final exists = _selectedCategoryId == null || _categories.any((cat) => cat['id']?.toString() == _selectedCategoryId);
+      if (!exists) _selectedCategoryId = null;
       _isLoading = false;
     });
   }
 
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) setState(() => _selectedImage = image);
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (image != null && mounted) setState(() => _selectedImage = image);
   }
 
   Future<void> _saveBrand() async {
@@ -56,46 +65,68 @@ class _AdminBrandFormScreenState extends State<AdminBrandFormScreen> {
 
     setState(() => _isSaving = true);
 
-    Map<String, String> fields = {
-      "name": _nameController.text,
+    final fields = <String, String>{
+      'name': _nameController.text.trim(),
     };
-    if (_selectedCategoryId != null) {
+
+    if (_selectedCategoryId != null && _selectedCategoryId!.trim().isNotEmpty) {
       fields['category_id'] = _selectedCategoryId!;
     }
 
-    bool success = await ApiService.saveAdminBrand(
+    final success = await AdminBrandApiService.saveBrand(
       fields,
       image: _selectedImage,
       brandId: widget.brand?['id'],
     );
 
+    if (!mounted) return;
     setState(() => _isSaving = false);
 
     if (success) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Berhasil menyimpan brand")));
-      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Berhasil menyimpan brand')));
+      Navigator.pop(context, true);
     } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Gagal menyimpan brand")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AdminBrandApiService.lastError ?? 'Gagal menyimpan brand')));
     }
+  }
+
+  Widget _imagePreview(bool isEdit) {
+    if (_selectedImage != null) {
+      if (kIsWeb) {
+        return Image.network(_selectedImage!.path, width: 80, height: 80, fit: BoxFit.cover);
+      }
+      return Image.file(File(_selectedImage!.path), width: 80, height: 80, fit: BoxFit.cover);
+    }
+
+    final existingImage = widget.brand?['image']?.toString();
+    if (isEdit && existingImage != null && existingImage.isNotEmpty && existingImage != 'null') {
+      return Image.network(
+        '${ApiService.baseUrl.replaceAll('/api', '')}/uploads/brands/$existingImage',
+        width: 80,
+        height: 80,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, size: 40),
+      );
+    }
+
+    return Container(width: 80, height: 80, color: Colors.grey[300], child: const Icon(Icons.image));
   }
 
   @override
   Widget build(BuildContext context) {
-    bool isEdit = widget.brand != null;
+    final isEdit = widget.brand != null;
 
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: Text(isEdit ? "Edit Brand" : "Tambah Brand")),
-        body: Center(child: CircularProgressIndicator()),
+        appBar: AppBar(title: Text(isEdit ? 'Edit Brand' : 'Tambah Brand')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(isEdit ? "Edit Brand" : "Tambah Brand")),
+      appBar: AppBar(title: Text(isEdit ? 'Edit Brand' : 'Tambah Brand')),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
           child: Column(
@@ -103,67 +134,43 @@ class _AdminBrandFormScreenState extends State<AdminBrandFormScreen> {
             children: [
               TextFormField(
                 controller: _nameController,
-                decoration: InputDecoration(
-                    labelText: 'Nama Brand', border: OutlineInputBorder()),
-                validator: (value) =>
-                    value!.isEmpty ? 'Nama tidak boleh kosong' : null,
+                decoration: const InputDecoration(labelText: 'Nama Brand', border: OutlineInputBorder()),
+                validator: (value) => value == null || value.trim().isEmpty ? 'Nama tidak boleh kosong' : null,
               ),
-              SizedBox(height: 15),
+              const SizedBox(height: 15),
               DropdownButtonFormField<String>(
-                decoration: InputDecoration(
-                    labelText: 'Pilih Kategori (Opsional)',
-                    border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: 'Pilih Kategori (Opsional)', border: OutlineInputBorder()),
                 value: _selectedCategoryId,
                 items: _categories.map<DropdownMenuItem<String>>((cat) {
-                  return DropdownMenuItem<String>(
-                    value: cat['id'].toString(),
-                    child: Text(cat['name']),
-                  );
+                  return DropdownMenuItem<String>(value: cat['id'].toString(), child: Text(cat['name']?.toString() ?? '-'));
                 }).toList(),
-                onChanged: (value) =>
-                    setState(() => _selectedCategoryId = value),
+                onChanged: _isSaving ? null : (value) => setState(() => _selectedCategoryId = value),
               ),
-              SizedBox(height: 15),
+              if (_selectedCategoryId != null) ...[
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: _isSaving ? null : () => setState(() => _selectedCategoryId = null),
+                  icon: const Icon(Icons.close, size: 16),
+                  label: const Text('Kosongkan kategori'),
+                ),
+              ],
+              const SizedBox(height: 15),
               Row(
                 children: [
-                  _selectedImage != null
-                      ? (kIsWeb
-                          ? Image.network(_selectedImage!.path,
-                              width: 80, height: 80, fit: BoxFit.cover)
-                          : Image.file(File(_selectedImage!.path),
-                              width: 80, height: 80, fit: BoxFit.cover))
-                      : (isEdit && widget.brand!['image'] != null)
-                          ? Image.network(
-                              "${ApiService.baseUrl.replaceAll('/api', '')}/uploads/brands/${widget.brand!['image']}",
-                              width: 80,
-                              height: 80,
-                              fit: BoxFit.cover,
-                            )
-                          : Container(
-                              width: 80,
-                              height: 80,
-                              color: Colors.grey[300],
-                              child: Icon(Icons.image)),
-                  SizedBox(width: 15),
-                  ElevatedButton.icon(
-                    onPressed: _pickImage,
-                    icon: Icon(Icons.upload),
-                    label: Text("Pilih Gambar"),
-                  ),
+                  ClipRRect(borderRadius: BorderRadius.circular(10), child: _imagePreview(isEdit)),
+                  const SizedBox(width: 15),
+                  ElevatedButton.icon(onPressed: _isSaving ? null : _pickImage, icon: const Icon(Icons.upload), label: const Text('Pilih Gambar')),
                 ],
               ),
-              SizedBox(height: 30),
+              const SizedBox(height: 30),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
                   onPressed: _isSaving ? null : _saveBrand,
-                  child: _isSaving
-                      ? CircularProgressIndicator(color: Colors.white)
-                      : Text(isEdit ? "Update Brand" : "Simpan Brand",
-                          style: TextStyle(fontSize: 16)),
+                  child: _isSaving ? const CircularProgressIndicator(color: Colors.white) : Text(isEdit ? 'Update Brand' : 'Simpan Brand', style: const TextStyle(fontSize: 16)),
                 ),
-              )
+              ),
             ],
           ),
         ),
