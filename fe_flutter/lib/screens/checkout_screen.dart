@@ -4,9 +4,12 @@ import 'package:flutter/services.dart';
 import '../models/payment_method_model.dart';
 import '../services/api_service.dart';
 import '../services/checkout_api_service.dart';
+import '../services/marketplace_api_service.dart';
 import 'admin/address_list_screen.dart';
 import 'metode_screen.dart';
 import 'order_confirmation_screen.dart';
+
+// ignore_for_file: deprecated_member_use
 
 enum PaymentState { initial, pending, approved, expired }
 
@@ -15,12 +18,7 @@ class CheckoutScreen extends StatefulWidget {
   final double totalWeight;
   final List<Map<String, dynamic>> cartItems;
 
-  const CheckoutScreen({
-    Key? key,
-    required this.totalAmount,
-    required this.totalWeight,
-    required this.cartItems,
-  }) : super(key: key);
+  const CheckoutScreen({Key? key, required this.totalAmount, required this.totalWeight, required this.cartItems}) : super(key: key);
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -49,6 +47,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _isLoadingAddress = true;
   bool _isLoadingShipping = false;
   bool _isLoading = false;
+  bool _isLoadingCoupons = false;
+
+  List<Map<String, dynamic>> _claimedCoupons = [];
+  Map<String, dynamic>? _selectedCouponTake;
 
   String? _orderId;
   String? _vaNumber;
@@ -57,7 +59,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Duration _timeLeft = Duration.zero;
   Map<String, dynamic>? _orderData;
 
-  double get _grandTotal => widget.totalAmount + _shippingCost;
+  double get _discountTotal => _couponDiscountPreview(_selectedCouponTake);
+  double get _grandTotal => (widget.totalAmount + _shippingCost - _discountTotal).clamp(0, double.infinity).toDouble();
   bool get _isPaymentMode => _paymentState == PaymentState.pending || _paymentState == PaymentState.approved;
   bool get _isCanceledCheckout {
     final raw = _orderData?['frontend_status']?.toString().toLowerCase() ?? _orderData?['status']?.toString().toLowerCase() ?? '';
@@ -76,12 +79,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   void initState() {
     super.initState();
     _loadMainAddress();
+    _loadClaimedCoupons();
   }
 
   @override
   void dispose() {
     _countdownTimer?.cancel();
     super.dispose();
+  }
+
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return <String, dynamic>{};
   }
 
   Future<bool> _handleBack() async {
@@ -112,13 +122,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     Map<String, dynamic>? selected;
     if (data is List && data.isNotEmpty) {
       try {
-        selected = Map<String, dynamic>.from(data.firstWhere((address) =>
-            address['isdefault'] == 1 ||
-            address['isdefault'] == '1' ||
-            address['isdefault'] == true ||
-            address['is_main'] == 1 ||
-            address['is_main'] == '1' ||
-            address['is_main'] == true));
+        selected = Map<String, dynamic>.from(data.firstWhere((address) => address['isdefault'] == 1 || address['isdefault'] == '1' || address['isdefault'] == true || address['is_main'] == 1 || address['is_main'] == '1' || address['is_main'] == true));
       } catch (_) {
         selected = Map<String, dynamic>.from(data.first);
       }
@@ -133,6 +137,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
 
     if (_addressData != null && _selectedCourier != null) _loadShippingCost();
+  }
+
+  Future<void> _loadClaimedCoupons() async {
+    setState(() => _isLoadingCoupons = true);
+    final data = await MarketplaceApiService.claimedCoupons();
+    if (!mounted) return;
+    setState(() {
+      _claimedCoupons = data.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+      _isLoadingCoupons = false;
+      if (_selectedCouponTake != null) {
+        final currentId = _selectedCouponTake!['id']?.toString();
+        final updated = _claimedCoupons.where((item) => item['id']?.toString() == currentId).toList();
+        _selectedCouponTake = updated.isEmpty ? null : updated.first;
+      }
+    });
   }
 
   Future<void> _loadShippingCost() async {
@@ -176,6 +195,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _showSnack('Pilih metode pembayaran terlebih dahulu.', error: true);
       return;
     }
+    if (_selectedCouponTake != null && _discountTotal <= 0) {
+      _showSnack('Kupon tidak berlaku untuk produk di keranjang ini.', error: true);
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -189,6 +212,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       cartItems: widget.cartItems,
       paymentType: _selectedPaymentMethod!.paymentType,
       bankCode: _selectedPaymentMethod!.bankCode,
+      couponTakeId: _selectedCouponTake == null ? null : int.tryParse(_selectedCouponTake!['id']?.toString() ?? ''),
     );
 
     if (!mounted) return;
@@ -317,10 +341,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   double _itemPrice(Map<String, dynamic> item) {
-    final product = item['product'] ?? {};
-    return double.tryParse((item['price'] ?? product['regular_price'] ?? 0).toString()) ?? 0;
+    final product = _asMap(item['product']);
+    return double.tryParse((item['price'] ?? product['regular_price'] ?? product['active_price'] ?? 0).toString()) ?? 0;
   }
+
   int _itemQty(Map<String, dynamic> item) => int.tryParse((item['quantity'] ?? 1).toString()) ?? 1;
+
+  int _productSellerId(Map<String, dynamic> item) {
+    final product = _asMap(item['product']);
+    return int.tryParse((product['user_id'] ?? item['user_id'] ?? item['seller_id'] ?? '').toString()) ?? 0;
+  }
+
+  Map<String, dynamic> _couponMap(Map<String, dynamic>? take) => _asMap(take?['coupon']);
+
+  int _couponSellerId(Map<String, dynamic>? take) {
+    final coupon = _couponMap(take);
+    return int.tryParse((coupon['id_user'] ?? coupon['user_id'] ?? coupon['seller_id'] ?? '').toString()) ?? 0;
+  }
+
+  double _couponEligibleSubtotal(Map<String, dynamic>? take) {
+    final sellerId = _couponSellerId(take);
+    if (sellerId <= 0) return 0;
+    double total = 0;
+    for (final item in widget.cartItems) {
+      if (_productSellerId(item) == sellerId) total += _itemPrice(item) * _itemQty(item);
+    }
+    return total;
+  }
+
+  double _couponDiscountPreview(Map<String, dynamic>? take) {
+    if (take == null || take['can_use'] != true || take['is_expired'] == true) return 0;
+    final coupon = _couponMap(take);
+    final eligible = _couponEligibleSubtotal(take);
+    if (eligible <= 0) return 0;
+    final minPurchase = double.tryParse((coupon['min_purchase'] ?? coupon['cart_value'] ?? 0).toString()) ?? 0;
+    if (minPurchase > 0 && eligible < minPurchase) return 0;
+    final type = coupon['type']?.toString() ?? 'fixed';
+    final value = double.tryParse((coupon['value'] ?? 0).toString()) ?? 0;
+    final maxDiscount = double.tryParse((coupon['max_discount'] ?? 0).toString()) ?? 0;
+    double discount = type == 'discount' ? eligible * value.clamp(0, 100) / 100 : value;
+    if (maxDiscount > 0 && type == 'discount') discount = discount.clamp(0, maxDiscount).toDouble();
+    return discount.clamp(0, eligible).toDouble();
+  }
+
+  bool _couponCanBeSelected(Map<String, dynamic> take) => take['can_use'] == true && take['is_expired'] != true && _couponDiscountPreview(take) > 0;
 
   String _imageUrl(dynamic image) {
     final value = image?.toString().trim() ?? '';
@@ -361,6 +425,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _sectionLabel('Alamat'), const SizedBox(height: 8), _addressCard(), const SizedBox(height: 14),
         _sectionLabel('Pengiriman'), const SizedBox(height: 8), _shippingCard(), const SizedBox(height: 14),
         _sectionLabel('Pembayaran'), const SizedBox(height: 8), _methodCard(), const SizedBox(height: 14),
+        _sectionLabel('Kupon Diskon'), const SizedBox(height: 8), _couponCard(), const SizedBox(height: 14),
         _sectionLabel('Ringkasan'), const SizedBox(height: 8), _summaryCard(showOnlyProducts: false),
       ];
 
@@ -368,7 +433,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _paymentInstructionCard(timerText), const SizedBox(height: 14),
         _sectionLabel('Daftar Barang yang Diorder'), const SizedBox(height: 8), _summaryCard(showOnlyProducts: true),
         const SizedBox(height: 14), _totalOrderCard(), const SizedBox(height: 12),
-        TextButton.icon(onPressed: _backToCheckoutForm, icon: const Icon(Icons.arrow_back, size: 18), label: const Text('Kembali ubah alamat, kurir, atau metode pembayaran'), style: TextButton.styleFrom(foregroundColor: _main, textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+        TextButton.icon(onPressed: _backToCheckoutForm, icon: const Icon(Icons.arrow_back, size: 18), label: const Text('Kembali ubah alamat, kurir, metode pembayaran, atau kupon'), style: TextButton.styleFrom(foregroundColor: _main, textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
       ];
 
   Widget _bottomSheet() => Container(
@@ -376,6 +441,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(.08), blurRadius: 16, offset: const Offset(0, -5))]),
         child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Total Order', style: TextStyle(color: _muted, fontSize: 13)), Text(_currency(_grandTotal), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _main))]),
+          if (_discountTotal > 0) Padding(padding: const EdgeInsets.only(top: 3), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Diskon kupon diterapkan', style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.w700)), Text('-${_currency(_discountTotal)}', style: const TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.w900))])),
           const SizedBox(height: 10),
           SizedBox(width: double.infinity, child: _bottomButton()),
         ])),
@@ -385,11 +451,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _pageHeader(String timerText) {
     final title = _isCanceledCheckout ? 'Checkout Canceled' : _isPaymentMode ? 'Pembayaran' : 'Checkout';
-    final subtitle = _isCanceledCheckout
-        ? 'Pesanan sudah canceled dan tidak bisa dilanjutkan.'
-        : _isPaymentMode
-            ? (_paymentState == PaymentState.approved ? 'Pembayaran diterima, selesaikan pesanan.' : 'Selesaikan pembayaran sebelum waktu habis.')
-            : '${widget.cartItems.length} produk siap diproses.';
+    final subtitle = _isCanceledCheckout ? 'Pesanan sudah canceled dan tidak bisa dilanjutkan.' : _isPaymentMode ? (_paymentState == PaymentState.approved ? 'Pembayaran diterima, selesaikan pesanan.' : 'Selesaikan pembayaran sebelum waktu habis.') : '${widget.cartItems.length} produk siap diproses.';
     final chip = _isCanceledCheckout ? 'Canceled' : _isPaymentMode ? (_paymentState == PaymentState.approved ? 'LUNAS' : timerText) : 'Ringkasan order';
     return Container(
       decoration: BoxDecoration(gradient: LinearGradient(colors: [_main, _gradientEnd], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30))),
@@ -406,7 +468,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _sectionLabel(String text) => Text(text, style: TextStyle(fontSize: 13, color: _main, fontWeight: FontWeight.w900));
-
   Widget _card({required Widget child, EdgeInsetsGeometry padding = const EdgeInsets.all(14)}) => Container(width: double.infinity, padding: padding, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: _isCanceledCheckout ? const Color(0xFFFCA5A5) : const Color(0xFFE2E8F0)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(.04), blurRadius: 14, offset: const Offset(0, 6))]), child: child);
 
   Widget _addressCard() {
@@ -426,7 +487,78 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Widget _methodCard() => InkWell(onTap: _selectPaymentMethod, borderRadius: BorderRadius.circular(22), child: _card(child: Row(children: [Container(padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: _purple.withOpacity(0.10), borderRadius: BorderRadius.circular(14)), child: Icon(Icons.account_balance_wallet_rounded, color: _main, size: 20)), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_selectedPaymentMethod?.name ?? 'Pilih Metode Pembayaran', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _selectedPaymentMethod == null ? _muted : const Color(0xFF111827))), const SizedBox(height: 3), const Text('Virtual Account / QRIS / e-wallet', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)))])), const Icon(Icons.chevron_right, color: Color(0xFF94A3B8))])));
 
-  InputDecoration _inputDecoration(String label) => InputDecoration(labelText: label, labelStyle: const TextStyle(fontSize: 12, color: _muted), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: _main, width: 1.4)), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)));
+  Widget _couponCard() {
+    final selected = _selectedCouponTake;
+    final coupon = _couponMap(selected);
+    final discount = _discountTotal;
+    return InkWell(
+      onTap: _isLoadingCoupons ? null : _showCouponSheet,
+      borderRadius: BorderRadius.circular(22),
+      child: _card(child: Row(children: [
+        Container(padding: const EdgeInsets.all(9), decoration: BoxDecoration(color: _accent.withOpacity(0.12), borderRadius: BorderRadius.circular(14)), child: Icon(Icons.local_activity_rounded, color: _main, size: 20)),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(selected == null ? 'Pilih Kupon Saya' : '${coupon['code'] ?? '-'} • -${_currency(discount)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: selected == null ? _muted : const Color(0xFF111827))),
+          const SizedBox(height: 3),
+          Text(selected == null ? '${_claimedCoupons.length} kupon sudah kamu ambil' : 'Hanya memotong produk toko pemilik kupon', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+        ])),
+        if (selected != null) IconButton(onPressed: () => setState(() => _selectedCouponTake = null), icon: const Icon(Icons.close_rounded, color: _muted, size: 19)) else const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+      ])),
+    );
+  }
+
+  void _showCouponSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: .62,
+        minChildSize: .38,
+        maxChildSize: .92,
+        builder: (context, controller) => Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 44, height: 5, decoration: BoxDecoration(color: const Color(0xFFE2E8F0), borderRadius: BorderRadius.circular(99)))),
+            const SizedBox(height: 16),
+            const Text('Pilih Kupon Saya', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: _primary)),
+            const SizedBox(height: 4),
+            const Text('Kupon hanya memotong produk dari toko pemilik kupon.', style: TextStyle(fontSize: 12, color: _muted)),
+            const SizedBox(height: 12),
+            Expanded(
+              child: _claimedCoupons.isEmpty
+                  ? const Center(child: Text('Belum ada kupon yang bisa dipilih.'))
+                  : ListView.builder(controller: controller, itemCount: _claimedCoupons.length, itemBuilder: (context, index) {
+                      final take = _claimedCoupons[index];
+                      final coupon = _couponMap(take);
+                      final discount = _couponDiscountPreview(take);
+                      final eligible = _couponEligibleSubtotal(take);
+                      final canSelect = _couponCanBeSelected(take);
+                      final reason = take['is_expired'] == true ? 'Kadaluarsa' : take['can_use'] != true ? 'Tidak bisa digunakan' : eligible <= 0 ? 'Tidak ada produk toko ini' : discount <= 0 ? 'Minimum belum terpenuhi' : 'Potongan ${_currency(discount)}';
+                      return Opacity(
+                        opacity: canSelect ? 1 : .55,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(13),
+                          decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: canSelect ? _accent.withOpacity(.45) : const Color(0xFFE2E8F0))),
+                          child: Row(children: [
+                            const Icon(Icons.confirmation_number_rounded, color: _primary),
+                            const SizedBox(width: 10),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(coupon['code']?.toString() ?? '-', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: _primary)), const SizedBox(height: 3), Text('${coupon['name'] ?? 'Kupon'} • $reason', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: _muted))])),
+                            TextButton(onPressed: canSelect ? () { setState(() => _selectedCouponTake = take); Navigator.pop(context); } : null, child: const Text('Pakai')),
+                          ]),
+                        ),
+                      );
+                    }),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String label) => InputDecoration(labelText: label, labelStyle: const TextStyle(fontSize: 12, color: _muted), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: _main, width: 1.5)));
 
   Widget _paymentInstructionCard(String timerText) {
     final isApproved = _paymentState == PaymentState.approved;
@@ -443,16 +575,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ]));
   }
 
-  Widget _summaryCard({required bool showOnlyProducts}) => _card(padding: const EdgeInsets.all(12), child: Column(children: [...widget.cartItems.map(_summaryItem), if (!showOnlyProducts) ...[const Divider(height: 20), _priceRow('Subtotal Produk', widget.totalAmount), const SizedBox(height: 6), _priceRow('Ongkir', _shippingCost)]]));
+  Widget _summaryCard({required bool showOnlyProducts}) => _card(padding: const EdgeInsets.all(12), child: Column(children: [...widget.cartItems.map(_summaryItem), if (!showOnlyProducts) ...[const Divider(height: 20), _priceRow('Subtotal Produk', widget.totalAmount), const SizedBox(height: 6), _priceRow('Ongkir', _shippingCost), if (_discountTotal > 0) ...[const SizedBox(height: 6), _priceRow('Diskon Kupon', -_discountTotal, green: true)]]));
 
   Widget _summaryItem(Map<String, dynamic> item) {
-    final product = item['product'] ?? {}; final price = _itemPrice(item); final qty = _itemQty(item); final image = _imageUrl(item['selected_image'] ?? product['image']); final variation = item['variation_name']?.toString() ?? '';
+    final product = _asMap(item['product']); final price = _itemPrice(item); final qty = _itemQty(item); final image = _imageUrl(item['selected_image'] ?? product['image']); final variation = item['variation_name']?.toString() ?? '';
     return Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(children: [Container(width: 48, height: 48, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))), child: image.isEmpty ? const Icon(Icons.image_outlined, color: Color(0xFF94A3B8), size: 22) : Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Color(0xFF94A3B8)))), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(product['name'] ?? 'Produk', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF111827))), if (variation.isNotEmpty) Text('Variasi: $variation', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: _muted)), Text('$qty x ${_currency(price)}', style: const TextStyle(fontSize: 11, color: _muted))])), Text(_currency(price * qty), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _main))]));
   }
 
-  Widget _totalOrderCard() => _card(child: Column(children: [_priceRow('Subtotal Produk', widget.totalAmount), const SizedBox(height: 8), _priceRow('Ongkir', _shippingCost), const Divider(height: 22), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Total Order', style: TextStyle(fontSize: 14, color: _main, fontWeight: FontWeight.w900)), Text(_currency(_grandTotal), style: TextStyle(fontSize: 18, color: _main, fontWeight: FontWeight.w900))]) ]));
+  Widget _totalOrderCard() => _card(child: Column(children: [_priceRow('Subtotal Produk', widget.totalAmount), const SizedBox(height: 8), _priceRow('Ongkir', _shippingCost), if (_discountTotal > 0) ...[const SizedBox(height: 8), _priceRow('Diskon Kupon', -_discountTotal, green: true)], const Divider(height: 22), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Total Order', style: TextStyle(fontSize: 14, color: _main, fontWeight: FontWeight.w900)), Text(_currency(_grandTotal), style: TextStyle(fontSize: 18, color: _main, fontWeight: FontWeight.w900))]) ]));
 
-  Widget _priceRow(String label, num value) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: const TextStyle(fontSize: 12, color: _muted)), Text(_currency(value), style: const TextStyle(fontSize: 12.5, color: Color(0xFF111827), fontWeight: FontWeight.w800))]);
+  Widget _priceRow(String label, num value, {bool strong = false, bool green = false}) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(fontSize: 12, color: green ? Colors.green : _muted)), Text(value < 0 ? '-${_currency(value.abs())}' : _currency(value), style: TextStyle(fontSize: 12.5, color: green ? Colors.green : const Color(0xFF111827), fontWeight: FontWeight.w800))]);
 
   Widget _bottomButton() {
     if (_paymentState == PaymentState.pending) return ElevatedButton(onPressed: null, style: ElevatedButton.styleFrom(disabledBackgroundColor: const Color(0xFF94A3B8), padding: const EdgeInsets.symmetric(vertical: 13), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))), child: const Text('MENUNGGU PEMBAYARAN...', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900)));
