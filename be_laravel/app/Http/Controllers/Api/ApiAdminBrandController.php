@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Brand;
+use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -49,12 +50,17 @@ class ApiAdminBrandController extends Controller
     private function assignCategoryIfAvailable(Brand $brand, Request $request): void
     {
         if (! Schema::hasColumn('brands', 'category_id')) return;
+
         $categoryId = $request->input('category_id');
-        if ($categoryId === null || $categoryId === '' || strtolower((string) $categoryId) === 'null') {
-            $brand->category_id = null;
+        if ($categoryId !== null && $categoryId !== '' && strtolower((string) $categoryId) !== 'null') {
+            $brand->category_id = $categoryId;
             return;
         }
-        $brand->category_id = $categoryId;
+
+        // Beberapa database lama membuat brands.category_id wajib. Kalau user tidak memilih kategori,
+        // pakai kategori pertama milik user agar insert tidak gagal. Jika kolom nullable, nilai null tetap aman.
+        $fallbackCategoryId = Category::where('user_id', auth()->id())->orderBy('id')->value('id');
+        $brand->category_id = $fallbackCategoryId ?: null;
     }
 
     private function saveImageIfAny(Brand $brand, Request $request): void
