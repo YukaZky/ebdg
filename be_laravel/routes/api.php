@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\ApiAdminController;
 use App\Http\Controllers\Api\ApiMarketplaceController;
 use App\Http\Controllers\Api\ApiMarketplaceChatController;
 use App\Http\Controllers\Api\ApiMarketplaceCouponController;
+use App\Http\Controllers\Api\ApiMarketplaceCouponTakeController;
 use App\Http\Controllers\Api\ApiUserProfileController;
 use App\Http\Controllers\Api\ApiMediaController;
 use App\Http\Controllers\Api\ApiProductVariationImageController;
@@ -63,7 +64,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/marketplace/coupons/{id}', [ApiMarketplaceCouponController::class, 'update']);
     Route::delete('/marketplace/coupons/{id}', [ApiMarketplaceCouponController::class, 'destroy']);
     Route::get('/marketplace/stores/{slug}/coupons', [ApiMarketplaceCouponController::class, 'storeCoupons']);
-    Route::post('/marketplace/coupons/{id}/take', [ApiMarketplaceCouponController::class, 'take']);
+    Route::post('/marketplace/coupons/{id}/take', [ApiMarketplaceCouponTakeController::class, 'take']);
     Route::get('/marketplace/chats', [ApiMarketplaceChatController::class, 'conversations']);
     Route::post('/marketplace/chats/start', [ApiMarketplaceChatController::class, 'startConversation']);
     Route::get('/marketplace/chats/{conversationId}/messages', [ApiMarketplaceChatController::class, 'messages']);
