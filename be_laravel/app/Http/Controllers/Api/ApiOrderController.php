@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\ProductReview;
 use Illuminate\Http\Request;
 
 class ApiOrderController extends Controller
@@ -32,7 +33,7 @@ class ApiOrderController extends Controller
         $transaction = $order->transaction;
         $details = $this->transactionDetails($transaction);
         $paymentInfo = $details['payment_info'] ?? null;
-        $transactionStatus = $transaction ? (string) $transaction->status : 'no_transaction';
+        $transactionStatus = $transaction ? strtolower((string) $transaction->status) : 'no_transaction';
         $orderStatus = strtolower((string) $order->status);
 
         $frontendStatus = $this->frontendStatus($orderStatus, $transactionStatus, $details, is_array($paymentInfo) ? $paymentInfo : null);
@@ -46,6 +47,13 @@ class ApiOrderController extends Controller
         $data['payment_bank'] = $details['bank'] ?? null;
         $data['payment_transaction_id'] = is_array($paymentInfo) ? ($paymentInfo['transaction_id'] ?? null) : null;
 
+        $data['reviewed_product_ids'] = ProductReview::where('user_id', $order->user_id)
+            ->where('order_id', $order->id)
+            ->pluck('product_id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+        $data['can_review'] = in_array($frontendStatus, ['delivered', 'done'], true);
+
         return $data;
     }
 
@@ -55,15 +63,15 @@ class ApiOrderController extends Controller
             return 'canceled';
         }
 
-        if (in_array($orderStatus, ['done', 'completed', 'complete'], true)) {
+        if (in_array($orderStatus, ['done', 'completed', 'complete', 'selesai'], true)) {
             return 'done';
         }
 
-        if (in_array($orderStatus, ['delivered', 'deliver'], true)) {
+        if (in_array($orderStatus, ['delivered', 'deliver', 'dikirim'], true)) {
             return 'delivered';
         }
 
-        if (in_array($orderStatus, ['packing', 'processing', 'shipped'], true)) {
+        if (in_array($orderStatus, ['packing', 'processing', 'shipped', 'dikemas'], true)) {
             return 'packing';
         }
 
@@ -81,13 +89,13 @@ class ApiOrderController extends Controller
     private function statusLabel(string $status): string
     {
         return match ($status) {
-            'pending_payment' => 'Pending Payment',
-            'paid_not_checked_out' => 'Dibayar - Lanjutkan Checkout',
-            'packing' => 'Packing',
-            'delivered' => 'Delivered',
-            'done' => 'Done',
-            'canceled' => 'Canceled',
-            default => 'Pending Payment',
+            'pending_payment' => 'Belum Dibayar',
+            'paid_not_checked_out' => 'Dibayar',
+            'packing' => 'Dikemas',
+            'delivered' => 'Dikirim',
+            'done' => 'Selesai',
+            'canceled' => 'Dibatalkan',
+            default => 'Belum Dibayar',
         };
     }
 
