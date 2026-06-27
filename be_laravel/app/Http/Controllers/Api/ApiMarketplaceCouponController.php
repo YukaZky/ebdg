@@ -9,6 +9,7 @@ use App\Models\StoreProfile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ApiMarketplaceCouponController extends Controller
 {
@@ -59,7 +60,7 @@ class ApiMarketplaceCouponController extends Controller
         ]);
 
         if ($data['type'] === 'discount' && (float) $data['value'] > 100) {
-            abort(response()->json(['success' => false, 'message' => 'Diskon persen maksimal 100%.'], 422));
+            throw ValidationException::withMessages(['value' => 'Diskon persen maksimal 100%.']);
         }
 
         $data['code'] = strtoupper(trim($data['code'] ?? '')) ?: strtoupper('TOKO' . auth()->id() . Str::random(5));
