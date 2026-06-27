@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M0,0h108v108h-108z" />
+
+    <!-- Blue outer D shape, based on the uploaded GeoDesaConnect logo. -->
+    <path
+        android:fillColor="#004EA8"
+        android:fillType="evenOdd"
+        android:pathData="M38,5 L63,5 C87,5 104,25 104,54 C104,83 87,103 63,103 L33,103 L29,88 L62,88 C78,88 88,74 88,54 C88,34 78,20 62,20 L42,20 Z M45,28 L61,28 C73,28 80,39 80,54 C80,69 73,80 61,80 L45,80 C54,73 59,64 59,54 C59,44 54,35 45,28 Z" />
+
+    <!-- Yellow left pillar. -->
+    <path
+        android:fillColor="#FFB703"
+        android:pathData="M6,5 L29,5 C30,5 31,6 31,7 L48,85 C48,87 47,88 45,88 L23,88 C22,88 21,87 21,86 L4,7 C4,6 5,5 6,5 Z" />
+
+    <!-- Yellow inner b shape. -->
+    <path
+        android:fillColor="#FFB703"
+        android:fillType="evenOdd"
+        android:pathData="M41,29 L54,29 C68,29 77,40 77,54 C77,68 68,79 54,79 L47,79 L41,55 L52,55 C57,55 61,51 61,46 C61,41 57,37 52,37 L43,37 Z M48,45 L53,45 C56,45 58,47 58,50 C58,53 56,55 53,55 L50,55 Z" />
+</vector>
