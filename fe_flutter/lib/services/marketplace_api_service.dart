@@ -72,6 +72,12 @@ class MarketplaceApiService {
     return [];
   }
 
+  static Future<List<dynamic>> claimedCoupons() async {
+    final response = await http.get(Uri.parse('${ApiService.baseUrl}/marketplace/coupons/claimed'), headers: _headers);
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
+    return [];
+  }
+
   static Future<Map<String, dynamic>?> couponDetail(int id) async {
     final response = await http.get(Uri.parse('${ApiService.baseUrl}/marketplace/coupons/$id'), headers: _headers);
     if (response.statusCode == 200) return jsonDecode(response.body)['data'];
