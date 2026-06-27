@@ -77,8 +77,12 @@ class MarketplaceApiService {
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
-  static Future<List<dynamic>> conversations() async {
-    final response = await http.get(Uri.parse('${ApiService.baseUrl}/marketplace/chats'), headers: _headers);
+  static Future<List<dynamic>> conversations({String? role}) async {
+    final cleanRole = role?.trim();
+    final uri = Uri.parse('${ApiService.baseUrl}/marketplace/chats').replace(
+      queryParameters: cleanRole == null || cleanRole.isEmpty ? null : {'role': cleanRole},
+    );
+    final response = await http.get(uri, headers: _headers);
     if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
     return [];
   }

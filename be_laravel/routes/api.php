@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ApiRajaOngkirController;
 use App\Http\Controllers\Api\ApiWishlistController;
 use App\Http\Controllers\Api\ApiAdminController;
 use App\Http\Controllers\Api\ApiMarketplaceController;
+use App\Http\Controllers\Api\ApiMarketplaceChatController;
 use App\Http\Controllers\Api\ApiUserProfileController;
 use App\Http\Controllers\MidtransController;
 use App\Http\Controllers\Api\ApiPaymentMethodController;
@@ -38,6 +39,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/cart/remove/{id}', [ApiCartController::class, 'remove']);
 
     Route::post('/checkout', [ApiCheckoutController::class, 'checkout']);
+    Route::post('/checkout/finalize', [ApiCheckoutController::class, 'finalize']);
+    Route::get('/orders/{id}', [ApiCheckoutController::class, 'show']);
+    Route::post('/orders/{id}/payment-method', [ApiCheckoutController::class, 'setPaymentMethod']);
+    Route::post('/orders/{id}/reset-payment', [ApiCheckoutController::class, 'resetPayment']);
+    Route::post('/orders/{id}/complete-checkout', [ApiCheckoutController::class, 'completeCheckout']);
+    Route::post('/orders/{id}/cancel', [\App\Http\Controllers\Api\ApiOrderCancelController::class, 'cancel']);
     Route::get('/orders', [ApiOrderController::class, 'index']);
 
     Route::get('/marketplace/my-store', [ApiMarketplaceController::class, 'myStore']);
@@ -45,10 +52,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/marketplace/seller-orders', [ApiMarketplaceController::class, 'sellerOrders']);
     Route::put('/marketplace/seller-orders/{id}/status', [ApiMarketplaceController::class, 'updateSellerOrderStatus']);
     Route::post('/marketplace/reviews', [ApiMarketplaceController::class, 'addReview']);
-    Route::get('/marketplace/chats', [ApiMarketplaceController::class, 'conversations']);
-    Route::post('/marketplace/chats/start', [ApiMarketplaceController::class, 'startConversation']);
-    Route::get('/marketplace/chats/{conversationId}/messages', [ApiMarketplaceController::class, 'messages']);
-    Route::post('/marketplace/chats/{conversationId}/messages', [ApiMarketplaceController::class, 'sendMessage']);
+    Route::get('/marketplace/chats', [ApiMarketplaceChatController::class, 'conversations']);
+    Route::post('/marketplace/chats/start', [ApiMarketplaceChatController::class, 'startConversation']);
+    Route::get('/marketplace/chats/{conversationId}/messages', [ApiMarketplaceChatController::class, 'messages']);
+    Route::post('/marketplace/chats/{conversationId}/messages', [ApiMarketplaceChatController::class, 'sendMessage']);
 
     Route::get('/wishlist', [ApiWishlistController::class, 'index']);
     Route::post('/wishlist/add', [ApiWishlistController::class, 'add']);
@@ -66,7 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/addresses', [ApiAdminController::class, 'saveUserAddress']);
     Route::put('/user/addresses/{id}/set-main', [ApiAdminController::class, 'setMainAddress']);
     Route::delete('/user/addresses/{id}', [ApiAdminController::class, 'deleteUserAddress']);
-    Route::get('/order/{id}/status', [\App\Http\Controllers\Api\ApiCheckoutController::class, 'checkStatus']);
+    Route::get('/order/{id}/status', [ApiCheckoutController::class, 'checkStatus']);
 
     Route::middleware('admin')->prefix('admin')->group(function () {
         Route::get('/dashboard', [ApiAdminController::class, 'dashboardStats']);

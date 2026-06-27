@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../services/api_service.dart';
 import '../../services/marketplace_api_service.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   final int conversationId;
+  final String? title;
+  final Map<String, dynamic>? initialConversation;
 
-  const ChatRoomScreen({Key? key, required this.conversationId}) : super(key: key);
+  const ChatRoomScreen({Key? key, required this.conversationId, this.title, this.initialConversation}) : super(key: key);
 
   @override
   State<ChatRoomScreen> createState() => _ChatRoomScreenState();
@@ -12,34 +15,47 @@ class ChatRoomScreen extends StatefulWidget {
 
 class _ChatRoomScreenState extends State<ChatRoomScreen> {
   final TextEditingController messageController = TextEditingController();
+  final ScrollController scrollController = ScrollController();
   List<dynamic> messages = [];
+  Map<String, dynamic>? conversation;
+  int? currentUserId;
   bool loading = true;
   bool sending = false;
 
   @override
   void initState() {
     super.initState();
+    conversation = widget.initialConversation;
     loadMessages();
   }
 
   @override
   void dispose() {
     messageController.dispose();
+    scrollController.dispose();
     super.dispose();
   }
 
+  Future<void> _ensureCurrentUser() async {
+    if (currentUserId != null) return;
+    final profile = await ApiService.getUserProfile();
+    currentUserId = int.tryParse(profile?['id']?.toString() ?? '');
+  }
+
   Future<void> loadMessages() async {
+    await _ensureCurrentUser();
     final data = await MarketplaceApiService.messages(widget.conversationId);
     if (!mounted) return;
     setState(() {
       messages = data;
       loading = false;
     });
+    _scrollToBottom();
   }
 
   Future<void> sendMessage() async {
     final text = messageController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || sending) return;
 
     setState(() => sending = true);
     final ok = await MarketplaceApiService.sendMessage(widget.conversationId, text);
@@ -48,8 +64,135 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
     if (ok) {
       messageController.clear();
-      loadMessages();
+      await loadMessages();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal mengirim pesan.')));
     }
+  }
+
+  Map<String, dynamic>? _asMap(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  String _clean(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text == 'null') return '';
+    return text;
+  }
+
+  String get _roomTitle {
+    final displayName = _clean(conversation?['display_name']);
+    if (displayName.isNotEmpty) return displayName;
+    final title = _clean(widget.title);
+    if (title.isNotEmpty) return title;
+    return 'Ruang Chat';
+  }
+
+  String get _roomSubtitle {
+    final subtitle = _clean(conversation?['display_subtitle']);
+    final product = _asMap(conversation?['product_context']) ?? _asMap(conversation?['product']);
+    final productName = _clean(product?['name']);
+
+    if (subtitle.isNotEmpty && productName.isNotEmpty) return '$subtitle • $productName';
+    if (subtitle.isNotEmpty) return subtitle;
+    if (productName.isNotEmpty) return productName;
+    return 'Chat aktif';
+  }
+
+  String _messageTime(dynamic value) {
+    final raw = _clean(value);
+    if (raw.isEmpty) return '';
+    final date = DateTime.tryParse(raw)?.toLocal();
+    if (date == null) return '';
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !scrollController.hasClients) return;
+      scrollController.animateTo(
+        scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Widget _messageBubble(Map<String, dynamic> item) {
+    final text = item['message']?.toString() ?? '';
+    final fromId = int.tryParse(item['sender_id']?.toString() ?? '');
+    final isMine = fromId != null && fromId == currentUserId;
+    final sender = _asMap(item['sender']);
+    final senderName = _clean(sender?['name']).isNotEmpty ? _clean(sender?['name']) : 'Pengguna';
+    final time = _messageTime(item['created_at']);
+
+    return Align(
+      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isMine ? Colors.deepOrange : Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(isMine ? 16 : 4),
+            bottomRight: Radius.circular(isMine ? 4 : 16),
+          ),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 3))],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isMine)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Text(senderName, style: const TextStyle(fontSize: 11, color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+              ),
+            Text(text, style: TextStyle(color: isMine ? Colors.white : Colors.black87, height: 1.35)),
+            if (time.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(time, style: TextStyle(fontSize: 10, color: isMine ? Colors.white70 : Colors.grey.shade500)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chatHeader() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      color: Colors.white,
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: Colors.deepOrange.shade50,
+            child: Text(_roomTitle.isNotEmpty ? _roomTitle[0].toUpperCase() : 'C', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_roomTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                const SizedBox(height: 2),
+                Text(_roomSubtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -57,59 +200,75 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(
-        title: const Text('Ruang Chat'),
+        title: Text(_roomTitle),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
       ),
       body: Column(
         children: [
+          _chatHeader(),
           Expanded(
             child: loading
                 ? const Center(child: CircularProgressIndicator())
-                : messages.isEmpty
-                    ? const Center(child: Text('Belum ada pesan.'))
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: messages.length,
-                        itemBuilder: (context, index) {
-                          final item = messages[index];
-                          final text = item['message']?.toString() ?? '';
-                          return Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Text(text),
-                            ),
-                          );
-                        },
-                      ),
+                : RefreshIndicator(
+                    onRefresh: loadMessages,
+                    child: messages.isEmpty
+                        ? ListView(
+                            controller: scrollController,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: const [
+                              SizedBox(height: 180),
+                              Icon(Icons.chat_bubble_outline, color: Colors.grey, size: 64),
+                              SizedBox(height: 12),
+                              Center(child: Text('Belum ada pesan. Tulis pesan pertama Anda.')),
+                            ],
+                          )
+                        : ListView.builder(
+                            controller: scrollController,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(16),
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final item = Map<String, dynamic>.from(messages[index] as Map);
+                              return _messageBubble(item);
+                            },
+                          ),
+                  ),
           ),
           SafeArea(
             child: Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
               color: Colors.white,
               child: Row(
                 children: [
                   Expanded(
                     child: TextField(
                       controller: messageController,
-                      decoration: const InputDecoration(
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) {
+                        if (!sending) sendMessage();
+                      },
+                      decoration: InputDecoration(
                         hintText: 'Tulis pesan...',
-                        border: OutlineInputBorder(),
+                        filled: true,
+                        fillColor: const Color(0xFFF6F7FB),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: sending ? null : sendMessage,
-                    icon: sending
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.send, color: Colors.deepOrange),
+                  Material(
+                    color: sending ? Colors.grey : Colors.deepOrange,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      onPressed: sending ? null : sendMessage,
+                      icon: sending
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.send, color: Colors.white),
+                    ),
                   ),
                 ],
               ),

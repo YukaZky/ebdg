@@ -3,14 +3,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product_model.dart';
 import '../models/payment_method_model.dart';
 
 class ApiService {
-  static const String baseUrl = "https://ebdg.sidome.id/api";
+  static const String baseUrl = "https://plug-unlined-smugness.ngrok-free.dev/api";
+  static const String _tokenStorageKey = 'auth_access_token';
   static String? _token;
+  static bool _sessionRestored = false;
 
   static String? get token => _token;
+  static bool get isLoggedIn => _token != null && _token!.isNotEmpty;
 
   static Map<String, String> get _authHeaders => {
         "Accept": "application/json",
@@ -23,20 +27,45 @@ class ApiService {
         if (_token != null) "Authorization": "Bearer $_token",
       };
 
+  static Future<bool> restoreSession() async {
+    if (_sessionRestored) return isLoggedIn;
+
+    final prefs = await SharedPreferences.getInstance();
+    final savedToken = prefs.getString(_tokenStorageKey)?.trim();
+    _token = savedToken != null && savedToken.isNotEmpty ? savedToken : null;
+    _sessionRestored = true;
+    return isLoggedIn;
+  }
+
+  static Future<void> _persistToken(String token) async {
+    _token = token;
+    _sessionRestored = true;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_tokenStorageKey, token);
+  }
+
+  static Future<void> clearSession() async {
+    _token = null;
+    _sessionRestored = true;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenStorageKey);
+  }
+
   static Future<bool> login(String email, String password) async {
     try {
-      final response = await http.post(
-        Uri.parse("$baseUrl/login"),
-        headers: _jsonHeaders,
-        body: jsonEncode({"email": email, "password": password}),
-      );
-      print("=== RESPONSE BODY ===");
-      print(response.body);
-      print("=====================");
-      
+      final response = await http
+          .post(
+            Uri.parse("$baseUrl/login"),
+            headers: _jsonHeaders,
+            body: jsonEncode({"email": email, "password": password}),
+          )
+          .timeout(const Duration(seconds: 14));
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        _token = data['access_token'];
+        final accessToken = data['access_token']?.toString();
+        if (accessToken == null || accessToken.isEmpty) return false;
+        await _persistToken(accessToken);
         return true;
       }
       return false;
@@ -163,16 +192,19 @@ class ApiService {
     if (_token == null) throw Exception("Belum login");
     final response =
         await http.get(Uri.parse("$baseUrl/orders"), headers: _authHeaders);
-    if (response.statusCode == 200)
-      return jsonDecode(response.body)['data'] ?? [];
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
     throw Exception("Gagal memuat riwayat pesanan");
   }
 
   static Future<Map<String, dynamic>?> getUserProfile() async {
     if (_token == null) return null;
-    final response = await http.get(Uri.parse("$baseUrl/user-profile"),
-        headers: _authHeaders);
+    final response = await http
+        .get(Uri.parse("$baseUrl/user-profile"), headers: _authHeaders)
+        .timeout(const Duration(seconds: 12));
     if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      await clearSession();
+    }
     return null;
   }
 
@@ -205,14 +237,28 @@ class ApiService {
   }
 
   static Future<bool> logout() async {
-    if (_token == null) return false;
-    final response =
-        await http.post(Uri.parse("$baseUrl/logout"), headers: _authHeaders);
-    if (response.statusCode == 200) {
-      _token = null;
+    final tokenBeforeLogout = _token;
+    if (tokenBeforeLogout == null) {
+      await clearSession();
       return true;
     }
-    return false;
+
+    try {
+      await http
+          .post(
+            Uri.parse("$baseUrl/logout"),
+            headers: {
+              "Accept": "application/json",
+              "Authorization": "Bearer $tokenBeforeLogout",
+            },
+          )
+          .timeout(const Duration(seconds: 8));
+    } catch (e) {
+      print("Error Logout: $e");
+    }
+
+    await clearSession();
+    return true;
   }
 
   static Future<List<Product>> getWishlist() async {
@@ -253,8 +299,7 @@ class ApiService {
     try {
       final response = await http.get(Uri.parse("$baseUrl/user/addresses"),
           headers: _authHeaders);
-      if (response.statusCode == 200)
-        return jsonDecode(response.body)['data'] ?? [];
+      if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
     } catch (e) {
       print("Error get addresses: $e");
     }
@@ -427,8 +472,7 @@ class ApiService {
     if (_token == null) return [];
     final response = await http.get(Uri.parse("$baseUrl/admin/products"),
         headers: _authHeaders);
-    if (response.statusCode == 200)
-      return jsonDecode(response.body)['data'] ?? [];
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
     return [];
   }
 

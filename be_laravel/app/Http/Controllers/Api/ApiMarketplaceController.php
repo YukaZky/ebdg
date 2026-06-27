@@ -12,6 +12,7 @@ use App\Models\ProductReview;
 use App\Models\StoreProfile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class ApiMarketplaceController extends Controller
@@ -80,6 +81,43 @@ class ApiMarketplaceController extends Controller
         }
 
         return $query;
+    }
+
+    private function conversationQueryForUser(Request $request, ?string $role = null)
+    {
+        $userId = $request->user()->id;
+        $query = Conversation::with(['customer:id,name,email', 'merchant:id,name,email', 'product:id,user_id,name,slug,image']);
+
+        if ($role === 'seller') {
+            return $query->where('seller_id', $userId);
+        }
+
+        if ($role === 'buyer') {
+            return $query->where('buyer_id', $userId);
+        }
+
+        return $query->where(function ($query) use ($userId) {
+            $query->where('buyer_id', $userId)
+                ->orWhere('seller_id', $userId);
+        });
+    }
+
+    private function conversationPayload(Conversation $conversation, int $userId): array
+    {
+        $isMerchant = (int) $conversation->seller_id === $userId;
+        $counterpart = $isMerchant ? $conversation->customer : $conversation->merchant;
+        $payload = $conversation->toArray();
+
+        $payload['role'] = $isMerchant ? 'seller' : 'buyer';
+        $payload['counterpart'] = $counterpart ? [
+            'id' => $counterpart->id,
+            'name' => $counterpart->name,
+            'email' => $counterpart->email,
+        ] : null;
+        $payload['buyer'] = $conversation->customer;
+        $payload['seller'] = $conversation->merchant;
+
+        return $payload;
     }
 
     public function myStore(Request $request)
@@ -183,30 +221,138 @@ class ApiMarketplaceController extends Controller
 
     public function sellerOrders(Request $request)
     {
-        $orders = Order::with(['items.product'])
-            ->where(function ($query) use ($request) {
-                $query->where('seller_id', $request->user()->id)
-                    ->orWhereHas('items.product', fn ($q) => $q->where('user_id', $request->user()->id));
-            })
+        $sellerId = (int) $request->user()->id;
+
+        $orders = Order::with(['items.product', 'transaction'])
+            ->whereHas('items.product', fn ($q) => $q->where('user_id', $sellerId))
             ->latest()
-            ->get();
+            ->get()
+            ->map(fn ($order) => $this->sellerOrderPayload($order, $sellerId))
+            ->filter(fn ($order) => in_array($order['seller_status'], ['paid', 'packing', 'delivered', 'done', 'canceled'], true))
+            ->values();
 
         return response()->json(['success' => true, 'data' => $orders]);
     }
 
     public function updateSellerOrderStatus(Request $request, $id)
     {
-        $request->validate(['status' => 'required|string']);
+        $request->validate([
+            'status' => 'required|string|in:packing,delivered,done,canceled',
+        ]);
 
-        $order = Order::where(function ($query) use ($request) {
-            $query->where('seller_id', $request->user()->id)
-                ->orWhereHas('items.product', fn ($q) => $q->where('user_id', $request->user()->id));
-        })->findOrFail($id);
+        $sellerId = (int) $request->user()->id;
+        $order = Order::with(['items.product', 'transaction'])
+            ->whereHas('items.product', fn ($q) => $q->where('user_id', $sellerId))
+            ->findOrFail($id);
 
-        $order->status = $request->status;
+        $currentStatus = $this->sellerStatus($order);
+        $nextStatus = $request->status;
+        $allowed = [
+            'paid' => ['packing', 'canceled'],
+            'packing' => ['delivered', 'canceled'],
+            'delivered' => ['done'],
+        ];
+
+        if (! in_array($nextStatus, $allowed[$currentStatus] ?? [], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Status pesanan tidak bisa diperbarui dari tahap saat ini.',
+            ], 422);
+        }
+
+        $order->status = $nextStatus;
+        if ($nextStatus === 'delivered') {
+            $order->delivered_date = now()->toDateString();
+        }
+        if ($nextStatus === 'canceled') {
+            $order->canceled_date = now()->toDateString();
+        }
         $order->save();
 
-        return response()->json(['success' => true, 'message' => 'Status pesanan berhasil diperbarui', 'data' => $order]);
+        return response()->json([
+            'success' => true,
+            'message' => 'Status pesanan berhasil diperbarui',
+            'data' => $this->sellerOrderPayload($order->fresh()->load('items.product', 'transaction'), $sellerId),
+        ]);
+    }
+
+    private function sellerOrderPayload(Order $order, int $sellerId): array
+    {
+        $order->loadMissing(['items.product', 'transaction']);
+        $sellerItems = $order->items
+            ->filter(fn ($item) => $item->product && (int) $item->product->user_id === $sellerId)
+            ->values();
+
+        $data = $order->toArray();
+        $data['items'] = $sellerItems->map(function ($item) {
+            $payload = $item->toArray();
+            $payload['line_total'] = (float) $item->price * (int) $item->quantity;
+            return $payload;
+        })->all();
+        $data['seller_total'] = $sellerItems->sum(fn ($item) => (float) $item->price * (int) $item->quantity);
+        $data['seller_item_count'] = $sellerItems->sum(fn ($item) => (int) $item->quantity);
+        $data['transaction'] = $order->transaction?->toArray();
+        $data['transaction_status'] = $order->transaction ? (string) $order->transaction->status : 'no_transaction';
+        $details = $this->transactionDetails($order->transaction);
+        $data['payment_stage'] = $details['stage'] ?? null;
+        $data['payment_type'] = $details['payment_type'] ?? null;
+        $data['payment_bank'] = $details['bank'] ?? null;
+        $data['payment_info'] = $details['payment_info'] ?? null;
+        $data['payment_transaction_id'] = is_array($data['payment_info']) ? ($data['payment_info']['transaction_id'] ?? null) : null;
+        $data['seller_status'] = $this->sellerStatus($order);
+        $data['seller_status_label'] = $this->sellerStatusLabel($data['seller_status']);
+
+        return $data;
+    }
+
+    private function sellerStatus(Order $order): string
+    {
+        $orderStatus = strtolower((string) $order->status);
+        $transactionStatus = strtolower((string) ($order->transaction?->status ?? ''));
+
+        if (in_array($orderStatus, ['canceled', 'cancelled'], true) || in_array($transactionStatus, ['declined', 'cancel', 'canceled', 'expire', 'expired'], true)) {
+            return 'canceled';
+        }
+
+        if (in_array($orderStatus, ['done', 'completed', 'complete'], true)) {
+            return 'done';
+        }
+
+        if (in_array($orderStatus, ['delivered', 'deliver'], true)) {
+            return 'delivered';
+        }
+
+        if (in_array($orderStatus, ['packing', 'processing', 'shipped'], true)) {
+            return 'packing';
+        }
+
+        if (in_array($transactionStatus, ['approved', 'settlement', 'capture'], true)) {
+            return 'paid';
+        }
+
+        return 'pending_payment';
+    }
+
+    private function sellerStatusLabel(string $status): string
+    {
+        return match ($status) {
+            'paid' => 'Dibayar',
+            'packing' => 'Packing',
+            'delivered' => 'Delivered',
+            'done' => 'Done',
+            'canceled' => 'Canceled',
+            default => 'Pending Payment',
+        };
+    }
+
+    private function transactionDetails($transaction): array
+    {
+        if (! $transaction || ! Schema::hasColumn('transactions', 'payment_details') || empty($transaction->payment_details)) {
+            return [];
+        }
+
+        $details = json_decode($transaction->payment_details, true);
+        return is_array($details) ? $details : [];
     }
 
     public function productReviews($productId)
@@ -244,58 +390,109 @@ class ApiMarketplaceController extends Controller
 
     public function conversations(Request $request)
     {
-        $data = Conversation::where('buyer_id', $request->user()->id)
-            ->orWhere('seller_id', $request->user()->id)
+        $userId = $request->user()->id;
+        $role = $request->query('role') ?: $request->query('scope');
+        $role = in_array($role, ['seller', 'buyer'], true) ? $role : null;
+
+        $data = $this->conversationQueryForUser($request, $role)
+            ->withCount(['chatItems as unread_count' => function ($query) use ($userId) {
+                $query->where('sender_id', '!=', $userId)->whereNull('read_at');
+            }])
             ->latest('last_message_at')
-            ->get();
+            ->get()
+            ->map(fn ($conversation) => $this->conversationPayload($conversation, $userId));
 
         return response()->json(['success' => true, 'data' => $data]);
     }
 
     public function startConversation(Request $request)
     {
-        $request->validate(['seller_id' => 'required|exists:users,id']);
+        $request->validate([
+            'seller_id' => 'nullable|required_without:product_id|exists:users,id',
+            'product_id' => 'nullable|exists:products,id',
+        ]);
+
+        $product = $request->product_id
+            ? Product::select('id', 'user_id')->findOrFail($request->product_id)
+            : null;
+        $sellerId = $product ? (int) $product->user_id : (int) $request->seller_id;
+        $productId = $product ? $product->id : null;
+
+        if ($sellerId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Data penjual belum tersedia'], 422);
+        }
+
+        if ($sellerId === (int) $request->user()->id) {
+            return response()->json(['success' => false, 'message' => 'Tidak bisa chat toko sendiri'], 422);
+        }
 
         $conversation = Conversation::firstOrCreate(
             [
                 'buyer_id' => $request->user()->id,
-                'seller_id' => $request->seller_id,
-                'product_id' => $request->product_id,
+                'seller_id' => $sellerId,
+                'product_id' => $productId,
             ],
             ['last_message_at' => now()]
         );
+        $conversation->load(['customer:id,name,email', 'merchant:id,name,email', 'product:id,user_id,name,slug,image']);
 
-        return response()->json(['success' => true, 'data' => $conversation]);
+        return response()->json(['success' => true, 'data' => $this->conversationPayload($conversation, $request->user()->id)]);
     }
 
     public function messages(Request $request, $conversationId)
     {
-        $conversation = Conversation::where(function ($query) use ($request) {
-            $query->where('buyer_id', $request->user()->id)->orWhere('seller_id', $request->user()->id);
-        })->findOrFail($conversationId);
+        $conversation = $this->conversationQueryForUser($request)->findOrFail($conversationId);
 
-        $messages = ConversationMessage::where('conversation_id', $conversation->id)->orderBy('id')->get();
-        return response()->json(['success' => true, 'data' => $messages]);
+        ConversationMessage::where('conversation_id', $conversation->id)
+            ->where('sender_id', '!=', $request->user()->id)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        $messages = ConversationMessage::with('author:id,name,email')
+            ->where('conversation_id', $conversation->id)
+            ->orderBy('id')
+            ->get()
+            ->map(function ($item) {
+                $payload = $item->toArray();
+                $payload['sender'] = $item->author ? [
+                    'id' => $item->author->id,
+                    'name' => $item->author->name,
+                    'email' => $item->author->email,
+                ] : null;
+                return $payload;
+            });
+
+        return response()->json([
+            'success' => true,
+            'conversation' => $this->conversationPayload($conversation, $request->user()->id),
+            'data' => $messages,
+        ]);
     }
 
     public function sendMessage(Request $request, $conversationId)
     {
         $request->validate(['message' => 'required|string']);
 
-        $conversation = Conversation::where(function ($query) use ($request) {
-            $query->where('buyer_id', $request->user()->id)->orWhere('seller_id', $request->user()->id);
-        })->findOrFail($conversationId);
+        $conversation = $this->conversationQueryForUser($request)->findOrFail($conversationId);
 
         $message = ConversationMessage::create([
             'conversation_id' => $conversation->id,
             'sender_id' => $request->user()->id,
             'message' => $request->message,
         ]);
+        $message->load('author:id,name,email');
 
         $conversation->last_message = $request->message;
         $conversation->last_message_at = now();
         $conversation->save();
 
-        return response()->json(['success' => true, 'data' => $message]);
+        $payload = $message->toArray();
+        $payload['sender'] = [
+            'id' => $request->user()->id,
+            'name' => $request->user()->name,
+            'email' => $request->user()->email,
+        ];
+
+        return response()->json(['success' => true, 'data' => $payload]);
     }
 }

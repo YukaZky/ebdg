@@ -16,38 +16,65 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   late int _selectedIndex;
   String _accountLabel = 'Akun';
-  late List<Widget> _screens;
+  late final List<Widget Function()> _screenBuilders;
+  late final List<bool> _builtTabs;
+  final PageStorageBucket _pageStorageBucket = PageStorageBucket();
+  DateTime? _lastNavTapAt;
 
   static const Color _activeColor = Color(0xFF6C4DFF);
-  static const Color _inactiveColor = Color(0xFF9CA3AF);
-  static const Color _navDark = Color(0xFF05254F);
+  static const Color _inactiveColor = Color(0xFF8A94A6);
+  static const Color _navTextColor = Color(0xFF0C2442);
+  static const Duration _navTapDebounce = Duration(milliseconds: 260);
 
   @override
   void initState() {
     super.initState();
-    _selectedIndex = widget.initialIndex;
-    _initScreens();
+    _selectedIndex = widget.initialIndex.clamp(0, 3).toInt();
+    _screenBuilders = [
+      () => const ProductListScreen(key: PageStorageKey('tab-home-products')),
+      () => const CartScreen(key: PageStorageKey('tab-cart')),
+      () => const OrderHistoryScreen(key: PageStorageKey('tab-orders')),
+      () => ProfileScreen(
+            key: const PageStorageKey('tab-profile'),
+            onProfileUpdated: (String? name) {
+              if (!mounted) return;
+              setState(() => _accountLabel = _shortAccountLabel(name));
+              CartBadgeService.refresh();
+            },
+          ),
+    ];
+    _builtTabs = List<bool>.filled(_screenBuilders.length, false);
+    _builtTabs[_selectedIndex] = true;
     CartBadgeService.refresh();
   }
 
-  void _initScreens() {
-    _screens = [
-      const ProductListScreen(),
-      const CartScreen(),
-      const OrderHistoryScreen(),
-      ProfileScreen(
-        onProfileUpdated: (String? name) {
-          if (mounted) {
-            setState(() => _accountLabel = name ?? 'Akun');
-            CartBadgeService.refresh();
-          }
-        },
-      ),
-    ];
+  String _shortAccountLabel(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty || text == 'Akun') return 'Akun';
+    return text.length > 8 ? '${text.substring(0, 8)}…' : text;
+  }
+
+  bool _allowNavigationTap(int index) {
+    if (index == _selectedIndex) return false;
+
+    final now = DateTime.now();
+    final previous = _lastNavTapAt;
+    if (previous != null && now.difference(previous) < _navTapDebounce) {
+      return false;
+    }
+
+    _lastNavTapAt = now;
+    return true;
   }
 
   void _onItemTapped(int index) {
-    setState(() => _selectedIndex = index);
+    if (!_allowNavigationTap(index)) return;
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _selectedIndex = index;
+      _builtTabs[index] = true;
+    });
     if (index == 1) CartBadgeService.refresh();
   }
 
@@ -58,15 +85,15 @@ class _MainScreenState extends State<MainScreen> {
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            Icon(Icons.shopping_cart, size: active ? 27 : 24, color: color),
+            Icon(Icons.shopping_cart_rounded, size: 24, color: color),
             if (count > 0)
               Positioned(
-                right: active ? -11 : -9,
-                top: active ? -10 : -9,
+                right: -10,
+                top: -10,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.red,
+                    color: const Color(0xFFFF3B30),
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(color: Colors.white, width: 1.5),
                   ),
@@ -84,58 +111,44 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _navIcon(int index, IconData icon, {required bool active, required Color color}) {
-    return Icon(icon, size: active ? 27 : 24, color: color);
+  Widget _navIcon(IconData icon, {required bool active, required Color color}) {
+    return Icon(icon, size: 24, color: color);
   }
 
-  Widget _navItem({required int index, required String label, required Widget Function(bool active, Color color) iconBuilder}) {
+  Widget _navItem({
+    required int index,
+    required String label,
+    required Widget Function(bool active, Color color) iconBuilder,
+  }) {
     final active = _selectedIndex == index;
-    final color = active ? _activeColor : _inactiveColor;
+    final iconColor = active ? _activeColor : _inactiveColor;
 
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => _onItemTapped(index),
-        child: SizedBox(
-          height: 82,
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.topCenter,
+        child: Container(
+          height: 58,
+          margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: active ? _activeColor.withOpacity(0.12) : Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Positioned(
-                top: active ? -20 : 13,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 240),
-                  curve: Curves.easeOut,
-                  width: active ? 58 : 42,
-                  height: active ? 58 : 42,
-                  decoration: BoxDecoration(
-                    color: active ? _activeColor : Colors.transparent,
-                    shape: BoxShape.circle,
-                    boxShadow: active ? [BoxShadow(color: _activeColor.withOpacity(0.35), blurRadius: 16, offset: const Offset(0, 8))] : [],
-                  ),
-                  child: Center(child: iconBuilder(active, active ? Colors.white : _inactiveColor)),
-                ),
-              ),
-              Positioned(
-                top: active ? 43 : 50,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 240),
-                  width: active ? 24 : 0,
-                  height: 3,
-                  decoration: BoxDecoration(color: _activeColor, borderRadius: BorderRadius.circular(999)),
-                ),
-              ),
-              Positioned(
-                bottom: 6,
-                left: 2,
-                right: 2,
-                child: Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11.5, color: active ? _activeColor : _inactiveColor, fontWeight: active ? FontWeight.w700 : FontWeight.w500),
+              iconBuilder(active, iconColor),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: active ? _activeColor : _inactiveColor,
+                  fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                  height: 1,
                 ),
               ),
             ],
@@ -149,19 +162,41 @@ class _MainScreenState extends State<MainScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey.shade100)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 18, offset: const Offset(0, -6))],
+        border: Border(top: BorderSide(color: Colors.grey.shade200, width: 0.8)),
+        boxShadow: [
+          BoxShadow(
+            color: _navTextColor.withOpacity(0.08),
+            blurRadius: 18,
+            offset: const Offset(0, -6),
+          ),
+        ],
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          height: 82,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
           child: Row(
             children: [
-              _navItem(index: 0, label: 'Beranda', iconBuilder: (active, color) => _navIcon(0, Icons.home, active: active, color: active ? color : _navDark)),
-              _navItem(index: 1, label: 'Keranjang', iconBuilder: (active, color) => _cartIconWithBadge(active: active, color: active ? color : _navDark)),
-              _navItem(index: 2, label: 'Pesanan', iconBuilder: (active, color) => _navIcon(2, Icons.history, active: active, color: active ? color : _navDark)),
-              _navItem(index: 3, label: _accountLabel, iconBuilder: (active, color) => _navIcon(3, Icons.person, active: active, color: active ? color : _navDark)),
+              _navItem(
+                index: 0,
+                label: 'Beranda',
+                iconBuilder: (active, color) => _navIcon(Icons.home_rounded, active: active, color: color),
+              ),
+              _navItem(
+                index: 1,
+                label: 'Keranjang',
+                iconBuilder: (active, color) => _cartIconWithBadge(active: active, color: color),
+              ),
+              _navItem(
+                index: 2,
+                label: 'Pesanan',
+                iconBuilder: (active, color) => _navIcon(Icons.receipt_long_rounded, active: active, color: color),
+              ),
+              _navItem(
+                index: 3,
+                label: _accountLabel,
+                iconBuilder: (active, color) => _navIcon(Icons.person_rounded, active: active, color: color),
+              ),
             ],
           ),
         ),
@@ -169,10 +204,26 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  Widget _persistentBody() {
+    return PageStorage(
+      bucket: _pageStorageBucket,
+      child: IndexedStack(
+        index: _selectedIndex,
+        children: List.generate(_screenBuilders.length, (index) {
+          if (!_builtTabs[index]) return const SizedBox.shrink();
+          return TickerMode(
+            enabled: _selectedIndex == index,
+            child: RepaintBoundary(child: _screenBuilders[index]()),
+          );
+        }),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_selectedIndex],
+      body: _persistentBody(),
       bottomNavigationBar: _bottomNav(),
     );
   }

@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../services/cart_api_service.dart';
 import '../services/marketplace_api_service.dart';
 import '../widgets/marketplace_product_card.dart';
+import 'marketplace/chat_room_screen.dart';
 import 'marketplace/store_detail_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
@@ -27,6 +28,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _page = 0;
   int _qty = 1;
   bool _saving = false;
+  bool _startingChat = false;
   bool _loadingReviews = true;
   bool _loadingRecommendations = true;
   List<dynamic> _productReviews = [];
@@ -140,15 +142,49 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Map<String, dynamic>? get _store => _product.store;
   bool get _hasStore => _store != null && (_store!['slug']?.toString().isNotEmpty ?? false);
+  String get _storeName => _store?['name']?.toString() ?? 'Penjual';
+  int? get _sellerId => _product.userId ?? int.tryParse(_store?['user_id']?.toString() ?? '');
 
-  double get _regularPrice => _variation?.regularPrice ?? _product.price;
-  double? get _salePrice => _variation?.salePrice ?? _product.salePrice;
-  bool get _hasPromo => _salePrice != null && _salePrice! > 0 && _salePrice! < _regularPrice;
-  double get _activePrice => _hasPromo ? _salePrice! : _regularPrice;
-  int get _stock => _variation?.quantity ?? _product.quantity;
-  int get _weight => _variation?.weight ?? _product.weight;
-  bool get _hasVariation => _product.variations != null && _product.variations!.isNotEmpty;
-  bool get _emptyStock => _stock <= 0 || _product.stockStatus != 'instock';
+  List<ProductVariation> get _allVariations => _product.variations ?? <ProductVariation>[];
+  bool get _hasVariation => _allVariations.isNotEmpty;
+
+  double _regularPriceFor(ProductVariation? variation) => variation?.regularPrice ?? _product.price;
+  double? _salePriceFor(ProductVariation? variation) => variation?.salePrice ?? _product.salePrice;
+  bool _hasPromoFor(ProductVariation? variation) {
+    final regularPrice = _regularPriceFor(variation);
+    final salePrice = _salePriceFor(variation);
+    return salePrice != null && salePrice > 0 && salePrice < regularPrice;
+  }
+
+  double _activePriceFor(ProductVariation? variation) {
+    final salePrice = _salePriceFor(variation);
+    return _hasPromoFor(variation) ? salePrice! : _regularPriceFor(variation);
+  }
+
+  int _stockFor(ProductVariation? variation) => variation?.quantity ?? _product.quantity;
+  int _weightFor(ProductVariation? variation) => variation?.weight ?? _product.weight;
+  bool _outOfStockFor(ProductVariation? variation) => _product.stockStatus != 'instock' || _stockFor(variation) <= 0;
+
+  double get _regularPrice => _regularPriceFor(_variation);
+  double? get _salePrice => _salePriceFor(_variation);
+  bool get _hasPromo => _hasPromoFor(_variation);
+  double get _activePrice => _activePriceFor(_variation);
+  int get _stock => _stockFor(_variation);
+  int get _weight => _weightFor(_variation);
+  bool get _emptyStock => _outOfStockFor(_variation);
+  bool get _cartUnavailable {
+    if (_product.stockStatus != 'instock') return true;
+    if (!_hasVariation) return _product.quantity <= 0;
+    return _allVariations.every((item) => item.quantity <= 0);
+  }
+
+  String _formatPrice(double value) => 'Rp ${value.toStringAsFixed(0)}';
+
+  String _imageForSelection(ProductVariation? variation) {
+    final variantImage = variation?.image?.trim() ?? '';
+    if (variantImage.isNotEmpty && variantImage != 'null') return variantImage;
+    return _product.image ?? '';
+  }
 
   void _syncSlide(int index) {
     final item = _slides[index];
@@ -175,27 +211,83 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (index >= 0) _goSlide(index);
   }
 
-  Future<void> _addCart() async {
+  Future<void> _openSellerChat() async {
+    if (_startingChat) return;
+
+    if (ApiService.token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Silakan login dulu untuk chat penjual.')));
+      return;
+    }
+
+    final sellerId = _sellerId;
+    if (sellerId == null || sellerId <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Data penjual belum tersedia.')));
+      return;
+    }
+
+    setState(() => _startingChat = true);
+    final conversation = await MarketplaceApiService.startConversation(sellerId: sellerId, productId: _product.id);
+    if (!mounted) return;
+    setState(() => _startingChat = false);
+
+    final conversationId = int.tryParse(conversation?['id']?.toString() ?? '') ?? 0;
+    if (conversationId <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membuka chat penjual.')));
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ChatRoomScreen(conversationId: conversationId, title: _storeName)),
+    );
+  }
+
+  Future<void> _submitCartFromSheet({
+    required BuildContext sheetContext,
+    required ProductVariation? variation,
+    required int quantity,
+    required void Function(bool value) setSubmitting,
+  }) async {
     if (ApiService.token == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Silakan login dulu.')));
       return;
     }
-    if (_hasVariation && _variation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih variasi produk dulu.')));
+    if (_hasVariation && variation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih varian produk dulu.')));
       return;
     }
+    if (_outOfStockFor(variation)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stok produk tidak tersedia.')));
+      return;
+    }
+
+    final maxStock = _stockFor(variation);
+    final safeQuantity = quantity.clamp(1, maxStock).toInt();
+
+    setSubmitting(true);
     setState(() => _saving = true);
-    final ok = await CartApiService.addSelectedProductToCart(productId: _product.id, quantity: _qty, variationId: _variation?.id);
+    final ok = await CartApiService.addSelectedProductToCart(productId: _product.id, quantity: safeQuantity, variationId: variation?.id);
     if (!mounted) return;
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? 'Produk masuk keranjang.' : 'Gagal menambahkan produk.')));
-    if (ok) Navigator.pop(context);
+
+    setState(() {
+      _saving = false;
+      _variation = variation;
+      _qty = safeQuantity;
+    });
+
+    if (ok) {
+      if (Navigator.canPop(sheetContext)) Navigator.pop(sheetContext);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Produk masuk keranjang.')));
+    } else {
+      setSubmitting(false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal menambahkan produk.')));
+    }
   }
 
   Widget _priceView() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (_hasPromo) Text('Rp ${_regularPrice.toStringAsFixed(0)}', style: TextStyle(fontSize: 14, color: Colors.grey.shade600, decoration: TextDecoration.lineThrough)),
-      Text('Rp ${_activePrice.toStringAsFixed(0)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFFE65100))),
+      if (_hasPromo) Text(_formatPrice(_regularPrice), style: TextStyle(fontSize: 14, color: Colors.grey.shade600, decoration: TextDecoration.lineThrough)),
+      Text(_formatPrice(_activePrice), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFFE65100))),
     ]);
   }
 
@@ -242,50 +334,176 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return Material(color: Colors.white.withOpacity(0.85), shape: const CircleBorder(), child: InkWell(customBorder: const CircleBorder(), onTap: onTap, child: Padding(padding: const EdgeInsets.all(7), child: Icon(icon, size: 25, color: Colors.black87))));
   }
 
-  List<ProductVariation> get _allVariations => _product.variations ?? <ProductVariation>[];
-
-  Widget _variationChip(ProductVariation item) {
-    final selected = _variation?.id == item.id;
-    return ChoiceChip(label: Text(item.name, overflow: TextOverflow.ellipsis), selected: selected, selectedColor: Colors.deepOrange, labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87, fontWeight: selected ? FontWeight.bold : FontWeight.w500), onSelected: (value) => _chooseVariation(value ? item : null));
-  }
-
-  Widget _variationArea() {
-    final variations = _allVariations;
-    final visibleVariations = variations.length > 3 ? variations.take(3).toList() : variations;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        const Expanded(child: Text('Pilih Variasi Produk:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-        if (variations.length > 3) TextButton.icon(onPressed: _showVariationPopup, icon: const Icon(Icons.keyboard_arrow_right), label: const Text('Lainnya')),
-      ]),
-      const SizedBox(height: 12),
-      Wrap(spacing: 8, runSpacing: 8, children: visibleVariations.map(_variationChip).toList()),
+  Widget _variantInfoRow() {
+    if (!_hasVariation) return const SizedBox.shrink();
+    final selected = _variation?.name;
+    return Row(children: [
+      const Icon(Icons.tune, color: Colors.deepOrange, size: 18),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          selected == null ? '${_allVariations.length} varian tersedia. Pilih saat tambah ke keranjang.' : 'Varian dipilih: $selected',
+          style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.w600),
+        ),
+      ),
     ]);
   }
 
-  void _showVariationPopup() {
+  void _showAddCartSheet() {
+    if (_cartUnavailable) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stok produk tidak tersedia.')));
+      return;
+    }
+
+    ProductVariation? selectedVariation = _variation;
+    int quantity = _qty;
+    if (_hasVariation && selectedVariation != null && _outOfStockFor(selectedVariation)) {
+      selectedVariation = null;
+      quantity = 1;
+    }
+    if (!_hasVariation) {
+      quantity = quantity.clamp(1, _product.quantity).toInt();
+    }
+    bool submitting = false;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [const Expanded(child: Text('Semua Variasi Produk', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close))]),
-              const SizedBox(height: 10),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 320),
-                child: SingleChildScrollView(
-                  child: Wrap(spacing: 8, runSpacing: 8, children: _allVariations.map((item) {
-                    final selected = _variation?.id == item.id;
-                    return ChoiceChip(label: Text(item.name), selected: selected, selectedColor: Colors.deepOrange, labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87, fontWeight: selected ? FontWeight.bold : FontWeight.w500), onSelected: (value) { Navigator.pop(context); _chooseVariation(value ? item : null); });
-                  }).toList()),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (sheetContext) {
+        return StatefulBuilder(builder: (context, setModalState) {
+          final maxStock = _hasVariation && selectedVariation == null ? 0 : _stockFor(selectedVariation);
+          final missingVariant = _hasVariation && selectedVariation == null;
+          final selectedOutOfStock = !missingVariant && _outOfStockFor(selectedVariation);
+          final canMinus = !submitting && quantity > 1;
+          final canPlus = !submitting && !missingVariant && !selectedOutOfStock && quantity < maxStock;
+          final canSubmit = !submitting && !missingVariant && !selectedOutOfStock && quantity >= 1;
+          final selectedRegularPrice = _regularPriceFor(selectedVariation);
+          final selectedActivePrice = _activePriceFor(selectedVariation);
+          final selectedHasPromo = _hasPromoFor(selectedVariation);
+          final selectedWeight = _weightFor(selectedVariation);
+          final productImage = _url(_imageForSelection(selectedVariation));
+
+          void updateSubmitting(bool value) {
+            setModalState(() => submitting = value);
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(18, 12, 18, 18 + MediaQuery.of(sheetContext).viewInsets.bottom),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(99)),
+                  ),
                 ),
-              ),
-            ]),
-          ),
-        );
+                const SizedBox(height: 16),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Container(
+                    width: 86,
+                    height: 86,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.grey.shade200)),
+                    child: productImage.isEmpty
+                        ? const Icon(Icons.image, color: Colors.grey, size: 36)
+                        : Image.network(productImage, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Colors.grey, size: 36)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    if (selectedHasPromo) Text(_formatPrice(selectedRegularPrice), style: TextStyle(fontSize: 12, color: Colors.grey.shade600, decoration: TextDecoration.lineThrough)),
+                    Text(_formatPrice(selectedActivePrice), style: const TextStyle(fontSize: 20, color: Colors.deepOrange, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 4),
+                    Text(
+                      missingVariant ? 'Pilih varian untuk melihat stok' : selectedOutOfStock ? 'Stok habis' : 'Stok: $maxStock',
+                      style: TextStyle(color: selectedOutOfStock ? Colors.red : Colors.grey.shade700, fontWeight: FontWeight.w600),
+                    ),
+                    if (selectedWeight > 0) Text('Berat: $selectedWeight gram', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                  ])),
+                  IconButton(onPressed: submitting ? null : () => Navigator.pop(sheetContext), icon: const Icon(Icons.close)),
+                ]),
+                if (_hasVariation) ...[
+                  const SizedBox(height: 20),
+                  const Text('Pilih Varian', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 230),
+                    child: SingleChildScrollView(
+                      child: Wrap(spacing: 8, runSpacing: 8, children: _allVariations.map((item) {
+                        final selected = selectedVariation?.id == item.id;
+                        final available = item.quantity > 0 && _product.stockStatus == 'instock';
+                        return ChoiceChip(
+                          label: Text(available ? item.name : '${item.name} (habis)', overflow: TextOverflow.ellipsis),
+                          selected: selected,
+                          selectedColor: Colors.deepOrange,
+                          disabledColor: Colors.grey.shade100,
+                          labelStyle: TextStyle(
+                            color: selected ? Colors.white : available ? Colors.black87 : Colors.grey.shade500,
+                            fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+                          ),
+                          onSelected: available && !submitting
+                              ? (_) {
+                                  setModalState(() {
+                                    selectedVariation = item;
+                                    quantity = 1;
+                                  });
+                                  _chooseVariation(item);
+                                }
+                              : null,
+                        );
+                      }).toList()),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                Row(children: [
+                  const Expanded(child: Text('Jumlah', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+                  Container(
+                    decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        onPressed: canMinus ? () => setModalState(() => quantity--) : null,
+                        icon: const Icon(Icons.remove),
+                      ),
+                      SizedBox(width: 34, child: Text('$quantity', textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        onPressed: canPlus ? () => setModalState(() => quantity++) : null,
+                        icon: const Icon(Icons.add),
+                      ),
+                    ]),
+                  ),
+                ]),
+                const SizedBox(height: 6),
+                Text(
+                  missingVariant ? 'Jumlah bisa diatur setelah varian dipilih.' : 'Maksimal $maxStock produk.',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: canSubmit
+                        ? () => _submitCartFromSheet(
+                              sheetContext: sheetContext,
+                              variation: selectedVariation,
+                              quantity: quantity,
+                              setSubmitting: updateSubmitting,
+                            )
+                        : null,
+                    icon: submitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.shopping_cart),
+                    label: Text(submitting ? 'Menambahkan...' : missingVariant ? 'Pilih Varian Dulu' : 'Masukkan Keranjang'),
+                  ),
+                ),
+              ]),
+            ),
+          );
+        });
       },
     );
   }
@@ -338,19 +556,36 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           const SizedBox(height: 6),
           Row(children: [_ratingStars(rating), const SizedBox(width: 6), Text('${rating.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))]),
         ])),
-        if (_hasStore)
-          OutlinedButton(
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))),
+        Column(mainAxisSize: MainAxisSize.min, children: [
+          OutlinedButton.icon(
+            onPressed: _startingChat ? null : _openSellerChat,
+            icon: _startingChat ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chat_bubble_outline, size: 16),
+            label: const Text('Chat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.deepOrange,
-              side: const BorderSide(color: Colors.deepOrange, width: 1),
+              foregroundColor: Colors.green.shade700,
+              side: BorderSide(color: Colors.green.shade600, width: 1),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               minimumSize: const Size(0, 34),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text('Lihat Toko', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
           ),
+          if (_hasStore) ...[
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.deepOrange,
+                side: const BorderSide(color: Colors.deepOrange, width: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                minimumSize: const Size(0, 34),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Lihat Toko', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ]),
       ]),
     );
   }
@@ -463,7 +698,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(title: const Text('Detail Produk'), backgroundColor: Colors.white, foregroundColor: Colors.black87),
+      appBar: AppBar(
+        title: const Text('Detail Produk'),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        actions: [
+          IconButton(
+            tooltip: 'Chat Penjual',
+            onPressed: _startingChat ? null : _openSellerChat,
+            icon: _startingChat ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chat_bubble_outline),
+          ),
+        ],
+      ),
       body: ListView(children: [
         _imageArea(),
         const SizedBox(height: 16),
@@ -475,10 +721,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             const SizedBox(height: 10),
             _priceView(),
             const SizedBox(height: 12),
-            Text(_emptyStock ? 'Stok habis' : 'Tersedia: $_stock'),
+            Text(_cartUnavailable ? 'Stok habis' : _hasVariation && _variation == null ? 'Varian tersedia: ${_allVariations.length}' : 'Tersedia: $_stock'),
             if (_weight > 0) Text('Berat: $_weight gram'),
-            const Divider(height: 32),
-            if (_hasVariation) ...[_variationArea(), const Divider(height: 32)],
+            if (_hasVariation) ...[
+              const SizedBox(height: 12),
+              _variantInfoRow(),
+            ],
           ]),
         ),
         _storeSection(),
@@ -491,11 +739,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(children: [
-            IconButton(onPressed: _qty > 1 ? () => setState(() => _qty--) : null, icon: const Icon(Icons.remove)),
-            Text('$_qty', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            IconButton(onPressed: _qty < _stock ? () => setState(() => _qty++) : null, icon: const Icon(Icons.add)),
+            SizedBox(
+              width: 52,
+              height: 48,
+              child: OutlinedButton(
+                onPressed: _startingChat ? null : _openSellerChat,
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  foregroundColor: Colors.green.shade700,
+                  side: BorderSide(color: Colors.green.shade600),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: _startingChat ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chat_bubble_outline),
+              ),
+            ),
             const SizedBox(width: 12),
-            Expanded(child: ElevatedButton.icon(onPressed: (_saving || _emptyStock) ? null : _addCart, icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.shopping_cart), label: Text(_saving ? 'Menambahkan...' : 'Tambah ke Keranjang'))),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: (_saving || _cartUnavailable) ? null : _showAddCartSheet,
+                icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.shopping_cart),
+                label: Text(_saving ? 'Menambahkan...' : 'Masukkan Keranjang'),
+              ),
+            ),
           ]),
         ),
       ),
