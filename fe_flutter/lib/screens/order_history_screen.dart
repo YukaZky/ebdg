@@ -6,7 +6,8 @@ import 'order_confirmation_screen.dart';
 import 'resume_order_checkout_screen.dart';
 
 class OrderHistoryScreen extends StatefulWidget {
-  const OrderHistoryScreen({Key? key}) : super(key: key);
+  final String initialStatus;
+  const OrderHistoryScreen({Key? key, this.initialStatus = 'all'}) : super(key: key);
 
   @override
   State<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
@@ -18,7 +19,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
   late Future<List<dynamic>> _future;
   Timer? _timer;
-  String _tab = 'all';
+  late String _tab;
 
   final List<List<dynamic>> tabs = const [
     ['all', 'Semua', Icons.apps_rounded],
@@ -33,10 +34,16 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    _tab = _validInitialStatus(widget.initialStatus);
     _future = ApiService.getOrders();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
+  }
+
+  String _validInitialStatus(String value) {
+    final normalized = value.toLowerCase().trim();
+    return tabs.any((tab) => tab[0] == normalized) ? normalized : 'all';
   }
 
   @override
