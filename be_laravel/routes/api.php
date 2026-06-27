@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\ApiOrderController;
 use App\Http\Controllers\Api\ApiRajaOngkirController;
 use App\Http\Controllers\Api\ApiWishlistController;
 use App\Http\Controllers\Api\ApiAdminController;
+use App\Http\Controllers\Api\ApiAdminBrandController;
 use App\Http\Controllers\Api\ApiMarketplaceController;
 use App\Http\Controllers\Api\ApiMarketplaceChatController;
 use App\Http\Controllers\Api\ApiMarketplaceCouponController;
@@ -112,10 +113,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/categories/delete', [ApiAdminController::class, 'deleteCategory']);
         Route::delete('/categories/delete/{id}', [ApiAdminController::class, 'deleteCategory']);
 
-        Route::get('/brands', [ApiAdminController::class, 'getBrands']);
-        Route::post('/brands/store', [ApiAdminController::class, 'storeBrand']);
-        Route::put('/brands/update/{id}', [ApiAdminController::class, 'updateBrand']);
-        Route::delete('/brands/delete/{id}', [ApiAdminController::class, 'deleteBrand']);
+        Route::get('/brands', [ApiAdminBrandController::class, 'index']);
+        Route::post('/brands/store', [ApiAdminBrandController::class, 'store']);
+        Route::put('/brands/update/{id}', [ApiAdminBrandController::class, 'update']);
+        Route::post('/brands/update/{id}', [ApiAdminBrandController::class, 'update']);
+        Route::delete('/brands/delete/{id}', [ApiAdminBrandController::class, 'destroy']);
 
         Route::get('/orders', [ApiAdminController::class, 'getOrders']);
         Route::get('/orders/{id}', [ApiAdminController::class, 'getOrderDetail']);
