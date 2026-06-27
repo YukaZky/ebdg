@@ -14,6 +14,11 @@ class StoreDetailScreen extends StatefulWidget {
 }
 
 class _StoreDetailScreenState extends State<StoreDetailScreen> {
+  static const Color _primary = Color(0xFF0C2442);
+  static const Color _bubble = Color(0xFFF8FBFF);
+  static const Color _bubbleBorder = Color(0xFFD8E7F8);
+  static const Color _muted = Color(0xFF64748B);
+
   Map<String, dynamic>? store;
   Map<String, dynamic>? storeAddress;
   List<Product> products = [];
@@ -22,7 +27,6 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
   Map<String, String> categoryImages = {};
   String selectedCategory = 'Semua';
   bool loading = true;
-  bool loadingReview = false;
   double ratingAverage = 0;
   int ratingCount = 0;
   final Set<int> takingCouponIds = {};
@@ -94,10 +98,26 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
       final segments = uri.pathSegments.where((segment) => segment.trim().isNotEmpty).toList();
       if (segments.isNotEmpty) text = segments.last;
     } catch (_) {
-      text = text.split('/').where((item) => item.trim().isNotEmpty).last;
+      final parts = text.split('/').where((item) => item.trim().isNotEmpty).toList();
+      if (parts.isNotEmpty) text = parts.last;
     }
     text = text.replaceAll('@', '').split('?').first.trim();
     return text.isEmpty ? '' : '@$text';
+  }
+
+  DateTime? _date(dynamic value) {
+    final raw = value?.toString() ?? '';
+    if (raw.isEmpty || raw == 'null') return null;
+    return DateTime.tryParse(raw.replaceFirst(' ', 'T'))?.toLocal();
+  }
+
+  String _timeText(dynamic value) {
+    final date = _date(value);
+    if (date == null) return '-';
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return '${date.day} ${months[date.month - 1]} ${date.year} • $hour:$minute';
   }
 
   double? get _latitude => double.tryParse(storeAddress?['latitude']?.toString() ?? '');
@@ -182,47 +202,75 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     if (result == null) loadStore();
   }
 
-  void _showStoreReviewSheet() {
+  Future<void> _showStoreReviewSheet() async {
     if (ApiService.token == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Silakan login dulu untuk memberi ulasan toko.')));
       return;
     }
     final storeId = int.tryParse(store?['id']?.toString() ?? '') ?? 0;
     if (storeId <= 0) return;
+
     int rating = 5;
+    bool submitting = false;
+    String? errorMessage;
     final controller = TextEditingController();
-    showModalBottomSheet(
+
+    final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (_) => StatefulBuilder(builder: (context, setSheetState) {
+      builder: (sheetContext) => StatefulBuilder(builder: (context, setSheetState) {
         return Padding(
-          padding: EdgeInsets.fromLTRB(18, 16, 18, 18 + MediaQuery.of(context).viewInsets.bottom),
+          padding: EdgeInsets.fromLTRB(18, 16, 18, 18 + MediaQuery.of(sheetContext).viewInsets.bottom),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Beri Ulasan Toko', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 10),
-            Text(store?['name']?.toString() ?? 'Toko', style: TextStyle(color: Colors.grey.shade700)),
+            Row(children: [
+              const Expanded(child: Text('Beri Ulasan Toko', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _primary))),
+              IconButton(onPressed: submitting ? null : () => Navigator.of(sheetContext).pop(false), icon: const Icon(Icons.close_rounded)),
+            ]),
+            Text(store?['name']?.toString() ?? 'Toko', style: const TextStyle(color: _muted, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
-            Row(children: List.generate(5, (index) => IconButton(onPressed: () => setSheetState(() => rating = index + 1), icon: Icon(index < rating ? Icons.star_rounded : Icons.star_border_rounded, color: Colors.amber, size: 34)))),
-            TextField(controller: controller, maxLines: 4, decoration: const InputDecoration(labelText: 'Komentar', hintText: 'Tulis pengalaman kamu dengan toko ini', border: OutlineInputBorder())),
+            Row(children: List.generate(5, (index) => IconButton(onPressed: submitting ? null : () => setSheetState(() => rating = index + 1), icon: Icon(index < rating ? Icons.star_rounded : Icons.star_border_rounded, color: Colors.amber, size: 34)))),
+            TextField(controller: controller, enabled: !submitting, maxLines: 4, decoration: const InputDecoration(labelText: 'Komentar', hintText: 'Tulis pengalaman kamu dengan toko ini', border: OutlineInputBorder())),
+            if (errorMessage != null) ...[
+              const SizedBox(height: 10),
+              Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w700)),
+            ],
             const SizedBox(height: 14),
-            SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: loadingReview ? null : () async {
-              setSheetState(() => loadingReview = true);
-              final response = await MarketplaceApiService.addStoreReview(storeId: storeId, rating: rating, review: controller.text.trim());
-              if (!mounted) return;
-              setSheetState(() => loadingReview = false);
-              Navigator.pop(context);
-              if (response != null) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ulasan toko berhasil disimpan.')));
-                loadStore();
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(MarketplaceApiService.lastError ?? 'Gagal menyimpan ulasan toko.')));
-              }
-            }, icon: loadingReview ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.star_rounded), label: const Text('KIRIM ULASAN'))),
+            SizedBox(width: double.infinity, child: ElevatedButton.icon(
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      setSheetState(() {
+                        submitting = true;
+                        errorMessage = null;
+                      });
+                      final response = await MarketplaceApiService.addStoreReview(storeId: storeId, rating: rating, review: controller.text.trim());
+                      if (!mounted) return;
+                      if (response != null) {
+                        Navigator.of(sheetContext).pop(true);
+                        return;
+                      }
+                      setSheetState(() {
+                        submitting = false;
+                        errorMessage = MarketplaceApiService.lastError ?? 'Gagal menyimpan ulasan toko.';
+                      });
+                    },
+              icon: submitting ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.star_rounded),
+              label: Text(submitting ? 'MENYIMPAN...' : 'KIRIM ULASAN'),
+            )),
           ]),
         );
       }),
-    ).whenComplete(controller.dispose);
+    );
+
+    controller.dispose();
+    if (!mounted) return;
+    if (saved == true) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ulasan toko berhasil disimpan.')));
+      await loadStore();
+    }
   }
 
   Widget _logoAvatar({double radius = 34}) {
@@ -234,11 +282,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     final raw = value?.toString().trim() ?? '';
     final shown = displayText ?? raw;
     if (raw.isEmpty || raw == 'null' || shown.isEmpty || shown == 'null') return const SizedBox.shrink();
-    return InkWell(
-      onTap: link ? () => _openUrl(raw) : null,
-      borderRadius: BorderRadius.circular(10),
-      child: Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, size: 18, color: Colors.deepOrange), const SizedBox(width: 8), Expanded(child: Text('$label: $shown', style: TextStyle(height: 1.35, color: link ? Colors.deepOrange : Colors.black87, fontWeight: link ? FontWeight.w600 : FontWeight.normal))), if (link) const Icon(Icons.open_in_new, size: 16, color: Colors.deepOrange)])),
-    );
+    return InkWell(onTap: link ? () => _openUrl(raw) : null, borderRadius: BorderRadius.circular(10), child: Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, size: 18, color: Colors.deepOrange), const SizedBox(width: 8), Expanded(child: Text('$label: $shown', style: TextStyle(height: 1.35, color: link ? Colors.deepOrange : Colors.black87, fontWeight: link ? FontWeight.w600 : FontWeight.normal))), if (link) const Icon(Icons.open_in_new, size: 16, color: Colors.deepOrange)])));
   }
 
   Widget _mapPreview() {
@@ -255,7 +299,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     final province = store?['province_name']?.toString() ?? '';
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF0C2442), Color(0xFFE65100)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.vertical(bottom: Radius.circular(24))),
+      decoration: const BoxDecoration(gradient: LinearGradient(colors: [_primary, Color(0xFFE65100)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.vertical(bottom: Radius.circular(24))),
       child: SafeArea(bottom: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [_logoAvatar(radius: 34), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: 4), Text([city, province].where((e) => e.isNotEmpty && e != 'null').join(', '), style: const TextStyle(color: Colors.white70)), const SizedBox(height: 8), Row(children: [_stars(ratingAverage), const SizedBox(width: 6), Text('${ratingAverage.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(color: Colors.white))])])), TextButton.icon(onPressed: _showStoreReviewSheet, icon: const Icon(Icons.star_border_rounded, color: Colors.white), label: const Text('Ulas', style: TextStyle(color: Colors.white)))]),
         const SizedBox(height: 16),
@@ -277,7 +321,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     final loading = takingCouponIds.contains(id);
     final remaining = _remainingLimit(coupon);
     final empty = remaining != null && remaining <= 0;
-    return Container(width: 236, margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.all(14), decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFFF3E0), Color(0xFFFFFBF7)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.deepOrange.withOpacity(.25))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.confirmation_number_rounded, color: Colors.deepOrange), const SizedBox(width: 8), Expanded(child: Text(coupon['code']?.toString() ?? '-', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.w900)))]), const SizedBox(height: 10), Text(_couponValue(coupon), style: const TextStyle(fontSize: 22, color: Color(0xFFE65100), fontWeight: FontWeight.w900)), const SizedBox(height: 4), Text(coupon['name']?.toString() ?? 'Kupon toko', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)), const SizedBox(height: 4), Text('Min. belanja ${_money(coupon['min_purchase'])}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))), const SizedBox(height: 3), Text('Sisa limit: ${_limitText(coupon)}', style: TextStyle(fontSize: 11.5, color: empty ? Colors.red : const Color(0xFF64748B), fontWeight: FontWeight.w700)), const SizedBox(height: 12), SizedBox(width: double.infinity, child: ElevatedButton(onPressed: taken || loading || empty ? null : () => _takeCoupon(coupon), style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, disabledBackgroundColor: const Color(0xFFE2E8F0), disabledForegroundColor: Colors.grey, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text(loading ? 'Mengambil...' : taken ? 'Sudah Diambil' : empty ? 'Habis' : 'Ambil')))]));
+    return Container(width: 236, margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.all(14), decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFFF3E0), Color(0xFFFFFBF7)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.deepOrange.withOpacity(.25))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.confirmation_number_rounded, color: Colors.deepOrange), const SizedBox(width: 8), Expanded(child: Text(coupon['code']?.toString() ?? '-', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.w900)))]), const SizedBox(height: 10), Text(_couponValue(coupon), style: const TextStyle(fontSize: 22, color: Color(0xFFE65100), fontWeight: FontWeight.w900)), const SizedBox(height: 4), Text(coupon['name']?.toString() ?? 'Kupon toko', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)), const SizedBox(height: 4), Text('Min. belanja ${_money(coupon['min_purchase'])}', style: const TextStyle(fontSize: 11.5, color: _muted)), const SizedBox(height: 3), Text('Sisa limit: ${_limitText(coupon)}', style: TextStyle(fontSize: 11.5, color: empty ? Colors.red : _muted, fontWeight: FontWeight.w700)), const SizedBox(height: 12), SizedBox(width: double.infinity, child: ElevatedButton(onPressed: taken || loading || empty ? null : () => _takeCoupon(coupon), style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, disabledBackgroundColor: const Color(0xFFE2E8F0), disabledForegroundColor: Colors.grey, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text(loading ? 'Mengambil...' : taken ? 'Sudah Diambil' : empty ? 'Habis' : 'Ambil')))]));
   }
 
   Widget _categoryCard(String category) {
@@ -294,19 +338,37 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     return Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(selectedCategory == 'Semua' ? 'Semua Produk Toko' : 'Produk $selectedCategory', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), const SizedBox(height: 12), if (items.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('Belum ada produk di kategori ini.'))) else GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.72, crossAxisSpacing: 12, mainAxisSpacing: 12), itemCount: items.length, itemBuilder: (context, index) => MarketplaceProductCard(product: items[index]))]));
   }
 
+  Widget _reviewBubble(dynamic rawReview) {
+    final review = rawReview is Map ? Map<String, dynamic>.from(rawReview) : <String, dynamic>{};
+    final user = review['user'] is Map ? Map<String, dynamic>.from(review['user']) : <String, dynamic>{};
+    final name = user['name']?.toString() ?? 'Pengulas';
+    final rating = double.tryParse(review['rating']?.toString() ?? '0') ?? 0;
+    final text = review['review']?.toString() ?? '';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(color: _bubble, borderRadius: BorderRadius.circular(18), border: Border.all(color: _bubbleBorder), boxShadow: [BoxShadow(color: _primary.withOpacity(.035), blurRadius: 10, offset: const Offset(0, 5))]),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [CircleAvatar(radius: 17, backgroundColor: _primary.withOpacity(.10), child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'P', style: const TextStyle(color: _primary, fontWeight: FontWeight.w900))), const SizedBox(width: 9), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _primary, fontWeight: FontWeight.w900))), const SizedBox(width: 7), Text(_timeText(review['created_at']), style: const TextStyle(color: _muted, fontSize: 10.5, fontWeight: FontWeight.w700))]), const SizedBox(height: 3), _stars(rating, size: 14)]))]),
+        const SizedBox(height: 9),
+        Text(text.isEmpty ? 'Pengulas tidak menulis komentar.' : text, style: const TextStyle(fontSize: 13, height: 1.45, color: Color(0xFF1F2937), fontWeight: FontWeight.w500)),
+      ]),
+    );
+  }
+
   Widget _reviewsSection() => Container(margin: const EdgeInsets.all(16), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [const Expanded(child: Text('Ulasan Toko', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))), TextButton.icon(onPressed: _showStoreReviewSheet, icon: const Icon(Icons.star_border_rounded, size: 18), label: const Text('Beri Ulasan'))]),
+        Row(children: [const Expanded(child: Text('Ulasan Toko', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _primary))), TextButton.icon(onPressed: _showStoreReviewSheet, icon: const Icon(Icons.star_border_rounded, size: 18), label: const Text('Beri Ulasan'))]),
         const SizedBox(height: 6),
-        Row(children: [_stars(ratingAverage), const SizedBox(width: 8), Text('${ratingAverage.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(fontWeight: FontWeight.w800))]),
+        Row(children: [_stars(ratingAverage), const SizedBox(width: 8), Text('${ratingAverage.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(fontWeight: FontWeight.w800, color: _primary))]),
         const SizedBox(height: 12),
-        if (reviews.isEmpty) const Text('Belum ada ulasan untuk toko ini.') else ...reviews.take(8).map((review) { final user = review['user'] ?? {}; final rating = double.tryParse(review['rating']?.toString() ?? '0') ?? 0; return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(0xFFF8F8F8), borderRadius: BorderRadius.circular(12)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Expanded(child: Text(user['name']?.toString() ?? 'Pengulas', style: const TextStyle(fontWeight: FontWeight.bold))), _stars(rating, size: 14)]), const SizedBox(height: 6), Text(review['review']?.toString() ?? '-') ])); }),
+        if (reviews.isEmpty) const Text('Belum ada ulasan untuk toko ini.', style: TextStyle(color: _muted)) else ...reviews.take(8).map(_reviewBubble),
       ]));
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
-      appBar: AppBar(title: const Text('Detail Toko'), backgroundColor: Colors.white, foregroundColor: Colors.black87),
+      appBar: AppBar(title: const Text('Detail Toko'), backgroundColor: Colors.white, foregroundColor: _primary),
       body: loading ? const Center(child: CircularProgressIndicator()) : store == null ? const Center(child: Text('Toko tidak ditemukan.')) : RefreshIndicator(onRefresh: loadStore, child: ListView(children: [_header(), _storeInfo(), _couponSection(), _categorySection(), _productSection(), _reviewsSection(), const SizedBox(height: 20)])),
     );
   }
