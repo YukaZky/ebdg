@@ -31,6 +31,23 @@ class ApiMarketplaceCouponController extends Controller
         }
     }
 
+    private function orderedCoupons($query)
+    {
+        return $this->hasCouponColumn('created_at') ? $query->latest() : $query->orderByDesc('id');
+    }
+
+    private function saveCouponModel(Coupon $coupon, array $attributes): Coupon
+    {
+        if (! $this->hasCouponColumn('created_at') && ! $this->hasCouponColumn('updated_at')) {
+            $coupon->timestamps = false;
+        }
+
+        $coupon->forceFill($attributes);
+        $coupon->save();
+
+        return $coupon;
+    }
+
     private function couponQueryForStore(int $sellerId)
     {
         $query = Coupon::query();
@@ -132,26 +149,20 @@ class ApiMarketplaceCouponController extends Controller
 
         $this->putIfColumn($payload, 'id_user', auth()->id());
         $this->putIfColumn($payload, 'user_id', auth()->id());
-
         $this->putIfColumn($payload, 'name', $data['name']);
         $this->putIfColumn($payload, 'title', $data['name']);
         $this->putIfColumn($payload, 'coupon_name', $data['name']);
-
         $this->putIfColumn($payload, 'code', $data['code']);
         $this->putIfColumn($payload, 'coupon_code', $data['code']);
-
         $this->putIfColumn($payload, 'type', $data['type']);
         $this->putIfColumn($payload, 'coupon_type', $data['type']);
-
         $this->putIfColumn($payload, 'value', $data['value']);
         $this->putIfColumn($payload, 'amount', $data['value']);
         $this->putIfColumn($payload, 'discount', $data['value']);
         $this->putIfColumn($payload, 'discount_amount', $data['value']);
-
         $this->putIfColumn($payload, 'min_purchase', $data['min_purchase']);
         $this->putIfColumn($payload, 'minimum_purchase', $data['min_purchase']);
         $this->putIfColumn($payload, 'min_order', $data['min_purchase']);
-
         $this->putIfColumn($payload, 'max_discount', $data['max_discount'] ?? null);
         $this->putIfColumn($payload, 'usage_limit', $data['usage_limit'] ?? null);
         $this->putIfColumn($payload, 'description', $data['description'] ?? null);
@@ -167,8 +178,7 @@ class ApiMarketplaceCouponController extends Controller
 
     public function index(Request $request)
     {
-        $coupons = $this->couponQueryForStore($request->user()->id)
-            ->latest()
+        $coupons = $this->orderedCoupons($this->couponQueryForStore($request->user()->id))
             ->get()
             ->map(fn (Coupon $coupon) => $this->payload($coupon, $request->user()->id));
 
@@ -177,10 +187,7 @@ class ApiMarketplaceCouponController extends Controller
 
     public function store(Request $request)
     {
-        $coupon = new Coupon();
-        $coupon->forceFill($this->couponAttributes($this->validatedPayload($request)));
-        $coupon->save();
-
+        $coupon = $this->saveCouponModel(new Coupon(), $this->couponAttributes($this->validatedPayload($request)));
         return response()->json(['success' => true, 'message' => 'Kupon berhasil dibuat.', 'data' => $this->payload($coupon, $request->user()->id)], 201);
     }
 
@@ -193,9 +200,7 @@ class ApiMarketplaceCouponController extends Controller
     public function update(Request $request, $id)
     {
         $coupon = $this->couponQueryForStore($request->user()->id)->findOrFail($id);
-        $coupon->forceFill($this->couponAttributes($this->validatedPayload($request)));
-        $coupon->save();
-
+        $coupon = $this->saveCouponModel($coupon, $this->couponAttributes($this->validatedPayload($request)));
         return response()->json(['success' => true, 'message' => 'Kupon berhasil diperbarui.', 'data' => $this->payload($coupon->fresh(), $request->user()->id)]);
     }
 
@@ -214,8 +219,7 @@ class ApiMarketplaceCouponController extends Controller
         $store = StoreProfile::where('slug', $slug)->firstOrFail();
         $userId = optional($request->user())->id;
 
-        $coupons = $this->activeCouponQueryForStore((int) $store->user_id)
-            ->latest()
+        $coupons = $this->orderedCoupons($this->activeCouponQueryForStore((int) $store->user_id))
             ->get()
             ->map(fn (Coupon $coupon) => $this->payload($coupon, $userId));
 
