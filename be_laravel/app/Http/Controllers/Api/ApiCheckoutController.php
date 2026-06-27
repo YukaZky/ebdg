@@ -8,6 +8,7 @@ use App\Models\CouponTake;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\ProductVariation;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -26,25 +27,17 @@ class ApiCheckoutController extends Controller
         if (str_contains($paymentType, 'gopay')) $paymentType = 'gopay';
 
         $bank = $request->input('bank');
-        if (is_array($bank)) {
-            $bank = $bank['bank_code'] ?? $bank['code'] ?? $bank['value'] ?? $bank['name'] ?? null;
-        }
+        if (is_array($bank)) $bank = $bank['bank_code'] ?? $bank['code'] ?? $bank['value'] ?? $bank['name'] ?? null;
         $bank = strtolower(trim((string) $bank));
         if ($bank === '' || $bank === 'null') $bank = null;
-
         if ($bank) {
             if (str_contains($bank, 'bca')) $bank = 'bca';
             elseif (str_contains($bank, 'bni')) $bank = 'bni';
             elseif (str_contains($bank, 'bri')) $bank = 'bri';
             elseif (str_contains($bank, 'permata')) $bank = 'permata';
         }
-
         if ($paymentType !== 'bank_transfer') $bank = null;
-
-        $request->merge([
-            'payment_type' => $paymentType,
-            'bank' => $bank,
-        ]);
+        $request->merge(['payment_type' => $paymentType, 'bank' => $bank]);
     }
 
     private function validatePaymentPayload(Request $request): void
@@ -60,52 +53,43 @@ class ApiCheckoutController extends Controller
     {
         $this->validateFinalOrderPayload($request);
         $this->validatePaymentPayload($request);
-
         try {
             $user = Auth::user();
             $activePayment = $this->activePaymentFromRequest($request, $user);
             if ($activePayment) return response()->json($activePayment, 200);
-
             $order = DB::transaction(fn () => $this->persistFinalOrder($request, $user));
             return $this->chargePaymentMethod($request, $order);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Gagal memproses checkout: ' . $e->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => 'Gagal memproses checkout: ' . $e->getMessage()], 422);
         }
     }
 
     public function finalize(Request $request)
     {
         $this->validateFinalOrderPayload($request);
-
         try {
             $user = Auth::user();
             $order = DB::transaction(fn () => $this->persistFinalOrder($request, $user));
             return response()->json(['success' => true, 'message' => 'Order final berhasil dibuat dari alamat dan ongkir.', 'order' => $order->load('items.product', 'transaction')], 200);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Gagal finalisasi order: ' . $e->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => 'Gagal finalisasi order: ' . $e->getMessage()], 422);
         }
     }
 
     public function setPaymentMethod(Request $request, $id)
     {
         $this->validatePaymentPayload($request);
-
         $order = Order::with('transaction', 'items.product')->where('user_id', Auth::id())->find($id);
         if (! $order) return response()->json(['success' => false, 'message' => 'Pesanan tidak ditemukan.'], 404);
         if ((float) $order->total <= 0) return response()->json(['success' => false, 'message' => 'Total pesanan belum valid.'], 422);
-
-        try {
-            return $this->chargePaymentMethod($request, $order);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Gagal membuat instruksi pembayaran: ' . $e->getMessage()], 500);
-        }
+        try { return $this->chargePaymentMethod($request, $order); }
+        catch (\Exception $e) { return response()->json(['success' => false, 'message' => 'Gagal membuat instruksi pembayaran: ' . $e->getMessage()], 500); }
     }
 
     public function resetPayment(Request $request, $id)
     {
         $order = Order::with('transaction', 'items.product')->where('user_id', Auth::id())->find($id);
         if (! $order) return response()->json(['success' => false, 'message' => 'Pesanan tidak ditemukan.'], 404);
-
         $transaction = $order->transaction ?: new Transaction();
         $previousDetails = $this->transactionDetails($transaction);
         $history = $this->appendSupersededAttempt($previousDetails, $transaction, 'Pembayaran direset oleh user.');
@@ -117,7 +101,6 @@ class ApiCheckoutController extends Controller
         $transaction->payment_url = null;
         $this->setTransactionDetails($transaction, ['stage' => 'waiting_payment_method', 'message' => 'Metode pembayaran direset oleh user.', 'coupon' => $previousDetails['coupon'] ?? null, 'superseded_attempts' => $history]);
         $transaction->save();
-
         return response()->json(['success' => true, 'message' => 'Status pembayaran berhasil direset.', 'order' => $order->fresh()->load('items.product', 'transaction')], 200);
     }
 
@@ -125,19 +108,16 @@ class ApiCheckoutController extends Controller
     {
         $order = Order::with('items.product', 'transaction')->where('user_id', Auth::id())->find($id);
         if (! $order) return response()->json(['success' => false, 'message' => 'Pesanan tidak ditemukan.'], 404);
-
         $transaction = $order->transaction;
         if (! $transaction || ! in_array($transaction->status, ['approved', 'settlement', 'capture'], true)) {
             return response()->json(['success' => false, 'message' => 'Checkout akhir hanya bisa dilakukan setelah pembayaran diterima.'], 422);
         }
-
         $details = $this->transactionDetails($transaction);
         $details['stage'] = 'checkout_completed';
         $details['checkout_completed_at'] = now()->toDateTimeString();
         $this->setTransactionDetails($transaction, $details);
         $transaction->save();
         $this->markCouponTakeUsed($details);
-
         return response()->json(['success' => true, 'message' => 'Checkout akhir berhasil diselesaikan.', 'order' => $order->fresh()->load('items.product', 'transaction')], 200);
     }
 
@@ -153,7 +133,6 @@ class ApiCheckoutController extends Controller
         $order = Order::with('transaction')->find($id);
         if (! $order) return response()->json(['success' => false, 'message' => 'Pesanan tidak ditemukan'], 404);
         $details = $this->transactionDetails($order->transaction);
-
         return response()->json([
             'success' => true,
             'order_id' => $order->id,
@@ -192,13 +171,6 @@ class ApiCheckoutController extends Controller
     private function persistFinalOrder(Request $request, $user): Order
     {
         $cartItems = $request->items;
-        $subtotal = $this->calculateSubtotal($cartItems);
-        $couponData = $this->calculateCouponDiscount($request, $user, $cartItems);
-        $discount = (float) ($couponData['amount'] ?? 0);
-        $tax = 0;
-        $total = max(0, $subtotal + (float) $request->shipping_cost - $discount);
-        $courierParts = explode(' - ', $request->courier);
-
         $order = null;
         $isNewOrder = true;
         if ($request->filled('order_id')) {
@@ -206,6 +178,14 @@ class ApiCheckoutController extends Controller
             if (! $order) throw new \Exception('Order sebelumnya tidak ditemukan.');
             $isNewOrder = false;
         }
+
+        $resolvedItems = $this->resolveCheckoutItems($cartItems, enforceStock: $isNewOrder, lockRows: $isNewOrder);
+        $subtotal = $this->calculateSubtotalFromResolved($resolvedItems);
+        $couponData = $this->calculateCouponDiscount($request, $user, $cartItems);
+        $discount = (float) ($couponData['amount'] ?? 0);
+        $tax = 0;
+        $total = max(0, $subtotal + (float) $request->shipping_cost - $discount);
+        $courierParts = explode(' - ', $request->courier);
 
         if (! $order) {
             $order = new Order();
@@ -233,23 +213,23 @@ class ApiCheckoutController extends Controller
 
         if (! $isNewOrder) OrderItem::where('order_id', $order->id)->delete();
 
-        foreach ($cartItems as $item) {
-            $product = Product::find($item['product_id']);
-            if (! $product) continue;
-            $price = isset($item['price']) && is_numeric($item['price']) ? (float) $item['price'] : (float) ($product->sale_price ?: $product->regular_price);
+        foreach ($resolvedItems as $resolved) {
+            $item = $resolved['raw'];
             $orderItem = new OrderItem();
             $orderItem->order_id = $order->id;
-            $orderItem->product_id = $item['product_id'];
-            $orderItem->price = $price;
-            $orderItem->quantity = $item['quantity'];
+            $orderItem->product_id = $resolved['product']->id;
+            $orderItem->price = $resolved['price'];
+            $orderItem->quantity = $resolved['quantity'];
             $orderItem->option = json_encode([
-                'variation_id' => $item['variation_id'] ?? null,
-                'variation_name' => $item['variation_name'] ?? null,
+                'variation_id' => $resolved['variation']?->id,
+                'variation_name' => $item['variation_name'] ?? $resolved['variation']?->name,
                 'selected_image' => $item['selected_image'] ?? null,
                 'weight' => $item['weight'] ?? null,
             ]);
             $orderItem->save();
         }
+
+        if ($isNewOrder) $this->decrementStockForItems($resolvedItems);
 
         $transaction = $order->transaction ?: new Transaction();
         $previousDetails = $this->transactionDetails($transaction);
@@ -262,7 +242,7 @@ class ApiCheckoutController extends Controller
         $transaction->payment_url = null;
         $this->setTransactionDetails($transaction, [
             'stage' => 'waiting_payment_method',
-            'message' => 'Order sudah final, menunggu user memilih metode pembayaran.',
+            'message' => 'Order sudah final, stok produk sudah dikurangi, menunggu user memilih metode pembayaran.',
             'checkout_signature' => $this->checkoutSignature($request),
             'coupon' => $couponData,
             'superseded_attempts' => $history,
@@ -273,16 +253,79 @@ class ApiCheckoutController extends Controller
         return $order->fresh()->load('items.product', 'transaction');
     }
 
-    private function calculateSubtotal(array $cartItems): float
+    private function resolveCheckoutItems(array $cartItems, bool $enforceStock = true, bool $lockRows = false): array
+    {
+        $resolved = [];
+        foreach ($cartItems as $item) {
+            $productQuery = Product::query();
+            if ($lockRows) $productQuery->lockForUpdate();
+            $product = $productQuery->find($item['product_id']);
+            if (! $product) throw new \Exception('Produk tidak ditemukan.');
+
+            $variation = null;
+            $variationId = $item['variation_id'] ?? null;
+            if ($variationId !== null && $variationId !== '' && $variationId !== 'null') {
+                $variationQuery = ProductVariation::where('product_id', $product->id)->where('id', $variationId);
+                if ($lockRows) $variationQuery->lockForUpdate();
+                $variation = $variationQuery->firstOrFail();
+            } elseif ($product->variations()->exists()) {
+                throw new \Exception('Pilih varian untuk produk ' . $product->name . '.');
+            }
+
+            $quantity = (int) ($item['quantity'] ?? 1);
+            if ($quantity <= 0) throw new \Exception('Jumlah produk tidak valid.');
+            $available = $variation ? (int) $variation->quantity : (int) $product->quantity;
+
+            if ($enforceStock) {
+                if ((string) $product->stock_status !== 'instock' || $available <= 0) {
+                    throw new \Exception('Stok produk ' . $product->name . ' habis.');
+                }
+                if ($quantity > $available) {
+                    throw new \Exception('Stok produk ' . $product->name . ' tidak cukup. Sisa stok: ' . $available);
+                }
+            }
+
+            $price = isset($item['price']) && is_numeric($item['price'])
+                ? (float) $item['price']
+                : (float) ($variation ? ($variation->sale_price ?: $variation->regular_price) : ($product->sale_price ?: $product->regular_price));
+
+            $resolved[] = ['raw' => $item, 'product' => $product, 'variation' => $variation, 'quantity' => $quantity, 'price' => $price];
+        }
+        return $resolved;
+    }
+
+    private function decrementStockForItems(array $resolvedItems): void
+    {
+        foreach ($resolvedItems as $resolved) {
+            $qty = (int) $resolved['quantity'];
+            $product = $resolved['product'];
+            $variation = $resolved['variation'];
+
+            if ($variation) {
+                $variation->quantity = max(0, (int) $variation->quantity - $qty);
+                $variation->save();
+                $totalVariantStock = (int) ProductVariation::where('product_id', $product->id)->sum('quantity');
+                $product->quantity = $totalVariantStock;
+                $product->stock_status = $totalVariantStock > 0 ? 'instock' : 'outofstock';
+                $product->save();
+            } else {
+                $product->quantity = max(0, (int) $product->quantity - $qty);
+                if ((int) $product->quantity <= 0) $product->stock_status = 'outofstock';
+                $product->save();
+            }
+        }
+    }
+
+    private function calculateSubtotalFromResolved(array $resolvedItems): float
     {
         $subtotal = 0;
-        foreach ($cartItems as $item) {
-            $product = Product::find($item['product_id']);
-            if (! $product) continue;
-            $price = isset($item['price']) && is_numeric($item['price']) ? (float) $item['price'] : (float) ($product->sale_price ?: $product->regular_price);
-            $subtotal += $price * (int) $item['quantity'];
-        }
+        foreach ($resolvedItems as $resolved) $subtotal += (float) $resolved['price'] * (int) $resolved['quantity'];
         return $subtotal;
+    }
+
+    private function calculateSubtotal(array $cartItems): float
+    {
+        return $this->calculateSubtotalFromResolved($this->resolveCheckoutItems($cartItems, enforceStock: false, lockRows: false));
     }
 
     private function calculateCouponDiscount(Request $request, $user, array $cartItems): ?array
@@ -291,11 +334,7 @@ class ApiCheckoutController extends Controller
         if ($takeId <= 0) return null;
         if (! Schema::hasTable('cuppon_takes')) throw new \Exception('Tabel cuppon_takes belum tersedia.');
 
-        $take = CouponTake::with('coupon')
-            ->where('id', $takeId)
-            ->where('id_user', $user->id)
-            ->first();
-
+        $take = CouponTake::with('coupon')->where('id', $takeId)->where('id_user', $user->id)->first();
         if (! $take || ! $take->coupon) throw new \Exception('Kupon yang dipilih tidak ditemukan.');
         if ($take->status !== 'take') throw new \Exception('Kupon sudah pernah digunakan atau tidak aktif.');
 
@@ -314,7 +353,6 @@ class ApiCheckoutController extends Controller
             $price = isset($item['price']) && is_numeric($item['price']) ? (float) $item['price'] : (float) ($product->sale_price ?: $product->regular_price);
             $eligibleSubtotal += $price * (int) $item['quantity'];
         }
-
         if ($eligibleSubtotal <= 0) throw new \Exception('Kupon hanya bisa memotong produk dari toko pemilik kupon.');
 
         $minimum = (float) ($coupon->min_purchase ?? $coupon->cart_value ?? $coupon->minimum_purchase ?? $coupon->min_order ?? 0);
@@ -323,15 +361,8 @@ class ApiCheckoutController extends Controller
         $type = (string) ($coupon->type ?? $coupon->coupon_type ?? 'fixed');
         $value = (float) ($coupon->value ?? $coupon->amount ?? $coupon->discount ?? $coupon->discount_amount ?? 0);
         $maxDiscount = (float) ($coupon->max_discount ?? 0);
-        $amount = 0;
-
-        if (in_array($type, ['discount', 'percent'], true)) {
-            $amount = $eligibleSubtotal * min($value, 100) / 100;
-            if ($maxDiscount > 0) $amount = min($amount, $maxDiscount);
-        } else {
-            $amount = $value;
-        }
-
+        $amount = in_array($type, ['discount', 'percent'], true) ? $eligibleSubtotal * min($value, 100) / 100 : $value;
+        if (in_array($type, ['discount', 'percent'], true) && $maxDiscount > 0) $amount = min($amount, $maxDiscount);
         $amount = min($eligibleSubtotal, max(0, $amount));
 
         return [
@@ -378,17 +409,8 @@ class ApiCheckoutController extends Controller
     private function fillOrderCouponColumns(Order $order, ?array $couponData): void
     {
         if (! $couponData) return;
-        $mapping = [
-            'coupon_take_id' => 'coupon_take_id',
-            'coupon_id' => 'coupon_id',
-            'coupon_code' => 'coupon_code',
-            'coupon_discount' => 'amount',
-            'coupon_seller_id' => 'seller_id',
-            'coupon_subtotal' => 'eligible_subtotal',
-        ];
-        foreach ($mapping as $column => $key) {
-            if (Schema::hasColumn('orders', $column)) $order->{$column} = $couponData[$key] ?? null;
-        }
+        $mapping = ['coupon_take_id' => 'coupon_take_id', 'coupon_id' => 'coupon_id', 'coupon_code' => 'coupon_code', 'coupon_discount' => 'amount', 'coupon_seller_id' => 'seller_id', 'coupon_subtotal' => 'eligible_subtotal'];
+        foreach ($mapping as $column => $key) if (Schema::hasColumn('orders', $column)) $order->{$column} = $couponData[$key] ?? null;
     }
 
     private function markCouponTakeUsed(array $details): void
@@ -396,7 +418,9 @@ class ApiCheckoutController extends Controller
         $coupon = $details['coupon'] ?? null;
         $takeId = is_array($coupon) ? (int) ($coupon['coupon_take_id'] ?? 0) : 0;
         if ($takeId <= 0 || ! Schema::hasTable('cuppon_takes')) return;
-        DB::table('cuppon_takes')->where('id', $takeId)->where('status', 'take')->update(['status' => 'used', 'updated_at' => now()]);
+        $payload = ['status' => 'used'];
+        if (Schema::hasColumn('cuppon_takes', 'updated_at')) $payload['updated_at'] = now();
+        DB::table('cuppon_takes')->where('id', $takeId)->where('status', 'take')->update($payload);
     }
 
     private function removeCheckedCartItems(array $cartItems, int $userId): void
@@ -417,20 +441,13 @@ class ApiCheckoutController extends Controller
             'transaction_details' => ['order_id' => 'ORDER-' . $order->id . '-' . substr(sha1($signature), 0, 10) . '-' . time(), 'gross_amount' => (int) round($order->total)],
             'customer_details' => ['first_name' => $order->name, 'email' => Auth::user()->email, 'phone' => $order->phone],
         ];
-
         if ($request->payment_type === 'bank_transfer') {
-            if ($request->bank === 'permata') {
-                $params['payment_type'] = 'permata';
-            } else {
-                $params['payment_type'] = 'bank_transfer';
-                $params['bank_transfer'] = ['bank' => $request->bank];
-            }
+            if ($request->bank === 'permata') $params['payment_type'] = 'permata';
+            else { $params['payment_type'] = 'bank_transfer'; $params['bank_transfer'] = ['bank' => $request->bank]; }
         } elseif ($request->payment_type === 'qris') {
             $params['payment_type'] = 'qris';
             $params['qris'] = ['acquirer' => 'gopay'];
-        } elseif ($request->payment_type === 'gopay') {
-            $params['payment_type'] = 'gopay';
-        }
+        } elseif ($request->payment_type === 'gopay') $params['payment_type'] = 'gopay';
 
         $midtransArray = $this->toArray(CoreApi::charge($params));
         $paymentInfo = $this->extractPaymentInfo($midtransArray);
@@ -455,7 +472,6 @@ class ApiCheckoutController extends Controller
             'superseded_attempts' => $history,
         ]);
         $transaction->save();
-
         return response()->json(['success' => true, 'message' => 'Metode pembayaran berhasil dibuat.', 'payment_info' => $paymentInfo, 'midtrans_response' => $midtransArray, 'order' => $order->fresh()->load('items.product', 'transaction')], 200);
     }
 
@@ -468,10 +484,7 @@ class ApiCheckoutController extends Controller
         Config::$curlOptions = [CURLOPT_SSL_VERIFYPEER => false, CURLOPT_SSL_VERIFYHOST => false, CURLOPT_HTTPHEADER => []];
     }
 
-    private function toArray($value): array
-    {
-        return json_decode(json_encode($value), true) ?: [];
-    }
+    private function toArray($value): array { return json_decode(json_encode($value), true) ?: []; }
 
     private function extractPaymentInfo(array $midtrans): array
     {
@@ -480,16 +493,11 @@ class ApiCheckoutController extends Controller
         if (! empty($midtrans['va_numbers'][0]['va_number'])) $vaNumber = $midtrans['va_numbers'][0]['va_number'];
         elseif (! empty($midtrans['permata_va_number'])) $vaNumber = $midtrans['permata_va_number'];
         elseif (! empty($midtrans['bill_key'])) $vaNumber = 'Bill Key: ' . $midtrans['bill_key'] . "\nBiller Code: " . ($midtrans['biller_code'] ?? '');
-
         if (! empty($midtrans['actions']) && is_array($midtrans['actions'])) {
             foreach ($midtrans['actions'] as $action) {
-                if (($action['name'] ?? null) === 'generate-qr-code') {
-                    $qrCodeUrl = $action['url'] ?? null;
-                    break;
-                }
+                if (($action['name'] ?? null) === 'generate-qr-code') { $qrCodeUrl = $action['url'] ?? null; break; }
             }
         }
-
         return ['va_number' => $vaNumber, 'qr_code_url' => $qrCodeUrl, 'expiry_time' => $midtrans['expiry_time'] ?? null, 'transaction_id' => $midtrans['transaction_id'] ?? null, 'transaction_status' => $midtrans['transaction_status'] ?? null, 'payment_type' => $midtrans['payment_type'] ?? null];
     }
 
@@ -497,26 +505,8 @@ class ApiCheckoutController extends Controller
     {
         $this->normalizePaymentRequest($request);
         if ($request->filled('checkout_signature')) return (string) $request->checkout_signature;
-        $items = collect($request->items ?? [])->map(fn ($item) => [
-            'cart_item_id' => $item['cart_item_id'] ?? null,
-            'product_id' => (int) ($item['product_id'] ?? 0),
-            'quantity' => (int) ($item['quantity'] ?? 1),
-            'price' => isset($item['price']) ? (int) $item['price'] : null,
-            'variation_id' => $item['variation_id'] ?? null,
-        ])->sortBy(fn ($item) => ($item['cart_item_id'] ?? '') . ':' . $item['product_id'] . ':' . ($item['variation_id'] ?? ''))->values()->all();
-
-        return json_encode([
-            'address' => trim((string) $request->address),
-            'phone' => trim((string) $request->phone),
-            'province_name' => trim((string) $request->province_name),
-            'city_name' => trim((string) $request->city_name),
-            'courier' => trim((string) $request->courier),
-            'shipping_cost' => (int) $request->shipping_cost,
-            'payment_type' => (string) $request->payment_type,
-            'bank' => $request->input('bank'),
-            'coupon_take_id' => $request->input('coupon_take_id'),
-            'items' => $items,
-        ]);
+        $items = collect($request->items ?? [])->map(fn ($item) => ['cart_item_id' => $item['cart_item_id'] ?? null, 'product_id' => (int) ($item['product_id'] ?? 0), 'quantity' => (int) ($item['quantity'] ?? 1), 'price' => isset($item['price']) ? (int) $item['price'] : null, 'variation_id' => $item['variation_id'] ?? null])->sortBy(fn ($item) => ($item['cart_item_id'] ?? '') . ':' . $item['product_id'] . ':' . ($item['variation_id'] ?? ''))->values()->all();
+        return json_encode(['address' => trim((string) $request->address), 'phone' => trim((string) $request->phone), 'province_name' => trim((string) $request->province_name), 'city_name' => trim((string) $request->city_name), 'courier' => trim((string) $request->courier), 'shipping_cost' => (int) $request->shipping_cost, 'payment_type' => (string) $request->payment_type, 'bank' => $request->input('bank'), 'coupon_take_id' => $request->input('coupon_take_id'), 'items' => $items]);
     }
 
     private function activePaymentFromRequest(Request $request, $user): ?array
@@ -561,9 +551,7 @@ class ApiCheckoutController extends Controller
     private function appendSupersededAttempt(array $details, Transaction $transaction, string $reason): array
     {
         $history = $details['superseded_attempts'] ?? [];
-        if (! empty($transaction->payment_token) || ! empty($details['payment_info'])) {
-            $history[] = ['payment_token' => $transaction->payment_token, 'payment_url' => $transaction->payment_url, 'status' => $transaction->status, 'payment_info' => $details['payment_info'] ?? null, 'reason' => $reason, 'superseded_at' => now()->toDateTimeString()];
-        }
+        if (! empty($transaction->payment_token) || ! empty($details['payment_info'])) $history[] = ['payment_token' => $transaction->payment_token, 'payment_url' => $transaction->payment_url, 'status' => $transaction->status, 'payment_info' => $details['payment_info'] ?? null, 'reason' => $reason, 'superseded_at' => now()->toDateTimeString()];
         return $history;
     }
 
