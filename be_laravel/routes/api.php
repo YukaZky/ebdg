@@ -146,8 +146,9 @@ Route::middleware('auth:sanctum')->group(function () {
             $store->save();
 
             $about = About::first() ?: new About();
+            $usesKomerce = str_contains(config('rajaongkir.base_url', ''), 'komerce');
             $about->province_id = $address->province_id;
-            $about->city_id = $address->city_id;
+            $about->city_id = $usesKomerce ? $address->district_id : $address->city_id;
             $about->district_id = $address->district_id;
             $about->save();
 
@@ -183,7 +184,52 @@ Route::middleware('auth:sanctum')->group(function () {
 
         $isStore = filter_var($request->input('is_store'), FILTER_VALIDATE_BOOLEAN) || filter_var($request->input('is_store_address'), FILTER_VALIDATE_BOOLEAN);
         if ($isStore) {
-            return app('router')->dispatch(Request::create('/api/admin/store-location', 'POST', $request->all()));
+            $address = DB::transaction(function () use ($request) {
+                $address = $request->filled('address_id')
+                    ? Address::where('user_id', auth()->id())->findOrFail($request->address_id)
+                    : (Address::where('user_id', auth()->id())->where('is_store_address', true)->first() ?: new Address());
+
+                Address::where('user_id', auth()->id())
+                    ->when($address->exists, fn ($q) => $q->where('id', '!=', $address->id))
+                    ->update(['is_store_address' => false]);
+
+                $address->user_id = auth()->id();
+                $address->name = trim((string) ($request->name ?? auth()->user()->name));
+                $address->phone = trim((string) ($request->phone ?? '0'));
+                $address->province_id = $request->province_id;
+                $address->city_id = $request->city_id;
+                $address->district_id = $request->district_id;
+                $address->province_name = $request->province_name ?? '-';
+                $address->city_name = $request->city_name ?? '-';
+                $address->district_name = $request->kecamatan ?? $request->district_name ?? '-';
+                $address->address = $request->detail_address ?? $request->address ?? '-';
+                $address->locality = $request->kecamatan ?? $request->district_name ?? '-';
+                $address->landmark = $request->landmark ?? '-';
+                $address->postal_code = $request->postal_code ?? '00000';
+                $address->zip = $request->postal_code ?? '00000';
+                $address->city = $address->city_name;
+                $address->state = $address->province_name;
+                $address->country = 'Indonesia';
+                $address->type = 'store';
+                $address->latitude = $request->latitude;
+                $address->longitude = $request->longitude;
+                $address->note = $request->note;
+                $address->label = 'Toko';
+                $address->isdefault = false;
+                $address->is_store_address = true;
+                $address->save();
+
+                $about = About::first() ?: new About();
+                $usesKomerce = str_contains(config('rajaongkir.base_url', ''), 'komerce');
+                $about->province_id = $address->province_id;
+                $about->city_id = $usesKomerce ? $address->district_id : $address->city_id;
+                $about->district_id = $address->district_id;
+                $about->save();
+
+                return $address->fresh();
+            });
+
+            return response()->json(['success' => true, 'message' => 'Alamat toko berhasil disimpan.', 'data' => $address], 200);
         }
 
         $isMain = filter_var($request->input('is_main'), FILTER_VALIDATE_BOOLEAN) || filter_var($request->input('isdefault'), FILTER_VALIDATE_BOOLEAN);
