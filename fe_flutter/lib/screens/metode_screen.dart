@@ -24,64 +24,64 @@ class _MetodeScreenState extends State<MetodeScreen> {
     _paymentMethodsFuture = ApiService().getPaymentMethods();
   }
 
-  void _reloadPaymentMethods() {
+  Future<void> _reloadPaymentMethods() async {
     setState(() {
       _paymentMethodsFuture = ApiService().getPaymentMethods();
     });
+    await _paymentMethodsFuture;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _surface,
-      body: Column(
-        children: [
-          _header(context),
-          Expanded(
-            child: FutureBuilder<List<PaymentMethodModel>>(
-              future: _paymentMethodsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: _primary));
-                }
-
-                if (snapshot.hasError) {
-                  return _stateView(
-                    icon: Icons.error_outline_rounded,
-                    title: 'Gagal memuat metode',
-                    message: 'Terjadi kendala saat mengambil data pembayaran. Silakan coba lagi.',
-                    buttonText: 'Coba Lagi',
-                    onPressed: _reloadPaymentMethods,
-                    iconColor: Colors.red,
-                  );
-                }
-
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return _stateView(
-                    icon: Icons.account_balance_wallet_outlined,
-                    title: 'Belum ada metode aktif',
-                    message: 'Metode pembayaran belum tersedia. Coba kembali beberapa saat lagi.',
-                    buttonText: 'Muat Ulang',
-                    onPressed: _reloadPaymentMethods,
-                  );
-                }
-
-                final methods = snapshot.data!;
-
-                return RefreshIndicator(
-                  onRefresh: () async => _reloadPaymentMethods(),
-                  child: ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+      body: FutureBuilder<List<PaymentMethodModel>>(
+        future: _paymentMethodsFuture,
+        builder: (context, snapshot) {
+          return RefreshIndicator(
+            onRefresh: _reloadPaymentMethods,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+              slivers: [
+                SliverToBoxAdapter(child: _header(context)),
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator(color: _primary)))
+                else if (snapshot.hasError)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _stateView(
+                      icon: Icons.error_outline_rounded,
+                      title: 'Gagal memuat metode',
+                      message: 'Terjadi kendala saat mengambil data pembayaran. Silakan coba lagi.',
+                      buttonText: 'Coba Lagi',
+                      onPressed: _reloadPaymentMethods,
+                      iconColor: Colors.red,
+                    ),
+                  )
+                else if (!snapshot.hasData || snapshot.data!.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _stateView(
+                      icon: Icons.account_balance_wallet_outlined,
+                      title: 'Belum ada metode aktif',
+                      message: 'Metode pembayaran belum tersedia. Coba kembali beberapa saat lagi.',
+                      buttonText: 'Muat Ulang',
+                      onPressed: _reloadPaymentMethods,
+                    ),
+                  )
+                else
+                  SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-                    itemCount: methods.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) => _paymentMethodTile(methods[index]),
+                    sliver: SliverList.separated(
+                      itemCount: snapshot.data!.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) => _paymentMethodTile(snapshot.data![index]),
+                    ),
                   ),
-                );
-              },
+              ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -95,7 +95,7 @@ class _MetodeScreenState extends State<MetodeScreen> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 22),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -114,34 +114,34 @@ class _MetodeScreenState extends State<MetodeScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(26),
+                  borderRadius: BorderRadius.circular(24),
                   border: Border.all(color: Colors.white.withOpacity(0.16)),
                 ),
                 child: Row(
                   children: [
                     Container(
-                      width: 62,
-                      height: 62,
+                      width: 56,
+                      height: 56,
                       decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                      child: const Icon(Icons.account_balance_wallet_rounded, color: _primary, size: 34),
+                      child: const Icon(Icons.account_balance_wallet_rounded, color: _primary, size: 30),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Pilih Metode Pembayaran', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+                          const Text('Metode Pembayaran', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
                           const SizedBox(height: 5),
                           Text(
-                            'Gunakan Virtual Account, QRIS, atau e-wallet yang tersedia.',
+                            'Pilih Virtual Account, QRIS, atau e-wallet yang tersedia.',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: Colors.white.withOpacity(0.84), fontSize: 13, height: 1.35),
+                            style: TextStyle(color: Colors.white.withOpacity(0.84), fontSize: 12.5, height: 1.35),
                           ),
                         ],
                       ),
@@ -210,7 +210,7 @@ class _MetodeScreenState extends State<MetodeScreen> {
                 children: [
                   Text(method.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, color: Color(0xFF111827), fontWeight: FontWeight.w900)),
                   const SizedBox(height: 4),
-                  const Text('Tap untuk memilih metode ini', style: TextStyle(fontSize: 11.5, color: _muted, fontWeight: FontWeight.w500)),
+                  Text(method.paymentType == 'qris' ? 'QRIS siap dibuat setelah checkout' : 'Tap untuk memilih metode ini', style: const TextStyle(fontSize: 11.5, color: _muted, fontWeight: FontWeight.w500)),
                 ],
               ),
             ),
