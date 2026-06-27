@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_print
 
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -90,6 +91,16 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
   Future<Uint8List> _readPickedImageBytes(XFile file) {
     final key = '${file.name}_${file.path}_${file.mimeType ?? ''}';
     return _pickedImageBytesCache.putIfAbsent(key, () => file.readAsBytes());
+  }
+
+  String _safeVariationImageName(XFile file, int index) {
+    final rawName = file.name.trim();
+    if (rawName.isNotEmpty && rawName.contains('.')) return rawName;
+
+    final pathName = file.path.split('/').last.split('\\').last.trim();
+    if (pathName.isNotEmpty && pathName.contains('.')) return pathName;
+
+    return 'variation_${DateTime.now().millisecondsSinceEpoch}_$index.jpg';
   }
 
   void _setupEditData() {
@@ -196,6 +207,21 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
 
     if (_salePriceCtrl.text.isNotEmpty) fields['sale_price'] = _salePriceCtrl.text;
     if (_expDateCtrl.text.isNotEmpty) fields['exp_date'] = _expDateCtrl.text;
+
+    try {
+      for (int i = 0; i < variations.length; i++) {
+        final image = variations[i].image;
+        if (image == null) continue;
+
+        final bytes = await _readPickedImageBytes(image);
+        if (bytes.isEmpty) continue;
+
+        fields['variation_image_base64[$i]'] = base64Encode(bytes);
+        fields['variation_image_filename[$i]'] = _safeVariationImageName(image, i);
+      }
+    } catch (e) {
+      print('Gagal membaca gambar variasi: $e');
+    }
 
     final success = await ApiService.saveAdminProduct(
       fields,
