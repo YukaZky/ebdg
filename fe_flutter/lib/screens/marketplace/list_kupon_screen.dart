@@ -40,6 +40,14 @@ class _ListKuponScreenState extends State<ListKuponScreen> {
     return _money(value);
   }
 
+  String _limitLabel(Map<String, dynamic> coupon) {
+    final raw = coupon['remaining_limit'] ?? coupon['usage_limit'];
+    if (raw == null || raw.toString().trim().isEmpty || raw.toString() == 'null') return 'Tidak dibatasi';
+    final value = int.tryParse(raw.toString());
+    if (value == null) return raw.toString();
+    return value <= 0 ? 'Habis' : '$value tersisa';
+  }
+
   Future<void> _openAdd({Map<String, dynamic>? coupon}) async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => AddCupponScreen(coupon: coupon)));
     if (result == true) _refresh();
@@ -124,7 +132,7 @@ class _ListKuponScreenState extends State<ListKuponScreen> {
               ]),
             ),
             const SizedBox(height: 10),
-            Text('Min. belanja ${_money(coupon['min_purchase'])} • Diambil ${coupon['taken_count'] ?? 0}x', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+            Text('Min. belanja ${_money(coupon['min_purchase'])} • Sisa limit ${_limitLabel(coupon)} • Diambil ${coupon['taken_count'] ?? 0}x', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
           ]),
         ),
       ),
@@ -204,6 +212,8 @@ class _ListKuponScreenState extends State<ListKuponScreen> {
                   const Text('Kupon Diskon Toko', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 5),
                   Text('$count kupon tersedia untuk dikelola', style: TextStyle(color: Colors.white.withOpacity(0.78), fontSize: 12)),
+                  const SizedBox(height: 3),
+                  Text('Tarik halaman ke bawah untuk refresh data.', style: TextStyle(color: Colors.white.withOpacity(0.70), fontSize: 11)),
                 ])),
               ]),
             ),
@@ -235,7 +245,7 @@ class _ListKuponScreenState extends State<ListKuponScreen> {
         const SizedBox(height: 16),
         const Text('Belum ada kupon toko.', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87)),
         const SizedBox(height: 6),
-        Text('Tekan tombol Tambah untuk membuat kupon pertama.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
+        Text('Tekan tombol Tambah untuk membuat kupon pertama, atau tarik halaman ke bawah untuk refresh data.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
       ]),
     );
   }
@@ -259,6 +269,14 @@ class CouponDetailScreen extends StatelessWidget {
     final type = coupon['type']?.toString() ?? 'fixed';
     final value = double.tryParse(coupon['value']?.toString() ?? '0') ?? 0;
     return type == 'discount' ? '${value.toStringAsFixed(value % 1 == 0 ? 0 : 1)}%' : _money(value);
+  }
+
+  String _limitLabel() {
+    final raw = coupon['remaining_limit'] ?? coupon['usage_limit'];
+    if (raw == null || raw.toString().trim().isEmpty || raw.toString() == 'null') return 'Tidak dibatasi';
+    final value = int.tryParse(raw.toString());
+    if (value == null) return raw.toString();
+    return value <= 0 ? 'Habis' : '$value tersisa';
   }
 
   Future<void> _delete(BuildContext context) async {
@@ -307,7 +325,7 @@ class CouponDetailScreen extends StatelessWidget {
                   _row('Status', active ? 'Aktif' : 'Nonaktif'),
                   _row('Minimal Belanja', _money(coupon['min_purchase'])),
                   _row('Maksimal Potongan', coupon['max_discount'] == null ? '-' : _money(coupon['max_discount'])),
-                  _row('Limit Pengambilan', coupon['usage_limit']?.toString() ?? '-'),
+                  _row('Sisa Limit', _limitLabel()),
                   _row('Total Diambil', '${coupon['taken_count'] ?? 0}x'),
                   _row('Deskripsi', coupon['description']?.toString().isNotEmpty == true ? coupon['description'].toString() : '-'),
                 ])),
