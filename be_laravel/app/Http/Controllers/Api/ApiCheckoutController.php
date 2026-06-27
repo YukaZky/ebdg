@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\CartItem;
+use App\Models\CouponTake;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -114,7 +115,7 @@ class ApiCheckoutController extends Controller
         $transaction->status = 'pending';
         $transaction->payment_token = null;
         $transaction->payment_url = null;
-        $this->setTransactionDetails($transaction, ['stage' => 'waiting_payment_method', 'message' => 'Metode pembayaran direset oleh user.', 'superseded_attempts' => $history]);
+        $this->setTransactionDetails($transaction, ['stage' => 'waiting_payment_method', 'message' => 'Metode pembayaran direset oleh user.', 'coupon' => $previousDetails['coupon'] ?? null, 'superseded_attempts' => $history]);
         $transaction->save();
 
         return response()->json(['success' => true, 'message' => 'Status pembayaran berhasil direset.', 'order' => $order->fresh()->load('items.product', 'transaction')], 200);
@@ -135,6 +136,7 @@ class ApiCheckoutController extends Controller
         $details['checkout_completed_at'] = now()->toDateTimeString();
         $this->setTransactionDetails($transaction, $details);
         $transaction->save();
+        $this->markCouponTakeUsed($details);
 
         return response()->json(['success' => true, 'message' => 'Checkout akhir berhasil diselesaikan.', 'order' => $order->fresh()->load('items.product', 'transaction')], 200);
     }
@@ -168,6 +170,7 @@ class ApiCheckoutController extends Controller
         $request->validate([
             'order_id' => 'nullable|integer',
             'checkout_signature' => 'nullable|string',
+            'coupon_take_id' => 'nullable|integer',
             'address' => 'required|string',
             'phone' => 'required|string',
             'province_name' => 'required|string',
@@ -190,9 +193,10 @@ class ApiCheckoutController extends Controller
     {
         $cartItems = $request->items;
         $subtotal = $this->calculateSubtotal($cartItems);
-        $discount = 0;
+        $couponData = $this->calculateCouponDiscount($request, $user, $cartItems);
+        $discount = (float) ($couponData['amount'] ?? 0);
         $tax = 0;
-        $total = $subtotal + (float) $request->shipping_cost - $discount;
+        $total = max(0, $subtotal + (float) $request->shipping_cost - $discount);
         $courierParts = explode(' - ', $request->courier);
 
         $order = null;
@@ -224,6 +228,7 @@ class ApiCheckoutController extends Controller
         $order->locality = '-';
         $order->zip = '-';
         $order->status = 'ordered';
+        $this->fillOrderCouponColumns($order, $couponData);
         $order->save();
 
         if (! $isNewOrder) OrderItem::where('order_id', $order->id)->delete();
@@ -259,6 +264,7 @@ class ApiCheckoutController extends Controller
             'stage' => 'waiting_payment_method',
             'message' => 'Order sudah final, menunggu user memilih metode pembayaran.',
             'checkout_signature' => $this->checkoutSignature($request),
+            'coupon' => $couponData,
             'superseded_attempts' => $history,
         ]);
         $transaction->save();
@@ -277,6 +283,120 @@ class ApiCheckoutController extends Controller
             $subtotal += $price * (int) $item['quantity'];
         }
         return $subtotal;
+    }
+
+    private function calculateCouponDiscount(Request $request, $user, array $cartItems): ?array
+    {
+        $takeId = (int) $request->input('coupon_take_id', 0);
+        if ($takeId <= 0) return null;
+        if (! Schema::hasTable('cuppon_takes')) throw new \Exception('Tabel cuppon_takes belum tersedia.');
+
+        $take = CouponTake::with('coupon')
+            ->where('id', $takeId)
+            ->where('id_user', $user->id)
+            ->first();
+
+        if (! $take || ! $take->coupon) throw new \Exception('Kupon yang dipilih tidak ditemukan.');
+        if ($take->status !== 'take') throw new \Exception('Kupon sudah pernah digunakan atau tidak aktif.');
+
+        $coupon = $take->coupon;
+        if ($this->couponExpired($coupon)) throw new \Exception('Kupon sudah kedaluwarsa.');
+        if ($this->couponNotStarted($coupon)) throw new \Exception('Kupon belum aktif.');
+        if ($this->couponInactive($coupon)) throw new \Exception('Kupon tidak aktif.');
+
+        $sellerId = (int) ($coupon->id_user ?? $coupon->user_id ?? 0);
+        if ($sellerId <= 0) throw new \Exception('Kupon belum terhubung dengan toko.');
+
+        $eligibleSubtotal = 0;
+        foreach ($cartItems as $item) {
+            $product = Product::find($item['product_id']);
+            if (! $product || (int) $product->user_id !== $sellerId) continue;
+            $price = isset($item['price']) && is_numeric($item['price']) ? (float) $item['price'] : (float) ($product->sale_price ?: $product->regular_price);
+            $eligibleSubtotal += $price * (int) $item['quantity'];
+        }
+
+        if ($eligibleSubtotal <= 0) throw new \Exception('Kupon hanya bisa memotong produk dari toko pemilik kupon.');
+
+        $minimum = (float) ($coupon->min_purchase ?? $coupon->cart_value ?? $coupon->minimum_purchase ?? $coupon->min_order ?? 0);
+        if ($minimum > 0 && $eligibleSubtotal < $minimum) throw new \Exception('Subtotal produk toko belum memenuhi minimum belanja kupon.');
+
+        $type = (string) ($coupon->type ?? $coupon->coupon_type ?? 'fixed');
+        $value = (float) ($coupon->value ?? $coupon->amount ?? $coupon->discount ?? $coupon->discount_amount ?? 0);
+        $maxDiscount = (float) ($coupon->max_discount ?? 0);
+        $amount = 0;
+
+        if (in_array($type, ['discount', 'percent'], true)) {
+            $amount = $eligibleSubtotal * min($value, 100) / 100;
+            if ($maxDiscount > 0) $amount = min($amount, $maxDiscount);
+        } else {
+            $amount = $value;
+        }
+
+        $amount = min($eligibleSubtotal, max(0, $amount));
+
+        return [
+            'coupon_take_id' => $take->id,
+            'coupon_id' => $coupon->id,
+            'coupon_code' => $coupon->code ?? $coupon->coupon_code ?? ('KUPON' . $coupon->id),
+            'coupon_name' => $coupon->name ?? $coupon->title ?? $coupon->coupon_name ?? 'Kupon Toko',
+            'coupon_type' => $type === 'percent' ? 'discount' : $type,
+            'coupon_value' => $value,
+            'seller_id' => $sellerId,
+            'eligible_subtotal' => $eligibleSubtotal,
+            'amount' => round($amount),
+            'minimum_purchase' => $minimum,
+            'max_discount' => $maxDiscount,
+        ];
+    }
+
+    private function couponExpired($coupon): bool
+    {
+        if (isset($coupon->expires_at) && $coupon->expires_at) {
+            try { return $coupon->expires_at->isPast(); } catch (\Throwable $e) { return now()->gt($coupon->expires_at); }
+        }
+        if (isset($coupon->expiry_date) && $coupon->expiry_date) {
+            try { return now()->toDateString() > substr((string) $coupon->expiry_date, 0, 10); } catch (\Throwable $e) { return false; }
+        }
+        return false;
+    }
+
+    private function couponNotStarted($coupon): bool
+    {
+        if (isset($coupon->starts_at) && $coupon->starts_at) {
+            try { return $coupon->starts_at->isFuture(); } catch (\Throwable $e) { return now()->lt($coupon->starts_at); }
+        }
+        return false;
+    }
+
+    private function couponInactive($coupon): bool
+    {
+        if (isset($coupon->status) && $coupon->status !== null) return ! in_array((string) $coupon->status, ['active', '1'], true);
+        if (isset($coupon->is_active) && $coupon->is_active !== null) return ! (bool) $coupon->is_active;
+        return false;
+    }
+
+    private function fillOrderCouponColumns(Order $order, ?array $couponData): void
+    {
+        if (! $couponData) return;
+        $mapping = [
+            'coupon_take_id' => 'coupon_take_id',
+            'coupon_id' => 'coupon_id',
+            'coupon_code' => 'coupon_code',
+            'coupon_discount' => 'amount',
+            'coupon_seller_id' => 'seller_id',
+            'coupon_subtotal' => 'eligible_subtotal',
+        ];
+        foreach ($mapping as $column => $key) {
+            if (Schema::hasColumn('orders', $column)) $order->{$column} = $couponData[$key] ?? null;
+        }
+    }
+
+    private function markCouponTakeUsed(array $details): void
+    {
+        $coupon = $details['coupon'] ?? null;
+        $takeId = is_array($coupon) ? (int) ($coupon['coupon_take_id'] ?? 0) : 0;
+        if ($takeId <= 0 || ! Schema::hasTable('cuppon_takes')) return;
+        DB::table('cuppon_takes')->where('id', $takeId)->where('status', 'take')->update(['status' => 'used', 'updated_at' => now()]);
     }
 
     private function removeCheckedCartItems(array $cartItems, int $userId): void
@@ -330,6 +450,7 @@ class ApiCheckoutController extends Controller
             'payment_type' => $request->payment_type,
             'bank' => $request->input('bank'),
             'payment_info' => $paymentInfo,
+            'coupon' => $previousDetails['coupon'] ?? null,
             'midtrans_response' => $midtransArray,
             'superseded_attempts' => $history,
         ]);
@@ -393,6 +514,7 @@ class ApiCheckoutController extends Controller
             'shipping_cost' => (int) $request->shipping_cost,
             'payment_type' => (string) $request->payment_type,
             'bank' => $request->input('bank'),
+            'coupon_take_id' => $request->input('coupon_take_id'),
             'items' => $items,
         ]);
     }
