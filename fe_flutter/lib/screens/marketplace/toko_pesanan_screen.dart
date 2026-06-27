@@ -102,12 +102,18 @@ class _TokoPesananScreenState extends State<TokoPesananScreen> {
 
   Color _statusColor(dynamic status) {
     switch (_statusKey({'status': status})) {
-      case 'paid': return const Color(0xFF0B63CE);
-      case 'packing': return const Color(0xFF7C3AED);
-      case 'delivered': return const Color(0xFF0F766E);
-      case 'done': return const Color(0xFF15803D);
-      case 'canceled': return const Color(0xFFB91C1C);
-      default: return Colors.grey;
+      case 'paid':
+        return const Color(0xFF0B63CE);
+      case 'packing':
+        return const Color(0xFF7C3AED);
+      case 'delivered':
+        return const Color(0xFF0F766E);
+      case 'done':
+        return const Color(0xFF15803D);
+      case 'canceled':
+        return const Color(0xFFB91C1C);
+      default:
+        return Colors.grey;
     }
   }
 
@@ -129,6 +135,15 @@ class _TokoPesananScreenState extends State<TokoPesananScreen> {
   void _openDetail(dynamic order) async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => TokoPesananDetailScreen(order: order)));
     if (mounted) loadOrders();
+  }
+
+  Widget _countBadge(int count, bool active) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(color: active ? Colors.white : _navy, borderRadius: BorderRadius.circular(99)),
+      child: Text('$count', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: active ? _navy : Colors.white)),
+    );
   }
 
   Widget _filterBar() {
@@ -154,12 +169,7 @@ class _TokoPesananScreenState extends State<TokoPesananScreen> {
                   Row(children: [
                     Icon(filter['icon'] as IconData, size: 19, color: active ? Colors.white : _navy),
                     const Spacer(),
-                    Container(
-                      minWidth: 24,
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(color: active ? Colors.white : _navy, borderRadius: BorderRadius.circular(99)),
-                      child: Text('$count', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: active ? _navy : Colors.white)),
-                    ),
+                    _countBadge(count, active),
                   ]),
                   const SizedBox(height: 9),
                   Text(filter['label'] as String, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: active ? Colors.white : _navy)),
@@ -183,11 +193,11 @@ class _TokoPesananScreenState extends State<TokoPesananScreen> {
   }
 
   Widget _button(String text, IconData icon, Color color, VoidCallback onTap) => ElevatedButton.icon(
-    onPressed: onTap,
-    icon: Icon(icon, size: 17),
-    label: Text(text),
-    style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, minimumSize: const Size.fromHeight(42), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-  );
+        onPressed: onTap,
+        icon: Icon(icon, size: 17),
+        label: Text(text),
+        style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, minimumSize: const Size.fromHeight(42), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+      );
 
   Widget _orderCard(dynamic order) {
     final status = _statusKey(order);
@@ -198,7 +208,8 @@ class _TokoPesananScreenState extends State<TokoPesananScreen> {
       onTap: () => _openDetail(order),
       borderRadius: BorderRadius.circular(18),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 14), padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE5EAF3)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 6))]),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
@@ -233,9 +244,9 @@ class _TokoPesananScreenState extends State<TokoPesananScreen> {
   }
 
   Widget _miniRow(IconData icon, String label, dynamic value) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Row(children: [Icon(icon, size: 16, color: Colors.grey.shade600), const SizedBox(width: 8), SizedBox(width: 82, child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))), Expanded(child: Text(value?.toString() ?? '-', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)))]),
-  );
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(children: [Icon(icon, size: 16, color: Colors.grey.shade600), const SizedBox(width: 8), SizedBox(width: 82, child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))), Expanded(child: Text(value?.toString() ?? '-', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)))]),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -248,7 +259,7 @@ class _TokoPesananScreenState extends State<TokoPesananScreen> {
         Expanded(child: loading ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(
           onRefresh: loadOrders,
           child: filtered.isEmpty
-              ? ListView(padding: const EdgeInsets.all(24), children: [const SizedBox(height: 120), Icon(Icons.receipt_long_outlined, size: 72, color: Colors.grey.shade400), const SizedBox(height: 12), Center(child: Text('Belum ada pesanan ${_labelStatus(selectedStatus).toLowerCase()}.', style: TextStyle(color: Colors.grey.shade700)))] )
+              ? ListView(padding: const EdgeInsets.all(24), children: [const SizedBox(height: 120), Icon(Icons.receipt_long_outlined, size: 72, color: Colors.grey.shade400), const SizedBox(height: 12), Center(child: Text('Belum ada pesanan ${_labelStatus(selectedStatus).toLowerCase()}.', style: TextStyle(color: Colors.grey.shade700)))])
               : ListView.builder(padding: const EdgeInsets.all(16), itemCount: filtered.length, itemBuilder: (context, index) => _orderCard(filtered[index])),
         )),
       ]),
@@ -266,18 +277,34 @@ class TokoPesananDetailScreen extends StatelessWidget {
     final number = double.tryParse(value?.toString() ?? '0') ?? 0;
     final text = number.toStringAsFixed(0);
     final buffer = StringBuffer();
-    for (int i = 0; i < text.length; i++) { final reverseIndex = text.length - i; buffer.write(text[i]); if (reverseIndex > 1 && reverseIndex % 3 == 1) buffer.write('.'); }
+    for (int i = 0; i < text.length; i++) {
+      final reverseIndex = text.length - i;
+      buffer.write(text[i]);
+      if (reverseIndex > 1 && reverseIndex % 3 == 1) buffer.write('.');
+    }
     return 'Rp ${buffer.toString()}';
   }
 
   String _statusLabel(dynamic status) {
     switch (status?.toString().toLowerCase()) {
-      case 'paid': case 'ordered': return 'Dibayar';
-      case 'packing': case 'processing': case 'shipped': return 'Dikemas';
-      case 'delivered': return 'Dikirim';
-      case 'done': case 'completed': case 'complete': return 'Selesai';
-      case 'canceled': case 'cancelled': return 'Dibatalkan';
-      default: return status?.toString() ?? '-';
+      case 'paid':
+      case 'ordered':
+        return 'Dibayar';
+      case 'packing':
+      case 'processing':
+      case 'shipped':
+        return 'Dikemas';
+      case 'delivered':
+        return 'Dikirim';
+      case 'done':
+      case 'completed':
+      case 'complete':
+        return 'Selesai';
+      case 'canceled':
+      case 'cancelled':
+        return 'Dibatalkan';
+      default:
+        return status?.toString() ?? '-';
     }
   }
 
@@ -300,7 +327,8 @@ class TokoPesananDetailScreen extends StatelessWidget {
         _section('Produk Toko Ini', [
           ...items.map((item) {
             final product = item['product'] as Map? ?? {};
-            return Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: _softBlue.withOpacity(0.55), borderRadius: BorderRadius.circular(12)), child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(product['name']?.toString() ?? 'Produk', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _navy)), const SizedBox(height: 4), Text('${_currency(item['price'])} x ${item['quantity'] ?? 1}', style: TextStyle(fontSize: 12, color: Colors.grey.shade700))])), Text(_currency(item['line_total'] ?? ((double.tryParse(item['price']?.toString() ?? '0') ?? 0) * (int.tryParse(item['quantity']?.toString() ?? '1') ?? 1))), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _navy))]));
+            final lineTotal = item['line_total'] ?? ((double.tryParse(item['price']?.toString() ?? '0') ?? 0) * (int.tryParse(item['quantity']?.toString() ?? '1') ?? 1));
+            return Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: _softBlue.withOpacity(0.55), borderRadius: BorderRadius.circular(12)), child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(product['name']?.toString() ?? 'Produk', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _navy)), const SizedBox(height: 4), Text('${_currency(item['price'])} x ${item['quantity'] ?? 1}', style: TextStyle(fontSize: 12, color: Colors.grey.shade700))])), Text(_currency(lineTotal), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _navy))]));
           }).toList(),
           const Divider(height: 18), _row('Total toko', _currency(order['seller_total'] ?? order['total'] ?? 0)),
         ]),
