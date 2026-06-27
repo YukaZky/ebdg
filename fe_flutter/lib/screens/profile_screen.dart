@@ -10,6 +10,7 @@ import 'admin/address_list_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
 import 'claimed_coupon_screen.dart';
 import 'login_screen.dart';
+import 'order_history_screen.dart';
 import 'register_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -24,6 +25,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? userProfile;
   bool isLoading = false;
   bool isUploadingPhoto = false;
+  bool _loadingOrders = false;
+  bool _ordersExpanded = false;
+  List<dynamic> _orders = [];
   late Future<List<Product>> _productsFuture;
   final ImagePicker _picker = ImagePicker();
 
@@ -31,18 +35,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
   static const Color _accent = Color(0xFFF39C12);
   static const Color _purple = Color(0xFF6C4DFF);
   static const Color _surface = Color(0xFFF7F8FC);
+  static const Color _danger = Color(0xFFB91C1C);
+
+  final List<Map<String, dynamic>> _orderStatuses = const [
+    {'key': 'pending_payment', 'title': 'Belum Bayar', 'icon': Icons.account_balance_wallet_outlined},
+    {'key': 'paid_not_checked_out', 'title': 'Dibayar', 'icon': Icons.verified_outlined},
+    {'key': 'packing', 'title': 'Dikemas', 'icon': Icons.inventory_2_outlined},
+    {'key': 'delivered', 'title': 'Dikirim', 'icon': Icons.local_shipping_outlined},
+    {'key': 'done', 'title': 'Selesai', 'icon': Icons.star_border_rounded},
+    {'key': 'canceled', 'title': 'Dibatalkan', 'icon': Icons.cancel_outlined},
+  ];
 
   @override
   void initState() {
     super.initState();
     _fetchProfile();
+    _loadOrderSummary();
     _productsFuture = ProductCacheService.getProducts();
+  }
+
+  Future<void> _refreshAll() async {
+    await _fetchProfile();
+    await _loadOrderSummary();
   }
 
   Future<void> _fetchProfile() async {
     if (ApiService.token == null) {
       widget.onProfileUpdated('Akun');
-      if (mounted) setState(() => userProfile = null);
+      if (mounted) {
+        setState(() {
+          userProfile = null;
+          _orders = [];
+        });
+      }
       return;
     }
 
@@ -59,6 +84,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) setState(() => isLoading = false);
     }
   }
+
+  Future<void> _loadOrderSummary() async {
+    if (ApiService.token == null) {
+      if (mounted) setState(() => _orders = []);
+      return;
+    }
+
+    setState(() => _loadingOrders = true);
+    try {
+      final data = await ApiService.getOrders();
+      if (!mounted) return;
+      setState(() {
+        _orders = data;
+        _loadingOrders = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _orders = [];
+        _loadingOrders = false;
+      });
+    }
+  }
+
+  Map<String, dynamic> _map(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return <String, dynamic>{};
+  }
+
+  String _orderStatusKey(dynamic rawOrder) {
+    final order = _map(rawOrder);
+    final direct = order['frontend_status']?.toString().toLowerCase();
+    if (direct != null && direct.isNotEmpty) return direct;
+
+    final transaction = _map(order['transaction']);
+    final trx = transaction['status']?.toString().toLowerCase() ?? order['transaction_status']?.toString().toLowerCase() ?? '';
+    final raw = order['status']?.toString().toLowerCase() ?? '';
+
+    if (raw == 'canceled' || raw == 'cancelled') return 'canceled';
+    if (raw == 'done' || raw == 'completed' || raw == 'complete' || raw == 'selesai') return 'done';
+    if (raw == 'delivered' || raw == 'deliver') return 'delivered';
+    if (raw == 'packing' || raw == 'processing' || raw == 'shipped' || raw == 'dikemas') return 'packing';
+    if (raw == 'paid' || raw == 'dibayar' || trx == 'approved' || trx == 'settlement' || trx == 'capture') return 'paid_not_checked_out';
+    return 'pending_payment';
+  }
+
+  int _orderCount(String statusKey) => _orders.where((order) => _orderStatusKey(order) == statusKey).length;
+
+  int get _activeOrderCount => _orderCount('pending_payment') + _orderCount('paid_not_checked_out') + _orderCount('packing') + _orderCount('delivered');
 
   String _maskEmail(dynamic value) {
     final email = value?.toString().trim() ?? '';
@@ -128,7 +203,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!mounted) return;
     setState(() {
       isLoading = false;
-      if (success) userProfile = null;
+      if (success) {
+        userProfile = null;
+        _orders = [];
+      }
     });
     if (success) widget.onProfileUpdated('Akun');
     ScaffoldMessenger.of(context).showSnackBar(
@@ -142,7 +220,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Silakan login terlebih dahulu untuk mengakses fitur ini'), behavior: SnackBarBehavior.floating));
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())).then((_) => _fetchProfile());
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())).then((_) => _refreshAll());
+  }
+
+  void _openOrderStatus(bool isLoggedIn, String statusKey) {
+    _guard(isLoggedIn, () {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => OrderHistoryScreen(initialStatus: statusKey))).then((_) => _loadOrderSummary());
+    });
   }
 
   @override
@@ -151,7 +235,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: _surface,
       body: RefreshIndicator(
-        onRefresh: _fetchProfile,
+        onRefresh: _refreshAll,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
           slivers: [
@@ -252,9 +336,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   if (!isLoggedIn) ...[
                     const SizedBox(height: 12),
                     Row(children: [
-                      _miniAuthButton('Login', Colors.white, _primary, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())).then((_) => _fetchProfile())),
+                      _miniAuthButton('Login', Colors.white, _primary, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())).then((_) => _refreshAll())),
                       const SizedBox(width: 8),
-                      _miniAuthButton('Daftar', _accent, Colors.white, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())).then((_) => _fetchProfile())),
+                      _miniAuthButton('Daftar', _accent, Colors.white, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())).then((_) => _refreshAll())),
                     ]),
                   ],
                 ])),
@@ -284,27 +368,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _orderCard(bool isLoggedIn) {
+    final visibleStatuses = _ordersExpanded ? _orderStatuses : _orderStatuses.take(4).toList();
     return _card(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        const Text('Pesanan Saya', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87)),
-        TextButton(onPressed: () => _guard(isLoggedIn, () {}), child: const Text('Lihat Semua')),
+        Row(children: [
+          const Text('Pesanan Saya', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87)),
+          if (_loadingOrders) ...[
+            const SizedBox(width: 8),
+            const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+          ] else if (_activeOrderCount > 0) ...[
+            const SizedBox(width: 8),
+            _smallCountBadge(_activeOrderCount, _accent),
+          ],
+        ]),
+        TextButton.icon(
+          onPressed: () => _guard(isLoggedIn, () => setState(() => _ordersExpanded = !_ordersExpanded)),
+          icon: Icon(_ordersExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, size: 18),
+          label: Text(_ordersExpanded ? 'Tutup' : 'Lihat Semua'),
+        ),
       ]),
       const SizedBox(height: 8),
-      Row(children: [
-        Expanded(child: _orderItem(Icons.account_balance_wallet_outlined, 'Belum Bayar', isLoggedIn)),
-        Expanded(child: _orderItem(Icons.inventory_2_outlined, 'Dikemas', isLoggedIn)),
-        Expanded(child: _orderItem(Icons.local_shipping_outlined, 'Dikirim', isLoggedIn)),
-        Expanded(child: _orderItem(Icons.star_border_rounded, 'Dinilai', isLoggedIn)),
-      ]),
+      AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        child: GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, childAspectRatio: .82, crossAxisSpacing: 4, mainAxisSpacing: 8),
+          itemCount: visibleStatuses.length,
+          itemBuilder: (context, index) {
+            final item = visibleStatuses[index];
+            return _orderItem(item['icon'] as IconData, item['title'] as String, item['key'] as String, isLoggedIn);
+          },
+        ),
+      ),
     ]));
   }
 
-  Widget _orderItem(IconData icon, String title, bool isLoggedIn) {
+  Widget _smallCountBadge(int count, Color color) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),
+      child: Text(count > 99 ? '99+' : '$count', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
+    );
+  }
+
+  Widget _orderItem(IconData icon, String title, String statusKey, bool isLoggedIn) {
+    final count = _orderCount(statusKey);
+    final isCanceled = statusKey == 'canceled';
+    final badgeColor = isCanceled ? _danger : _accent;
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: () => _guard(isLoggedIn, () {}),
+      onTap: () => _openOrderStatus(isLoggedIn, statusKey),
       child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Column(children: [
-        Container(width: 48, height: 48, decoration: BoxDecoration(color: _purple.withOpacity(0.10), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: _primary, size: 24)),
+        Stack(clipBehavior: Clip.none, children: [
+          Container(width: 48, height: 48, decoration: BoxDecoration(color: (isCanceled ? _danger : _purple).withOpacity(0.10), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: isCanceled ? _danger : _primary, size: 24)),
+          if (count > 0)
+            Positioned(
+              right: -7,
+              top: -7,
+              child: _smallCountBadge(count, badgeColor),
+            ),
+        ]),
         const SizedBox(height: 8),
         Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontWeight: FontWeight.w700), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
       ])),
