@@ -141,6 +141,18 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     return '${_money(value)} OFF';
   }
 
+  int? _remainingLimit(Map<String, dynamic> coupon) {
+    final raw = coupon['remaining_limit'] ?? coupon['usage_limit'];
+    if (raw == null || raw.toString().trim().isEmpty || raw.toString() == 'null') return null;
+    return int.tryParse(raw.toString());
+  }
+
+  String _limitText(Map<String, dynamic> coupon) {
+    final limit = _remainingLimit(coupon);
+    if (limit == null) return 'Tidak dibatasi';
+    return limit <= 0 ? 'Habis' : '$limit tersisa';
+  }
+
   Future<void> _takeCoupon(Map<String, dynamic> coupon) async {
     final id = int.tryParse(coupon['id']?.toString() ?? '');
     if (id == null || takingCouponIds.contains(id) || coupon['is_taken'] == true) return;
@@ -159,6 +171,7 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
       }
     });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result != null ? 'Kupon berhasil diambil.' : 'Gagal mengambil kupon.')));
+    if (result == null) loadStore();
   }
 
   Widget _stars(double rating, {double size = 16}) => Row(mainAxisSize: MainAxisSize.min, children: List.generate(5, (index) => Icon(index < rating.round() ? Icons.star : Icons.star_border, color: Colors.amber, size: size)));
@@ -260,6 +273,8 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     final id = int.tryParse(coupon['id']?.toString() ?? '') ?? 0;
     final taken = coupon['is_taken'] == true || coupon['take_status'] == 'take' || coupon['take_status'] == 'used';
     final loading = takingCouponIds.contains(id);
+    final remaining = _remainingLimit(coupon);
+    final empty = remaining != null && remaining <= 0;
     return Container(
       width: 236,
       margin: const EdgeInsets.only(right: 12),
@@ -273,13 +288,15 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
         Text(coupon['name']?.toString() ?? 'Kupon toko', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
         const SizedBox(height: 4),
         Text('Min. belanja ${_money(coupon['min_purchase'])}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+        const SizedBox(height: 3),
+        Text('Sisa limit: ${_limitText(coupon)}', style: TextStyle(fontSize: 11.5, color: empty ? Colors.red : const Color(0xFF64748B), fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: taken || loading ? null : () => _takeCoupon(coupon),
+            onPressed: taken || loading || empty ? null : () => _takeCoupon(coupon),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, disabledBackgroundColor: const Color(0xFFE2E8F0), disabledForegroundColor: Colors.grey, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            child: Text(loading ? 'Mengambil...' : taken ? 'Sudah Diambil' : 'Ambil'),
+            child: Text(loading ? 'Mengambil...' : taken ? 'Sudah Diambil' : empty ? 'Habis' : 'Ambil'),
           ),
         ),
       ]),
