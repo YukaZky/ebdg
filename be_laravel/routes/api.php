@@ -13,6 +13,8 @@ use App\Http\Controllers\Api\ApiAdminController;
 use App\Http\Controllers\Api\ApiMarketplaceController;
 use App\Http\Controllers\Api\ApiMarketplaceChatController;
 use App\Http\Controllers\Api\ApiUserProfileController;
+use App\Http\Controllers\Api\ApiMediaController;
+use App\Http\Controllers\Api\ApiProductVariationImageController;
 use App\Http\Controllers\MidtransController;
 use App\Http\Controllers\Api\ApiPaymentMethodController;
 
@@ -21,6 +23,7 @@ Route::post('/login', [ApiAuthController::class, 'login']);
 
 Route::get('/products', [ApiProductController::class, 'index']);
 Route::get('/products/{slug}', [ApiProductController::class, 'show']);
+Route::get('/product-image/{filename}', [ApiMediaController::class, 'productImage']);
 Route::get('/stores/{slug}', [ApiMarketplaceController::class, 'storeDetail']);
 Route::get('/products/{productId}/reviews', [ApiMarketplaceController::class, 'productReviews']);
 Route::post('/midtrans/notification', [MidtransController::class, 'notificationHandler']);
@@ -83,6 +86,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/products/update/{id}', [ApiAdminController::class, 'updateProduct']);
         Route::post('/products/update/{id}', [ApiAdminController::class, 'updateProduct']);
         Route::delete('/products/delete/{id}', [ApiAdminController::class, 'deleteProduct']);
+        Route::post('/product-variations/{id}/image', [ApiProductVariationImageController::class, 'update']);
 
         Route::get('/categories', [ApiAdminController::class, 'getCategories']);
         Route::post('/categories/store', [ApiAdminController::class, 'storeCategory']);

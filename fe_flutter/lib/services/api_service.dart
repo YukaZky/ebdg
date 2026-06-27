@@ -479,6 +479,91 @@ class ApiService {
     return '${prefix}_${DateTime.now().millisecondsSinceEpoch}_$index.jpg';
   }
 
+  static int? _variationIdFromSaveResponse(
+    Map<String, dynamic> decoded,
+    int index,
+    List<String>? variationNames,
+    List<String>? variationIds,
+  ) {
+    final data = decoded['data'];
+    if (data is! Map || data['variations'] is! List) return null;
+
+    final variations = List<dynamic>.from(data['variations']);
+
+    if (variationIds != null && index < variationIds.length && variationIds[index].trim().isNotEmpty) {
+      final targetId = variationIds[index].trim();
+      for (final item in variations) {
+        if (item is Map && item['id']?.toString() == targetId) {
+          return int.tryParse(item['id'].toString());
+        }
+      }
+    }
+
+    if (variationNames != null && index < variationNames.length) {
+      final targetName = variationNames[index].trim();
+      for (final item in variations) {
+        if (item is Map && item['name']?.toString().trim() == targetName) {
+          return int.tryParse(item['id'].toString());
+        }
+      }
+    }
+
+    if (index < variations.length && variations[index] is Map) {
+      return int.tryParse(variations[index]['id'].toString());
+    }
+
+    return null;
+  }
+
+  static Future<bool> _uploadVariationImageBase64(int variationId, XFile file, int index) async {
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) return false;
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/admin/product-variations/$variationId/image"),
+      headers: _jsonHeaders,
+      body: jsonEncode({
+        'image_base64': base64Encode(bytes),
+        'filename': _safeUploadFileName(file, index, 'variation'),
+      }),
+    );
+
+    print("uploadVariationImage status: ${response.statusCode}");
+    print("uploadVariationImage body: ${response.body}");
+
+    return response.statusCode == 200 || response.statusCode == 201;
+  }
+
+  static Future<bool> _uploadVariationImagesAfterSave(
+    String saveResponseBody,
+    List<XFile?>? variationImages,
+    List<String>? variationNames,
+    List<String>? variationIds,
+  ) async {
+    if (variationImages == null || variationImages.every((item) => item == null)) return true;
+
+    final decoded = jsonDecode(saveResponseBody);
+    if (decoded is! Map<String, dynamic>) return false;
+
+    var allUploaded = true;
+    for (int i = 0; i < variationImages.length; i++) {
+      final image = variationImages[i];
+      if (image == null) continue;
+
+      final variationId = _variationIdFromSaveResponse(decoded, i, variationNames, variationIds);
+      if (variationId == null || variationId <= 0) {
+        print('Gagal menemukan ID variasi untuk upload gambar index $i');
+        allUploaded = false;
+        continue;
+      }
+
+      final uploaded = await _uploadVariationImageBase64(variationId, image, i);
+      if (!uploaded) allUploaded = false;
+    }
+
+    return allUploaded;
+  }
+
   static Future<List<dynamic>> getAdminProducts() async {
     if (_token == null) return [];
     final response = await http.get(Uri.parse("$baseUrl/admin/products?_=${DateTime.now().millisecondsSinceEpoch}"),
@@ -567,17 +652,6 @@ class ApiService {
           request.fields['variation_quantities[$i]'] =
               variationQuantities[i].isEmpty ? '0' : variationQuantities[i];
         }
-        if (variationImages != null && i < variationImages.length && variationImages[i] != null) {
-          final file = variationImages[i]!;
-          final bytes = await file.readAsBytes();
-          if (bytes.isNotEmpty) {
-            request.files.add(http.MultipartFile.fromBytes(
-              'variation_images[$i]',
-              bytes,
-              filename: _safeUploadFileName(file, i, 'variation'),
-            ));
-          }
-        }
       }
     }
 
@@ -586,8 +660,10 @@ class ApiService {
       final body = await response.stream.bytesToString();
       print("saveAdminProduct status: ${response.statusCode}");
       print("saveAdminProduct body: $body");
-      if (response.statusCode == 200 || response.statusCode == 201) return true;
-      return false;
+      if (response.statusCode != 200 && response.statusCode != 201) return false;
+
+      final imagesUploaded = await _uploadVariationImagesAfterSave(body, variationImages, variationNames, variationIds);
+      return imagesUploaded;
     } catch (e) {
       print("Exception saveAdminProduct: $e");
       return false;

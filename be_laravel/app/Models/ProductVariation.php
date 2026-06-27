@@ -39,12 +39,8 @@ class ProductVariation extends Model
             return $image;
         }
 
-        $cleanImage = ltrim($image, '/');
+        $cleanImage = basename(ltrim($image, '/'));
 
-        if (str_starts_with($cleanImage, 'uploads/') || str_starts_with($cleanImage, 'storage/')) {
-            return asset($cleanImage);
-        }
-
-        return asset('uploads/products/' . $cleanImage);
+        return url('/api/product-image/' . $cleanImage);
     }
 }
