@@ -3,7 +3,7 @@ import '../../services/api_service.dart';
 import '../map_picker_screen.dart';
 
 class AddressFormScreen extends StatefulWidget {
-  final Map<String, dynamic>? existingAddress; 
+  final Map<String, dynamic>? existingAddress;
   const AddressFormScreen({Key? key, this.existingAddress}) : super(key: key);
 
   @override
@@ -13,11 +13,11 @@ class AddressFormScreen extends StatefulWidget {
 class _AddressFormScreenState extends State<AddressFormScreen> {
   List _provinces = [];
   List _cities = [];
-  List _subdistricts = []; 
+  List _subdistricts = [];
 
   String? _selectedProvinceId;
   String? _selectedCityId;
-  String? _selectedSubdistrictId; 
+  String? _selectedSubdistrictId;
 
   bool _isLoading = false;
   bool _isSaving = false;
@@ -31,8 +31,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   String _addressLabel = 'Rumah';
   bool _isMainAddress = false;
-  bool _isStoreAddress = false;
-  
+
   double? _latitude;
   double? _longitude;
   String _mapAddressText = 'Pilih Titik Lokasi Pada Peta';
@@ -43,70 +42,66 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     _loadInitialData();
   }
 
-  void _loadInitialData() async {
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _postalCodeController.dispose();
+    _detailAddressController.dispose();
+    _landmarkController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
-    
+
     final provData = await ApiService.getProvinces();
-    if (mounted) {
-      setState(() => _provinces = provData);
-    }
-    
-    if (widget.existingAddress != null && mounted) {
-      final storeData = widget.existingAddress!;
+    if (!mounted) return;
+    setState(() => _provinces = provData);
 
-      _nameController.text = storeData['name']?.toString() ?? '';
-      _phoneController.text = storeData['phone']?.toString() ?? '';
-      _detailAddressController.text = storeData['address']?.toString() ?? '';
-      _landmarkController.text = storeData['landmark']?.toString() ?? '';
-      _postalCodeController.text = storeData['postal_code']?.toString() ?? storeData['zip']?.toString() ?? '';
-      _noteController.text = storeData['note']?.toString() ?? '';
-      
-      if (storeData['label'] != null) {
-        _addressLabel = storeData['label'].toString();
-      }
-      
-      // PERBAIKAN: Membaca segala jenis format respons dari backend (Integer, String, Boolean, atau key alternatif)
-      _isMainAddress = storeData['isdefault'] == 1 || storeData['isdefault'] == '1' || storeData['isdefault'] == true ||
-                       storeData['is_main'] == 1 || storeData['is_main'] == '1' || storeData['is_main'] == true;
-                       
-      _isStoreAddress = storeData['is_store_address'] == 1 || storeData['is_store_address'] == '1' || storeData['is_store_address'] == true ||
-                        storeData['is_store'] == 1 || storeData['is_store'] == '1' || storeData['is_store'] == true;
+    final addressData = widget.existingAddress;
+    if (addressData != null) {
+      _nameController.text = addressData['name']?.toString() ?? '';
+      _phoneController.text = addressData['phone']?.toString() ?? '';
+      _detailAddressController.text = addressData['address']?.toString() ?? '';
+      _landmarkController.text = addressData['landmark']?.toString() ?? '';
+      _postalCodeController.text = addressData['postal_code']?.toString() ?? addressData['zip']?.toString() ?? '';
+      _noteController.text = addressData['note']?.toString() ?? '';
 
-      if (storeData['latitude'] != null) _latitude = double.tryParse(storeData['latitude'].toString());
-      if (storeData['longitude'] != null) _longitude = double.tryParse(storeData['longitude'].toString());
+      final label = addressData['label']?.toString();
+      if (label == 'Rumah' || label == 'Kantor') _addressLabel = label!;
+
+      _isMainAddress = addressData['isdefault'] == 1 ||
+          addressData['isdefault'] == '1' ||
+          addressData['isdefault'] == true ||
+          addressData['is_main'] == 1 ||
+          addressData['is_main'] == '1' ||
+          addressData['is_main'] == true;
+
+      _latitude = double.tryParse(addressData['latitude']?.toString() ?? '');
+      _longitude = double.tryParse(addressData['longitude']?.toString() ?? '');
       if (_latitude != null && _longitude != null) _mapAddressText = 'Koordinat Peta Telah Dikunci';
 
-      if (storeData['province_id'] != null) {
-        String fetchedProvId = storeData['province_id'].toString();
-        bool provExists = _provinces.any((p) => (p['id'] ?? p['province_id'])?.toString() == fetchedProvId);
-        
-        if (provExists) {
-           setState(() => _selectedProvinceId = fetchedProvId);
-           await _fetchCities(_selectedProvinceId!); 
-           
-           if (storeData['city_id'] != null) {
-              String fetchedCityId = storeData['city_id'].toString();
-              bool cityExists = _cities.any((c) => (c['id'] ?? c['city_id'])?.toString() == fetchedCityId);
-              if (cityExists) {
-                setState(() => _selectedCityId = fetchedCityId);
-                await _fetchSubdistricts(fetchedCityId); 
+      final provinceId = addressData['province_id']?.toString();
+      if (provinceId != null && _provinces.any((p) => (p['id'] ?? p['province_id'])?.toString() == provinceId)) {
+        _selectedProvinceId = provinceId;
+        await _fetchCities(provinceId);
 
-                if (storeData['district_id'] != null && storeData['district_id'].toString() != '0') {
-                  String fetchedSubId = storeData['district_id'].toString();
-                  bool subExists = _subdistricts.any((s) => (s['id'] ?? s['subdistrict_id'])?.toString() == fetchedSubId);
-                  if (subExists) {
-                    setState(() => _selectedSubdistrictId = fetchedSubId);
-                  }
-                }
-              }
-           }
+        final cityId = addressData['city_id']?.toString();
+        if (cityId != null && _cities.any((c) => (c['id'] ?? c['city_id'])?.toString() == cityId)) {
+          _selectedCityId = cityId;
+          await _fetchSubdistricts(cityId);
+
+          final districtId = addressData['district_id']?.toString();
+          if (districtId != null && districtId != '0' && _subdistricts.any((s) => (s['id'] ?? s['subdistrict_id'])?.toString() == districtId)) {
+            _selectedSubdistrictId = districtId;
+          }
         }
       }
     }
-    
-    if (mounted) {
-      setState(() => _isLoading = false);
-    }
+
+    if (mounted) setState(() => _isLoading = false);
   }
 
   Future<void> _fetchCities(String provinceId) async {
@@ -119,74 +114,87 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
     if (mounted) setState(() => _subdistricts = data);
   }
 
-  void _saveLocation() async {
+  String _provinceName() {
+    try {
+      final prov = _provinces.firstWhere((p) => (p['id'] ?? p['province_id']).toString() == _selectedProvinceId);
+      return (prov['name'] ?? prov['province']).toString();
+    } catch (_) {
+      return '-';
+    }
+  }
+
+  String _cityName() {
+    try {
+      final city = _cities.firstWhere((c) => (c['id'] ?? c['city_id']).toString() == _selectedCityId);
+      final name = city['name']?.toString() ?? '${city['type'] ?? ''} ${city['city_name'] ?? ''}'.trim();
+      return name.isEmpty ? '-' : name;
+    } catch (_) {
+      return '-';
+    }
+  }
+
+  String _subdistrictName() {
+    try {
+      final sub = _subdistricts.firstWhere((s) => (s['id'] ?? s['subdistrict_id']).toString() == _selectedSubdistrictId);
+      return (sub['name'] ?? sub['subdistrict_name']).toString();
+    } catch (_) {
+      return '-';
+    }
+  }
+
+  Future<void> _saveLocation() async {
     if (_selectedProvinceId == null || _selectedCityId == null || _selectedSubdistrictId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pilih Provinsi, Kota, dan Kecamatan!"), backgroundColor: Colors.redAccent));
+      _showSnack('Pilih Provinsi, Kota, dan Kecamatan!', error: true);
       return;
     }
 
     if (_latitude == null || _longitude == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Harap tentukan titik lokasi pada peta!"), backgroundColor: Colors.redAccent));
+      _showSnack('Harap tentukan titik lokasi pada peta!', error: true);
       return;
     }
 
     setState(() => _isSaving = true);
-    
-    String provinceName = '-';
-    try {
-      final prov = _provinces.firstWhere((p) => (p['id'] ?? p['province_id']).toString() == _selectedProvinceId);
-      provinceName = (prov['name'] ?? prov['province']).toString();
-    } catch (e) {}
 
-    String cityName = '-';
-    try {
-      final city = _cities.firstWhere((c) => (c['id'] ?? c['city_id']).toString() == _selectedCityId);
-      cityName = city['name']?.toString() ?? "${city['type'] ?? ''} ${city['city_name'] ?? ''}".trim();
-    } catch (e) {}
-
-    String subdistrictName = '-';
-    try {
-      final sub = _subdistricts.firstWhere((s) => (s['id'] ?? s['subdistrict_id']).toString() == _selectedSubdistrictId);
-      subdistrictName = (sub['name'] ?? sub['subdistrict_name']).toString();
-    } catch (e) {}
-
-    Map<String, dynamic> payload = {
+    final payload = <String, dynamic>{
       if (widget.existingAddress != null) 'address_id': widget.existingAddress!['id'],
       'name': _nameController.text,
       'phone': _phoneController.text,
       'province_id': _selectedProvinceId,
-      'province_name': provinceName,
+      'province_name': _provinceName(),
       'city_id': _selectedCityId,
-      'city_name': cityName,
-      'district_id': _selectedSubdistrictId, 
-      'kecamatan': subdistrictName,          
+      'city_name': _cityName(),
+      'district_id': _selectedSubdistrictId,
+      'kecamatan': _subdistrictName(),
       'postal_code': _postalCodeController.text,
       'detail_address': _detailAddressController.text,
       'landmark': _landmarkController.text,
       'note': _noteController.text,
       'label': _addressLabel,
-      
-      // PERBAIKAN: Mengirim angka integer 1/0 dan duplikasi key agar backend pasti menerimanya
       'is_main': _isMainAddress ? 1 : 0,
       'isdefault': _isMainAddress ? 1 : 0,
-      'is_store': _isStoreAddress ? 1 : 0,
-      'is_store_address': _isStoreAddress ? 1 : 0,
-      
+      'is_store': 0,
+      'is_store_address': 0,
       'latitude': _latitude?.toString(),
       'longitude': _longitude?.toString(),
     };
 
-    bool success = await ApiService.saveUserAddress(payload); 
-    
+    final success = await ApiService.saveUserAddress(payload);
+
     if (!mounted) return;
     setState(() => _isSaving = false);
 
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Detail Alamat berhasil disimpan!", style: TextStyle(color: Colors.white)), backgroundColor: Colors.green));
-      Navigator.pop(context); 
+      _showSnack('Detail alamat berhasil disimpan.');
+      Navigator.pop(context);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menyimpan lokasi.", style: TextStyle(color: Colors.white)), backgroundColor: Colors.red));
+      _showSnack('Gagal menyimpan lokasi.', error: true);
     }
+  }
+
+  void _showSnack(String message, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: error ? Colors.red : Colors.green),
+    );
   }
 
   List<DropdownMenuItem<String>> _buildProvinceItems() {
@@ -212,9 +220,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       return true;
     }).map<DropdownMenuItem<String>>((city) {
       final id = (city['id'] ?? city['city_id']).toString();
-      String cityName = city['name']?.toString() ?? "${city['type'] ?? ''} ${city['city_name'] ?? ''}".trim();
-      if (cityName.isEmpty) cityName = 'Tidak Diketahui';
-      return DropdownMenuItem<String>(value: id, child: Text(cityName, style: const TextStyle(fontSize: 14)));
+      final name = city['name']?.toString() ?? '${city['type'] ?? ''} ${city['city_name'] ?? ''}'.trim();
+      return DropdownMenuItem<String>(value: id, child: Text(name.isEmpty ? 'Tidak Diketahui' : name, style: const TextStyle(fontSize: 14)));
     }).toList();
   }
 
@@ -227,9 +234,38 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       return true;
     }).map<DropdownMenuItem<String>>((sub) {
       final id = (sub['id'] ?? sub['subdistrict_id']).toString();
-      String subName = (sub['name'] ?? sub['subdistrict_name'])?.toString() ?? 'Tidak Diketahui';
-      return DropdownMenuItem<String>(value: id, child: Text(subName, style: const TextStyle(fontSize: 14)));
+      final name = (sub['name'] ?? sub['subdistrict_name'])?.toString() ?? 'Tidak Diketahui';
+      return DropdownMenuItem<String>(value: id, child: Text(name, style: const TextStyle(fontSize: 14)));
     }).toList();
+  }
+
+  Future<void> _pickMap() async {
+    final parts = <String>[];
+    if (_detailAddressController.text.trim().isNotEmpty) parts.add(_detailAddressController.text.trim());
+    if (_subdistrictName() != '-') parts.add(_subdistrictName());
+    if (_cityName() != '-') parts.add(_cityName());
+    if (_provinceName() != '-') parts.add(_provinceName());
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MapPickerScreen(
+          initialLat: _latitude,
+          initialLng: _longitude,
+          searchAddress: parts.join(', '),
+        ),
+      ),
+    );
+
+    if (!mounted || result == null) return;
+    setState(() {
+      _latitude = result['latitude'];
+      _longitude = result['longitude'];
+      _mapAddressText = 'Koordinat Peta Telah Dikunci';
+      if (_detailAddressController.text.trim().isEmpty) {
+        _detailAddressController.text = result['addressText']?.toString() ?? '';
+      }
+    });
   }
 
   @override
@@ -262,58 +298,25 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                   _buildSectionContainer(
                     title: 'Lokasi Lengkap',
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: DropdownButtonFormField<String>(
-                          isExpanded: true,
-                          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey),
-                          decoration: _inputDecoration('Provinsi'),
-                          value: validProvinceId,
-                          items: _buildProvinceItems(),
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedProvinceId = value;
-                              _selectedCityId = null; 
-                              _selectedSubdistrictId = null; 
-                              _cities = [];
-                              _subdistricts = [];
-                            });
-                            if (value != null && value.isNotEmpty) _fetchCities(value);
-                          },
-                        ),
-                      ),
-                      
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: DropdownButtonFormField<String>(
-                          isExpanded: true,
-                          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey),
-                          decoration: _inputDecoration('Kota / Kabupaten'),
-                          value: validCityId,
-                          items: _buildCityItems(),
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedCityId = value;
-                              _selectedSubdistrictId = null;
-                              _subdistricts = [];
-                            });
-                            if (value != null && value.isNotEmpty) _fetchSubdistricts(value);
-                          },
-                        ),
-                      ),
-                      
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: DropdownButtonFormField<String>(
-                          isExpanded: true,
-                          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey),
-                          decoration: _inputDecoration('Kecamatan'),
-                          value: validSubId,
-                          items: _buildSubdistrictItems(),
-                          onChanged: (value) => setState(() => _selectedSubdistrictId = value),
-                        ),
-                      ),
-
+                      _dropdown('Provinsi', validProvinceId, _buildProvinceItems(), (value) {
+                        setState(() {
+                          _selectedProvinceId = value;
+                          _selectedCityId = null;
+                          _selectedSubdistrictId = null;
+                          _cities = [];
+                          _subdistricts = [];
+                        });
+                        if (value != null && value.isNotEmpty) _fetchCities(value);
+                      }),
+                      _dropdown('Kota / Kabupaten', validCityId, _buildCityItems(), (value) {
+                        setState(() {
+                          _selectedCityId = value;
+                          _selectedSubdistrictId = null;
+                          _subdistricts = [];
+                        });
+                        if (value != null && value.isNotEmpty) _fetchSubdistricts(value);
+                      }),
+                      _dropdown('Kecamatan', validSubId, _buildSubdistrictItems(), (value) => setState(() => _selectedSubdistrictId = value)),
                       _buildTextField('Detail Alamat (Jalan, Gedung, No. Rumah)', _detailAddressController, maxLines: 3),
                       _buildTextField('Patokan / Landmark (Opsional)', _landmarkController),
                       _buildTextField('Kode Pos', _postalCodeController, isNumber: true),
@@ -334,15 +337,8 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                         value: _isMainAddress,
                         onChanged: (val) => setState(() => _isMainAddress = val),
                       ),
-                      const Divider(height: 16),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        activeColor: const Color(0xFFF39C12),
-                        title: const Text('Atur sebagai alamat toko', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                        subtitle: const Text('Gunakan untuk lokasi pengiriman toko.', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                        value: _isStoreAddress,
-                        onChanged: (val) => setState(() => _isStoreAddress = val),
-                      ),
+                      const SizedBox(height: 6),
+                      const Text('Alamat toko hanya bisa diatur dari halaman Pengaturan Alamat Toko.', style: TextStyle(fontSize: 12, color: Colors.grey)),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -358,9 +354,9 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0C2442), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
               onPressed: _isLoading || _isSaving ? null : _saveLocation,
-              child: _isSaving 
-                ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                : const Text('SIMPAN ALAMAT', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              child: _isSaving
+                  ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                  : const Text('SIMPAN ALAMAT', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
             ),
           ),
         ),
@@ -370,16 +366,35 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   Widget _buildSectionContainer({required String title, required List<Widget> children}) {
     return Container(
-      width: double.infinity, margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.all(16), color: Colors.white,
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
+      color: Colors.white,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)), const SizedBox(height: 16), ...children]),
+    );
+  }
+
+  Widget _dropdown(String label, String? value, List<DropdownMenuItem<String>> items, ValueChanged<String?> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: DropdownButtonFormField<String>(
+        isExpanded: true,
+        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey),
+        decoration: _inputDecoration(label),
+        value: value,
+        items: items,
+        onChanged: onChanged,
+      ),
     );
   }
 
   InputDecoration _inputDecoration(String label, {IconData? icon}) {
     return InputDecoration(
-      labelText: label, labelStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+      labelText: label,
+      labelStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13),
       prefixIcon: icon != null ? Icon(icon, size: 20, color: Colors.grey.shade600) : null,
-      filled: true, fillColor: Colors.grey.shade50,
+      filled: true,
+      fillColor: Colors.grey.shade50,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFF39C12), width: 1.5)),
@@ -389,68 +404,21 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   Widget _buildTextField(String label, TextEditingController controller, {bool isNumber = false, int maxLines = 1, IconData? icon}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
+      padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
-        controller: controller, keyboardType: isNumber ? TextInputType.phone : TextInputType.text, maxLines: maxLines, style: const TextStyle(fontSize: 14),
+        controller: controller,
+        keyboardType: isNumber ? TextInputType.phone : TextInputType.text,
+        maxLines: maxLines,
+        style: const TextStyle(fontSize: 14),
         decoration: _inputDecoration(label, icon: icon),
       ),
     );
   }
 
   Widget _buildMapPin() {
-    bool hasLocation = _latitude != null && _longitude != null;
+    final hasLocation = _latitude != null && _longitude != null;
     return GestureDetector(
-      onTap: () async {
-        String provinceName = '';
-        String cityName = '';
-        String subdistrictName = '';
-        
-        try {
-          if (_selectedProvinceId != null) {
-            final prov = _provinces.firstWhere((p) => (p['id'] ?? p['province_id']).toString() == _selectedProvinceId);
-            provinceName = (prov['name'] ?? prov['province']).toString();
-          }
-          if (_selectedCityId != null) {
-            final city = _cities.firstWhere((c) => (c['id'] ?? c['city_id']).toString() == _selectedCityId);
-            cityName = city['name']?.toString() ?? "${city['type'] ?? ''} ${city['city_name'] ?? ''}".trim();
-          }
-          if (_selectedSubdistrictId != null) {
-            final sub = _subdistricts.firstWhere((s) => (s['id'] ?? s['subdistrict_id']).toString() == _selectedSubdistrictId);
-            subdistrictName = (sub['name'] ?? sub['subdistrict_name']).toString();
-          }
-        } catch (e) {}
-
-        List<String> addressParts = [];
-        if (_detailAddressController.text.isNotEmpty) addressParts.add(_detailAddressController.text);
-        if (subdistrictName.isNotEmpty) addressParts.add(subdistrictName);
-        if (cityName.isNotEmpty) addressParts.add(cityName);
-        if (provinceName.isNotEmpty) addressParts.add(provinceName);
-        
-        String fullSearchAddress = addressParts.join(', ');
-
-        final result = await Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => MapPickerScreen(
-            initialLat: _latitude,
-            initialLng: _longitude,
-            searchAddress: fullSearchAddress,
-          )),
-        );
-
-        if (!mounted) return;
-
-        if (result != null) {
-          setState(() {
-            _latitude = result['latitude'];
-            _longitude = result['longitude'];
-            _mapAddressText = 'Koordinat Peta Telah Dikunci';
-            
-            if (_detailAddressController.text.isEmpty) {
-              _detailAddressController.text = result['addressText'];
-            }
-          });
-        }
-      },
+      onTap: _pickMap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(12),
@@ -492,7 +460,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
   }
 
   Widget _buildChip(String label) {
-    bool isSelected = _addressLabel == label;
+    final isSelected = _addressLabel == label;
     return GestureDetector(
       onTap: () => setState(() => _addressLabel = label),
       child: Container(
