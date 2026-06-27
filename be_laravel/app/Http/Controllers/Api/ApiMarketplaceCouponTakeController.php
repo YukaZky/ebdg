@@ -16,6 +16,11 @@ class ApiMarketplaceCouponTakeController extends Controller
         return Schema::hasTable('coupons') && Schema::hasColumn('coupons', $column);
     }
 
+    private function hasTakeColumn(string $column): bool
+    {
+        return Schema::hasTable('cuppon_takes') && Schema::hasColumn('cuppon_takes', $column);
+    }
+
     private function payload(Coupon $coupon, ?int $userId = null): array
     {
         $take = $userId
@@ -48,6 +53,26 @@ class ApiMarketplaceCouponTakeController extends Controller
         $coupon->save();
     }
 
+    private function createTake(Coupon $coupon, int $userId)
+    {
+        $payload = [
+            'id_cuppon' => $coupon->id,
+            'id_user' => $userId,
+            'status' => 'take',
+        ];
+
+        if ($this->hasTakeColumn('created_at')) {
+            $payload['created_at'] = now();
+        }
+
+        if ($this->hasTakeColumn('updated_at')) {
+            $payload['updated_at'] = now();
+        }
+
+        $id = DB::table('cuppon_takes')->insertGetId($payload);
+        return CouponTake::find($id) ?: (object) array_merge(['id' => $id], $payload);
+    }
+
     public function take(Request $request, $id)
     {
         if (! Schema::hasTable('cuppon_takes')) {
@@ -68,6 +93,10 @@ class ApiMarketplaceCouponTakeController extends Controller
 
             if ($this->hasCouponColumn('user_id') && (int) $coupon->user_id === (int) $request->user()->id) {
                 return response()->json(['success' => false, 'message' => 'Tidak bisa mengambil kupon toko sendiri.'], 422);
+            }
+
+            if ($this->hasCouponColumn('starts_at') && $coupon->starts_at && $coupon->starts_at->isFuture()) {
+                return response()->json(['success' => false, 'message' => 'Kupon belum aktif.'], 422);
             }
 
             if ($this->hasCouponColumn('expires_at') && $coupon->expires_at && $coupon->expires_at->isPast()) {
@@ -99,11 +128,7 @@ class ApiMarketplaceCouponTakeController extends Controller
                 return response()->json(['success' => false, 'message' => 'Kuota kupon sudah habis.'], 422);
             }
 
-            $take = CouponTake::create([
-                'id_cuppon' => $coupon->id,
-                'id_user' => $request->user()->id,
-                'status' => 'take',
-            ]);
+            $take = $this->createTake($coupon, (int) $request->user()->id);
 
             if ($this->hasCouponColumn('usage_limit') && $coupon->usage_limit !== null) {
                 $this->saveCoupon($coupon, ['usage_limit' => max(0, (int) $coupon->usage_limit - 1)]);
