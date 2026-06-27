@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\ApiMarketplaceController;
 use App\Http\Controllers\Api\ApiMarketplaceChatController;
 use App\Http\Controllers\Api\ApiMarketplaceCouponController;
 use App\Http\Controllers\Api\ApiMarketplaceCouponTakeController;
+use App\Http\Controllers\Api\ApiMarketplaceClaimedCouponController;
 use App\Http\Controllers\Api\ApiUserProfileController;
 use App\Http\Controllers\Api\ApiMediaController;
 use App\Http\Controllers\Api\ApiProductVariationImageController;
@@ -60,6 +61,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/marketplace/reviews', [ApiMarketplaceController::class, 'addReview']);
     Route::get('/marketplace/coupons', [ApiMarketplaceCouponController::class, 'index']);
     Route::post('/marketplace/coupons', [ApiMarketplaceCouponController::class, 'store']);
+    Route::get('/marketplace/coupons/claimed', [ApiMarketplaceClaimedCouponController::class, 'index']);
     Route::get('/marketplace/coupons/{id}', [ApiMarketplaceCouponController::class, 'show']);
     Route::put('/marketplace/coupons/{id}', [ApiMarketplaceCouponController::class, 'update']);
     Route::delete('/marketplace/coupons/{id}', [ApiMarketplaceCouponController::class, 'destroy']);
