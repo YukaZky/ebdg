@@ -22,6 +22,25 @@ class CheckoutApiService {
     return double.tryParse(value.toString()) ?? fallback;
   }
 
+  static String _cleanPaymentType(dynamic value) {
+    final raw = value?.toString().trim().toLowerCase() ?? '';
+    if (raw.contains('bank')) return 'bank_transfer';
+    if (raw.contains('qris')) return 'qris';
+    if (raw.contains('gopay')) return 'gopay';
+    return raw;
+  }
+
+  static String? _cleanBankCode(dynamic value, String paymentType) {
+    if (paymentType != 'bank_transfer') return null;
+    final raw = value?.toString().trim().toLowerCase() ?? '';
+    if (raw.isEmpty || raw == 'null') return null;
+    if (raw.contains('bca')) return 'bca';
+    if (raw.contains('bni')) return 'bni';
+    if (raw.contains('bri')) return 'bri';
+    if (raw.contains('permata')) return 'permata';
+    return raw;
+  }
+
   static Map<String, dynamic> _asMap(dynamic value) {
     if (value is Map<String, dynamic>) return value;
     if (value is Map) return Map<String, dynamic>.from(value);
@@ -33,13 +52,7 @@ class CheckoutApiService {
     final productId = item['product_id'] ?? item['id_product'] ?? product['id'];
     final quantity = _toInt(item['quantity'] ?? item['qty'], fallback: 1);
     final price = _toDouble(
-      item['price'] ??
-          item['active_price'] ??
-          item['sale_price'] ??
-          item['regular_price'] ??
-          product['active_price'] ??
-          product['sale_price'] ??
-          product['regular_price'],
+      item['price'] ?? item['active_price'] ?? item['sale_price'] ?? item['regular_price'] ?? product['active_price'] ?? product['sale_price'] ?? product['regular_price'],
     );
 
     return {
@@ -81,6 +94,8 @@ class CheckoutApiService {
     required String paymentType,
     String? bankCode,
   }) {
+    final cleanPaymentType = _cleanPaymentType(paymentType);
+    final cleanBankCode = _cleanBankCode(bankCode, cleanPaymentType);
     final payload = {
       'address': address.trim(),
       'phone': phone.trim(),
@@ -88,8 +103,8 @@ class CheckoutApiService {
       'city_name': cityName.trim(),
       'courier': courier.trim(),
       'shipping_cost': shippingCost.toInt(),
-      'payment_type': paymentType,
-      'bank': bankCode,
+      'payment_type': cleanPaymentType,
+      'bank': cleanBankCode,
       'items': _signatureItems(cartItems),
     };
     return json.encode(payload);
@@ -121,10 +136,7 @@ class CheckoutApiService {
 
   static Future<Map<String, String>?> _authHeaders({bool jsonBody = false}) async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ??
-        prefs.getString('auth_token') ??
-        prefs.getString('access_token') ??
-        ApiService.token;
+    final token = prefs.getString('token') ?? prefs.getString('auth_token') ?? prefs.getString('access_token') ?? ApiService.token;
     if (token == null) return null;
     return {
       if (jsonBody) 'Content-Type': 'application/json',
@@ -194,9 +206,7 @@ class CheckoutApiService {
       'items': cartItems.map(_formatCheckoutItem).toList(),
     };
     if (orderId != null && orderId.isNotEmpty) payload['order_id'] = orderId;
-    if (checkoutSignature != null && checkoutSignature.isNotEmpty) {
-      payload['checkout_signature'] = checkoutSignature;
-    }
+    if (checkoutSignature != null && checkoutSignature.isNotEmpty) payload['checkout_signature'] = checkoutSignature;
     return payload;
   }
 
@@ -226,23 +236,18 @@ class CheckoutApiService {
   static Future<Map<String, dynamic>?> _activePaymentResponse(String orderId, String signature) async {
     final status = await checkOrderStatus(orderId);
     if (status == null || status['success'] != true) return null;
-
     final transactionStatus = status['transaction_status']?.toString();
     if (transactionStatus == 'approved' || transactionStatus == 'settlement' || transactionStatus == 'capture') {
       await _clearOrderId();
       return null;
     }
-
     final paymentInfo = _asMap(status['payment_info']);
     if (paymentInfo.isEmpty || !_isPaymentInfoActive(paymentInfo)) return null;
-
     final orderResponse = await getOrder(orderId);
     final order = _asMap(orderResponse?['order']);
     final transaction = _asMap(order['transaction']);
     final details = _decodePaymentDetails(transaction['payment_details']);
-
     if (details['checkout_signature']?.toString() != signature) return null;
-
     return {
       'success': true,
       'message': 'Instruksi pembayaran aktif digunakan kembali.',
@@ -263,19 +268,7 @@ class CheckoutApiService {
     required double shippingCost,
     required List<Map<String, dynamic>> cartItems,
   }) {
-    return _postJson(
-      '/checkout/finalize',
-      _shippingPayload(
-        orderId: orderId,
-        address: address,
-        phone: phone,
-        provinceName: provinceName,
-        cityName: cityName,
-        courier: courier,
-        shippingCost: shippingCost,
-        cartItems: cartItems,
-      ),
-    );
+    return _postJson('/checkout/finalize', _shippingPayload(orderId: orderId, address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems));
   }
 
   static Future<Map<String, dynamic>?> setPaymentMethod({
@@ -283,10 +276,11 @@ class CheckoutApiService {
     required String paymentType,
     String? bankCode,
   }) {
-    return _postJson('/orders/$orderId/payment-method', {
-      'payment_type': paymentType,
-      'bank': bankCode,
-    });
+    final cleanPaymentType = _cleanPaymentType(paymentType);
+    final payload = <String, dynamic>{'payment_type': cleanPaymentType};
+    final cleanBankCode = _cleanBankCode(bankCode, cleanPaymentType);
+    if (cleanBankCode != null) payload['bank'] = cleanBankCode;
+    return _postJson('/orders/$orderId/payment-method', payload);
   }
 
   static Future<Map<String, dynamic>?> resetPayment(String orderId) {
@@ -299,9 +293,7 @@ class CheckoutApiService {
 
   static Future<Map<String, dynamic>?> cancelOrder(String orderId) async {
     final response = await _postJson('/orders/$orderId/cancel', {});
-    if (response != null && response['success'] == true) {
-      await _clearOrderId();
-    }
+    if (response != null && response['success'] == true) await _clearOrderId();
     return response;
   }
 
@@ -321,18 +313,9 @@ class CheckoutApiService {
     required String paymentType,
     String? bankCode,
   }) async {
-    final signature = _checkoutSignature(
-      address: address,
-      phone: phone,
-      provinceName: provinceName,
-      cityName: cityName,
-      courier: courier,
-      shippingCost: shippingCost,
-      cartItems: cartItems,
-      paymentType: paymentType,
-      bankCode: bankCode,
-    );
-
+    final cleanPaymentType = _cleanPaymentType(paymentType);
+    final cleanBankCode = _cleanBankCode(bankCode, cleanPaymentType);
+    final signature = _checkoutSignature(address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems, paymentType: cleanPaymentType, bankCode: cleanBankCode);
     final cachedOrderId = await _cachedOrderId();
     final cachedSignature = await _cachedSignature();
     var reusableOrderId = orderId ?? cachedOrderId;
@@ -342,11 +325,9 @@ class CheckoutApiService {
         final existingPayment = await _activePaymentResponse(reusableOrderId, signature);
         if (existingPayment != null) return existingPayment;
       }
-
       final status = await checkOrderStatus(reusableOrderId);
       final transactionStatus = status?['transaction_status']?.toString();
       final alreadyPaid = transactionStatus == 'approved' || transactionStatus == 'settlement' || transactionStatus == 'capture';
-
       if (alreadyPaid) {
         await _clearOrderId();
         reusableOrderId = null;
@@ -355,19 +336,9 @@ class CheckoutApiService {
       }
     }
 
-    final payload = _shippingPayload(
-      orderId: reusableOrderId,
-      address: address,
-      phone: phone,
-      provinceName: provinceName,
-      cityName: cityName,
-      courier: courier,
-      shippingCost: shippingCost,
-      cartItems: cartItems,
-      checkoutSignature: signature,
-    );
-    payload['payment_type'] = paymentType;
-    payload['bank'] = bankCode;
+    final payload = _shippingPayload(orderId: reusableOrderId, address: address, phone: phone, provinceName: provinceName, cityName: cityName, courier: courier, shippingCost: shippingCost, cartItems: cartItems, checkoutSignature: signature);
+    payload['payment_type'] = cleanPaymentType;
+    if (cleanBankCode != null) payload['bank'] = cleanBankCode;
 
     final response = await _postJson('/checkout', payload);
     final responseOrderId = response?['order']?['id']?.toString();
