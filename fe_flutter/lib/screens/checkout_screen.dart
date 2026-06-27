@@ -60,7 +60,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Map<String, dynamic>? _orderData;
 
   double get _discountTotal => _couponDiscountPreview(_selectedCouponTake);
-  double get _grandTotal => (widget.totalAmount + _shippingCost - _discountTotal).clamp(0, double.infinity).toDouble();
+  double get _productsAfterDiscount => (widget.totalAmount - _discountTotal).clamp(0, double.infinity).toDouble();
+  double get _grandTotal => (_productsAfterDiscount + _shippingCost).clamp(0, double.infinity).toDouble();
   bool get _isPaymentMode => _paymentState == PaymentState.pending || _paymentState == PaymentState.approved;
   bool get _isCanceledCheckout {
     final raw = _orderData?['frontend_status']?.toString().toLowerCase() ?? _orderData?['status']?.toString().toLowerCase() ?? '';
@@ -156,7 +157,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _loadShippingCost() async {
     if (_addressData == null || _addressData!['city_id'] == null || _selectedCourier == null) return;
-
     setState(() {
       _isLoadingShipping = true;
       _shippingOptions = [];
@@ -342,7 +342,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   double _itemPrice(Map<String, dynamic> item) {
     final product = _asMap(item['product']);
-    return double.tryParse((item['price'] ?? product['regular_price'] ?? product['active_price'] ?? 0).toString()) ?? 0;
+    return double.tryParse((item['price'] ?? product['active_price'] ?? product['sale_price'] ?? product['regular_price'] ?? 0).toString()) ?? 0;
   }
 
   int _itemQty(Map<String, dynamic> item) => int.tryParse((item['quantity'] ?? 1).toString()) ?? 1;
@@ -359,12 +359,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return int.tryParse((coupon['id_user'] ?? coupon['user_id'] ?? coupon['seller_id'] ?? '').toString()) ?? 0;
   }
 
+  double _lineTotal(Map<String, dynamic> item) => _itemPrice(item) * _itemQty(item);
+
   double _couponEligibleSubtotal(Map<String, dynamic>? take) {
     final sellerId = _couponSellerId(take);
     if (sellerId <= 0) return 0;
     double total = 0;
     for (final item in widget.cartItems) {
-      if (_productSellerId(item) == sellerId) total += _itemPrice(item) * _itemQty(item);
+      if (_productSellerId(item) == sellerId) total += _lineTotal(item);
     }
     return total;
   }
@@ -382,6 +384,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     double discount = type == 'discount' ? eligible * value.clamp(0, 100) / 100 : value;
     if (maxDiscount > 0 && type == 'discount') discount = discount.clamp(0, maxDiscount).toDouble();
     return discount.clamp(0, eligible).toDouble();
+  }
+
+  double _itemCouponDiscount(Map<String, dynamic> item) {
+    final take = _selectedCouponTake;
+    if (take == null) return 0;
+    if (_productSellerId(item) != _couponSellerId(take)) return 0;
+    final eligible = _couponEligibleSubtotal(take);
+    final totalDiscount = _couponDiscountPreview(take);
+    final line = _lineTotal(item);
+    if (eligible <= 0 || totalDiscount <= 0 || line <= 0) return 0;
+
+    final coupon = _couponMap(take);
+    final type = coupon['type']?.toString() ?? 'fixed';
+    final value = double.tryParse((coupon['value'] ?? 0).toString()) ?? 0;
+    final maxDiscount = double.tryParse((coupon['max_discount'] ?? 0).toString()) ?? 0;
+
+    if (type == 'discount' && maxDiscount <= 0) {
+      return (line * value.clamp(0, 100) / 100).clamp(0, line).toDouble();
+    }
+
+    return (totalDiscount * (line / eligible)).clamp(0, line).toDouble();
   }
 
   bool _couponCanBeSelected(Map<String, dynamic> take) => take['can_use'] == true && take['is_expired'] != true && _couponDiscountPreview(take) > 0;
@@ -441,7 +464,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(.08), blurRadius: 16, offset: const Offset(0, -5))]),
         child: SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Total Order', style: TextStyle(color: _muted, fontSize: 13)), Text(_currency(_grandTotal), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _main))]),
-          if (_discountTotal > 0) Padding(padding: const EdgeInsets.only(top: 3), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Diskon kupon diterapkan', style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.w700)), Text('-${_currency(_discountTotal)}', style: const TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.w900))])),
+          if (_discountTotal > 0) Padding(padding: const EdgeInsets.only(top: 3), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Subtotal produk sudah dipotong kupon', style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.w700)), Text('-${_currency(_discountTotal)}', style: const TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.w900))])),
           const SizedBox(height: 10),
           SizedBox(width: double.infinity, child: _bottomButton()),
         ])),
@@ -500,7 +523,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(selected == null ? 'Pilih Kupon Saya' : '${coupon['code'] ?? '-'} • -${_currency(discount)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: selected == null ? _muted : const Color(0xFF111827))),
           const SizedBox(height: 3),
-          Text(selected == null ? '${_claimedCoupons.length} kupon sudah kamu ambil' : 'Hanya memotong produk toko pemilik kupon', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+          Text(selected == null ? '${_claimedCoupons.length} kupon sudah kamu ambil' : 'Potongan hanya pada produk toko pemilik kupon', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
         ])),
         if (selected != null) IconButton(onPressed: () => setState(() => _selectedCouponTake = null), icon: const Icon(Icons.close_rounded, color: _muted, size: 19)) else const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
       ])),
@@ -535,7 +558,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       final discount = _couponDiscountPreview(take);
                       final eligible = _couponEligibleSubtotal(take);
                       final canSelect = _couponCanBeSelected(take);
-                      final reason = take['is_expired'] == true ? 'Kadaluarsa' : take['can_use'] != true ? 'Tidak bisa digunakan' : eligible <= 0 ? 'Tidak ada produk toko ini' : discount <= 0 ? 'Minimum belum terpenuhi' : 'Potongan ${_currency(discount)}';
+                      final reason = take['is_expired'] == true ? 'Kadaluarsa' : take['can_use'] != true ? 'Tidak bisa digunakan' : eligible <= 0 ? 'Tidak ada produk toko ini' : discount <= 0 ? 'Minimum belum terpenuhi' : 'Potongan ${_currency(discount)} dari subtotal toko ${_currency(eligible)}';
                       return Opacity(
                         opacity: canSelect ? 1 : .55,
                         child: Container(
@@ -575,16 +598,72 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ]));
   }
 
-  Widget _summaryCard({required bool showOnlyProducts}) => _card(padding: const EdgeInsets.all(12), child: Column(children: [...widget.cartItems.map(_summaryItem), if (!showOnlyProducts) ...[const Divider(height: 20), _priceRow('Subtotal Produk', widget.totalAmount), const SizedBox(height: 6), _priceRow('Ongkir', _shippingCost), if (_discountTotal > 0) ...[const SizedBox(height: 6), _priceRow('Diskon Kupon', -_discountTotal, green: true)]]));
+  Widget _summaryCard({required bool showOnlyProducts}) => _card(
+        padding: const EdgeInsets.all(12),
+        child: Column(children: [
+          ...widget.cartItems.map(_summaryItem),
+          if (!showOnlyProducts) ...[
+            const Divider(height: 20),
+            if (_discountTotal > 0) ...[
+              _priceRow('Total Produk Sebelum Diskon', widget.totalAmount),
+              const SizedBox(height: 6),
+              _priceRow('Potongan Kupon', -_discountTotal, green: true),
+              const SizedBox(height: 6),
+              _priceRow('Subtotal Produk Setelah Diskon', _productsAfterDiscount, strong: true),
+            ] else
+              _priceRow('Subtotal Produk', widget.totalAmount),
+            const SizedBox(height: 6),
+            _priceRow('Ongkir', _shippingCost),
+            const Divider(height: 22),
+            _priceRow('Total', _grandTotal, strong: true),
+          ]
+        ]),
+      );
 
   Widget _summaryItem(Map<String, dynamic> item) {
-    final product = _asMap(item['product']); final price = _itemPrice(item); final qty = _itemQty(item); final image = _imageUrl(item['selected_image'] ?? product['image']); final variation = item['variation_name']?.toString() ?? '';
-    return Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(children: [Container(width: 48, height: 48, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))), child: image.isEmpty ? const Icon(Icons.image_outlined, color: Color(0xFF94A3B8), size: 22) : Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Color(0xFF94A3B8)))), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(product['name'] ?? 'Produk', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF111827))), if (variation.isNotEmpty) Text('Variasi: $variation', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: _muted)), Text('$qty x ${_currency(price)}', style: const TextStyle(fontSize: 11, color: _muted))])), Text(_currency(price * qty), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _main))]));
+    final product = _asMap(item['product']);
+    final price = _itemPrice(item);
+    final qty = _itemQty(item);
+    final lineTotal = price * qty;
+    final itemDiscount = _itemCouponDiscount(item);
+    final afterDiscount = (lineTotal - itemDiscount).clamp(0, double.infinity).toDouble();
+    final image = _imageUrl(item['selected_image'] ?? product['image']);
+    final variation = item['variation_name']?.toString() ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(children: [
+        Container(width: 48, height: 48, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))), child: image.isEmpty ? const Icon(Icons.image_outlined, color: Color(0xFF94A3B8), size: 22) : Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: Color(0xFF94A3B8)))),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(product['name'] ?? 'Produk', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+          if (variation.isNotEmpty) Text('Variasi: $variation', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: _muted)),
+          Text('$qty x ${_currency(price)}', style: const TextStyle(fontSize: 11, color: _muted)),
+          if (itemDiscount > 0) Text('Potongan kupon: -${_currency(itemDiscount)}', style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w800)),
+        ])),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          if (itemDiscount > 0) Text(_currency(lineTotal), style: const TextStyle(fontSize: 11, color: _muted, decoration: TextDecoration.lineThrough)),
+          Text(_currency(afterDiscount), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: itemDiscount > 0 ? Colors.green : _main)),
+        ]),
+      ]),
+    );
   }
 
-  Widget _totalOrderCard() => _card(child: Column(children: [_priceRow('Subtotal Produk', widget.totalAmount), const SizedBox(height: 8), _priceRow('Ongkir', _shippingCost), if (_discountTotal > 0) ...[const SizedBox(height: 8), _priceRow('Diskon Kupon', -_discountTotal, green: true)], const Divider(height: 22), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Total Order', style: TextStyle(fontSize: 14, color: _main, fontWeight: FontWeight.w900)), Text(_currency(_grandTotal), style: TextStyle(fontSize: 18, color: _main, fontWeight: FontWeight.w900))]) ]));
+  Widget _totalOrderCard() => _card(child: Column(children: [
+        if (_discountTotal > 0) ...[
+          _priceRow('Total Produk Sebelum Diskon', widget.totalAmount),
+          const SizedBox(height: 8),
+          _priceRow('Potongan Kupon', -_discountTotal, green: true),
+          const SizedBox(height: 8),
+          _priceRow('Subtotal Produk Setelah Diskon', _productsAfterDiscount),
+        ] else
+          _priceRow('Subtotal Produk', widget.totalAmount),
+        const SizedBox(height: 8),
+        _priceRow('Ongkir', _shippingCost),
+        const Divider(height: 22),
+        _priceRow('Total Order', _grandTotal, strong: true),
+      ]));
 
-  Widget _priceRow(String label, num value, {bool strong = false, bool green = false}) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(fontSize: 12, color: green ? Colors.green : _muted)), Text(value < 0 ? '-${_currency(value.abs())}' : _currency(value), style: TextStyle(fontSize: 12.5, color: green ? Colors.green : const Color(0xFF111827), fontWeight: FontWeight.w800))]);
+  Widget _priceRow(String label, num value, {bool strong = false, bool green = false}) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(fontSize: strong ? 13 : 12, color: green ? Colors.green : (strong ? _main : _muted), fontWeight: strong ? FontWeight.w900 : FontWeight.w500)), Text(value < 0 ? '-${_currency(value.abs())}' : _currency(value), style: TextStyle(fontSize: strong ? 16 : 12.5, color: green ? Colors.green : (strong ? _main : const Color(0xFF111827)), fontWeight: FontWeight.w900))]);
 
   Widget _bottomButton() {
     if (_paymentState == PaymentState.pending) return ElevatedButton(onPressed: null, style: ElevatedButton.styleFrom(disabledBackgroundColor: const Color(0xFF94A3B8), padding: const EdgeInsets.symmetric(vertical: 13), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))), child: const Text('MENUNGGU PEMBAYARAN...', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900)));
