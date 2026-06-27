@@ -8,6 +8,7 @@ import '../widgets/marketplace_product_card.dart';
 import 'account_settings_screen.dart';
 import 'admin/address_list_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
+import 'claimed_coupon_screen.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
 
@@ -166,7 +167,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Row(children: [
                     Expanded(child: _serviceTile('Alamat Saya', 'Kelola alamat pengiriman', Icons.location_on_rounded, () => _guard(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddressListScreen()))))),
                     const SizedBox(width: 12),
-                    Expanded(child: _serviceTile('Kupon Saya', 'Voucher dan promo', Icons.local_activity_rounded, () => _guard(isLoggedIn, () {}))),
+                    Expanded(child: _serviceTile('Kupon Saya', 'Coupon claimed', Icons.local_activity_rounded, () => _guard(isLoggedIn, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClaimedCouponScreen()))))),
                   ]),
                   const SizedBox(height: 14),
                   _storeCard(isLoggedIn),
