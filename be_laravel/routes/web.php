@@ -8,6 +8,7 @@ use App\Http\Controllers\ShopController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WishlistController;
 use App\Http\Controllers\MidtransController;
+use App\Http\Controllers\Api\ApiMediaController;
 use App\Http\Middleware\AuthAdmin;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -16,6 +17,9 @@ use App\Http\Controllers\GoogleController;
 use App\Http\Controllers\WhatsappSettingController;
 use App\Http\Controllers\RajaOngkirController;
 use App\Http\Controllers\CouponController;
+
+Route::get('/uploads/products/{filename}', [ApiMediaController::class, 'productImage'])->where('filename', '.*');
+Route::get('/uploads/profiles/{filename}', [ApiMediaController::class, 'profileImage'])->where('filename', '.*');
 
 // routes/web.php
 Route::post('/apply-coupon', [CartController::class, 'apply_coupon_code'])
@@ -75,7 +79,7 @@ Route::delete('/wishlist/clear', [WishlistController::class, 'empty_wishlist'])-
 Route::post('/wishlist/move-to-cart/{id}', [WishlistController::class, 'move_to_cart'])->name('wishlist.move.to.cart');
 
 Route::get('/checkout', [CartController::class, 'checkout'])->name('cart.checkout');
-Route::post('/place-an-order', [CartController::class, 'place_an_order'])->name('cart.place.an.order');
+Route::post('/place-an-order', [CartController::class, 'place_an_order'])->name('cart.place.an-order');
 Route::get('/order-confirmation', [CartController::class, 'order_confirmation'])->name('cart.order.confirmation');
 Route::post('/midtrans/notification', [MidtransController::class, 'notificationHandler']);
 Route::post('/payment/success', [App\Http\Controllers\CartController::class, 'paymentSuccess'])->name('payment.success');
@@ -193,7 +197,4 @@ Route::middleware(['auth'])->prefix('user')->name('user.')->group(function () {
 
     // Memproses pembaruan kata sandi
     Route::put('/password', [UserController::class, 'updatePassword'])->name('password.update');
-
-    // Anda bisa menambahkan route lain yang berhubungan dengan user di sini
-    // seperti route untuk alamat, pesanan, dll.
 });
