@@ -98,31 +98,20 @@ class _AddCupponScreenState extends State<AddCupponScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
-      appBar: AppBar(
-        title: Text(_isEdit ? 'Edit Kupon' : 'Tambah Kupon'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-      ),
+      appBar: AppBar(title: Text(_isEdit ? 'Edit Kupon' : 'Tambah Kupon'), backgroundColor: Colors.white, foregroundColor: Colors.black87),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Colors.deepOrange, borderRadius: BorderRadius.circular(18)),
-              child: const Text('Kupon akan terhubung ke toko kamu melalui id_user. Type fixed berarti potongan nominal, type discount berarti potongan persen.', style: TextStyle(color: Colors.white, height: 1.4)),
-            ),
+            Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.deepOrange, borderRadius: BorderRadius.circular(18)), child: const Text('Kupon akan terhubung ke toko kamu melalui id_user. Type fixed berarti potongan nominal, type discount berarti potongan persen.', style: TextStyle(color: Colors.white, height: 1.4))),
             const SizedBox(height: 16),
             _field('Nama Kupon', _nameCtrl, required: true),
             _field('Kode Kupon', _codeCtrl, hint: 'Contoh: HEMAT10'),
             DropdownButtonFormField<String>(
               value: _type,
               decoration: _decoration('Tipe Kupon'),
-              items: const [
-                DropdownMenuItem(value: 'fixed', child: Text('Fixed - potongan nominal')),
-                DropdownMenuItem(value: 'discount', child: Text('Discount - potongan persen')),
-              ],
+              items: const [DropdownMenuItem(value: 'fixed', child: Text('Fixed - potongan nominal')), DropdownMenuItem(value: 'discount', child: Text('Discount - potongan persen'))],
               onChanged: (value) => setState(() => _type = value ?? 'fixed'),
             ),
             const SizedBox(height: 14),
@@ -138,20 +127,13 @@ class _AddCupponScreenState extends State<AddCupponScreen> {
             DropdownButtonFormField<String>(
               value: _status,
               decoration: _decoration('Status'),
-              items: const [
-                DropdownMenuItem(value: 'active', child: Text('Aktif')),
-                DropdownMenuItem(value: 'inactive', child: Text('Nonaktif')),
-              ],
+              items: const [DropdownMenuItem(value: 'active', child: Text('Aktif')), DropdownMenuItem(value: 'inactive', child: Text('Nonaktif'))],
               onChanged: (value) => setState(() => _status = value ?? 'active'),
             ),
             const SizedBox(height: 14),
             _field('Deskripsi', _descriptionCtrl, maxLines: 3, hint: 'Contoh: Berlaku untuk semua produk toko'),
             const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: _saving ? null : _save,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-              child: Text(_saving ? 'Menyimpan...' : _isEdit ? 'Simpan Perubahan' : 'Tambah Kupon'),
-            ),
+            ElevatedButton(onPressed: _saving ? null : _save, style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))), child: Text(_saving ? 'Menyimpan...' : _isEdit ? 'Simpan Perubahan' : 'Tambah Kupon')),
           ]),
         ),
       ),
@@ -167,7 +149,7 @@ class _AddCupponScreenState extends State<AddCupponScreen> {
         keyboardType: keyboardType,
         textCapitalization: label == 'Kode Kupon' ? TextCapitalization.characters : TextCapitalization.sentences,
         decoration: _decoration(label, hint: hint),
-        validator: validator ?? (value) => required && (value == null || value.trim().isEmpty) ? '$label wajib diisi' : null,
+        validator: validator ?? ((value) => required && (value == null || value.trim().isEmpty) ? '$label wajib diisi' : null),
       ),
     );
   }
