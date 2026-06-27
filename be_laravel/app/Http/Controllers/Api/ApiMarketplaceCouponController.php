@@ -7,27 +7,54 @@ use App\Models\Coupon;
 use App\Models\CouponTake;
 use App\Models\StoreProfile;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class ApiMarketplaceCouponController extends Controller
 {
+    private function hasCouponColumn(string $column): bool
+    {
+        return Schema::hasTable('coupons') && Schema::hasColumn('coupons', $column);
+    }
+
     private function couponQueryForStore(int $sellerId)
     {
-        return Coupon::query()->where('id_user', $sellerId);
+        $query = Coupon::query();
+
+        if ($this->hasCouponColumn('id_user')) {
+            $query->where(function ($query) use ($sellerId) {
+                $query->where('id_user', $sellerId)->orWhereNull('id_user');
+            });
+        }
+
+        return $query;
     }
 
     private function activeCouponQueryForStore(int $sellerId)
     {
-        return $this->couponQueryForStore($sellerId)
-            ->where('status', 'active')
-            ->where(function ($query) {
+        $query = $this->couponQueryForStore($sellerId);
+
+        if ($this->hasCouponColumn('status')) {
+            $query->where(function ($query) {
+                $query->where('status', 'active')->orWhereNull('status');
+            });
+        }
+
+        if ($this->hasCouponColumn('starts_at')) {
+            $query->where(function ($query) {
                 $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
-            })
-            ->where(function ($query) {
+            });
+        }
+
+        if ($this->hasCouponColumn('expires_at')) {
+            $query->where(function ($query) {
                 $query->whereNull('expires_at')->orWhere('expires_at', '>=', now());
             });
+        }
+
+        return $query;
     }
 
     private function payload(Coupon $coupon, ?int $userId = null): array
@@ -37,6 +64,13 @@ class ApiMarketplaceCouponController extends Controller
             : null;
 
         $data = $coupon->toArray();
+        $data['name'] = $data['name'] ?? ($data['title'] ?? ($data['code'] ?? 'Kupon Toko'));
+        $data['code'] = $data['code'] ?? ('KUPON' . $coupon->id);
+        $data['type'] = $data['type'] ?? 'fixed';
+        $data['value'] = $data['value'] ?? ($data['amount'] ?? ($data['discount'] ?? 0));
+        $data['min_purchase'] = $data['min_purchase'] ?? ($data['minimum_purchase'] ?? 0);
+        $data['max_discount'] = $data['max_discount'] ?? null;
+        $data['status'] = $data['status'] ?? 'active';
         $data['take_status'] = $take?->status;
         $data['is_taken'] = (bool) $take;
         $data['taken_count'] = CouponTake::where('id_cuppon', $coupon->id)->count();
@@ -66,7 +100,11 @@ class ApiMarketplaceCouponController extends Controller
         $data['code'] = strtoupper(trim($data['code'] ?? '')) ?: strtoupper('TOKO' . auth()->id() . Str::random(5));
         $data['min_purchase'] = $data['min_purchase'] ?? 0;
         $data['status'] = $data['status'] ?? 'active';
-        $data['id_user'] = auth()->id();
+
+        if ($this->hasCouponColumn('id_user')) {
+            $data['id_user'] = auth()->id();
+        }
+
         return $data;
     }
 
@@ -122,21 +160,25 @@ class ApiMarketplaceCouponController extends Controller
 
     public function take(Request $request, $id)
     {
-        $coupon = Coupon::where('status', 'active')->findOrFail($id);
+        $coupon = Coupon::query()
+            ->when($this->hasCouponColumn('status'), fn ($query) => $query->where(function ($query) {
+                $query->where('status', 'active')->orWhereNull('status');
+            }))
+            ->findOrFail($id);
 
-        if ((int) $coupon->id_user === (int) $request->user()->id) {
+        if ($this->hasCouponColumn('id_user') && (int) $coupon->id_user === (int) $request->user()->id) {
             return response()->json(['success' => false, 'message' => 'Tidak bisa mengambil kupon toko sendiri.'], 422);
         }
 
-        if ($coupon->starts_at && $coupon->starts_at->isFuture()) {
+        if ($this->hasCouponColumn('starts_at') && $coupon->starts_at && $coupon->starts_at->isFuture()) {
             return response()->json(['success' => false, 'message' => 'Kupon belum aktif.'], 422);
         }
 
-        if ($coupon->expires_at && $coupon->expires_at->isPast()) {
+        if ($this->hasCouponColumn('expires_at') && $coupon->expires_at && $coupon->expires_at->isPast()) {
             return response()->json(['success' => false, 'message' => 'Kupon sudah kedaluwarsa.'], 422);
         }
 
-        if ($coupon->usage_limit && CouponTake::where('id_cuppon', $coupon->id)->count() >= (int) $coupon->usage_limit) {
+        if ($this->hasCouponColumn('usage_limit') && $coupon->usage_limit && CouponTake::where('id_cuppon', $coupon->id)->count() >= (int) $coupon->usage_limit) {
             return response()->json(['success' => false, 'message' => 'Kuota kupon sudah habis.'], 422);
         }
 
