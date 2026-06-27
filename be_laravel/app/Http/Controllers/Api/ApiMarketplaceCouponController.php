@@ -24,6 +24,13 @@ class ApiMarketplaceCouponController extends Controller
         return Schema::hasTable('cuppon_takes');
     }
 
+    private function putIfColumn(array &$payload, string $column, $value): void
+    {
+        if ($this->hasCouponColumn($column)) {
+            $payload[$column] = $value;
+        }
+    }
+
     private function couponQueryForStore(int $sellerId)
     {
         $query = Coupon::query();
@@ -31,6 +38,10 @@ class ApiMarketplaceCouponController extends Controller
         if ($this->hasCouponColumn('id_user')) {
             $query->where(function ($query) use ($sellerId) {
                 $query->where('id_user', $sellerId)->orWhereNull('id_user');
+            });
+        } elseif ($this->hasCouponColumn('user_id')) {
+            $query->where(function ($query) use ($sellerId) {
+                $query->where('user_id', $sellerId)->orWhereNull('user_id');
             });
         }
 
@@ -43,7 +54,7 @@ class ApiMarketplaceCouponController extends Controller
 
         if ($this->hasCouponColumn('status')) {
             $query->where(function ($query) {
-                $query->where('status', 'active')->orWhereNull('status');
+                $query->where('status', 'active')->orWhere('status', 1)->orWhereNull('status');
             });
         }
 
@@ -75,11 +86,11 @@ class ApiMarketplaceCouponController extends Controller
         }
 
         $data = $coupon->toArray();
-        $data['name'] = $data['name'] ?? ($data['title'] ?? ($data['code'] ?? 'Kupon Toko'));
-        $data['code'] = $data['code'] ?? ('KUPON' . $coupon->id);
-        $data['type'] = $data['type'] ?? 'fixed';
-        $data['value'] = $data['value'] ?? ($data['amount'] ?? ($data['discount'] ?? 0));
-        $data['min_purchase'] = $data['min_purchase'] ?? ($data['minimum_purchase'] ?? 0);
+        $data['name'] = $data['name'] ?? ($data['title'] ?? ($data['coupon_name'] ?? ($data['code'] ?? ($data['coupon_code'] ?? 'Kupon Toko'))));
+        $data['code'] = $data['code'] ?? ($data['coupon_code'] ?? ('KUPON' . $coupon->id));
+        $data['type'] = $data['type'] ?? ($data['coupon_type'] ?? 'fixed');
+        $data['value'] = $data['value'] ?? ($data['amount'] ?? ($data['discount'] ?? ($data['discount_amount'] ?? 0)));
+        $data['min_purchase'] = $data['min_purchase'] ?? ($data['minimum_purchase'] ?? ($data['min_order'] ?? 0));
         $data['max_discount'] = $data['max_discount'] ?? null;
         $data['status'] = $data['status'] ?? 'active';
         $data['take_status'] = $take?->status;
@@ -112,11 +123,46 @@ class ApiMarketplaceCouponController extends Controller
         $data['min_purchase'] = $data['min_purchase'] ?? 0;
         $data['status'] = $data['status'] ?? 'active';
 
-        if ($this->hasCouponColumn('id_user')) {
-            $data['id_user'] = auth()->id();
-        }
-
         return $data;
+    }
+
+    private function couponAttributes(array $data): array
+    {
+        $payload = [];
+
+        $this->putIfColumn($payload, 'id_user', auth()->id());
+        $this->putIfColumn($payload, 'user_id', auth()->id());
+
+        $this->putIfColumn($payload, 'name', $data['name']);
+        $this->putIfColumn($payload, 'title', $data['name']);
+        $this->putIfColumn($payload, 'coupon_name', $data['name']);
+
+        $this->putIfColumn($payload, 'code', $data['code']);
+        $this->putIfColumn($payload, 'coupon_code', $data['code']);
+
+        $this->putIfColumn($payload, 'type', $data['type']);
+        $this->putIfColumn($payload, 'coupon_type', $data['type']);
+
+        $this->putIfColumn($payload, 'value', $data['value']);
+        $this->putIfColumn($payload, 'amount', $data['value']);
+        $this->putIfColumn($payload, 'discount', $data['value']);
+        $this->putIfColumn($payload, 'discount_amount', $data['value']);
+
+        $this->putIfColumn($payload, 'min_purchase', $data['min_purchase']);
+        $this->putIfColumn($payload, 'minimum_purchase', $data['min_purchase']);
+        $this->putIfColumn($payload, 'min_order', $data['min_purchase']);
+
+        $this->putIfColumn($payload, 'max_discount', $data['max_discount'] ?? null);
+        $this->putIfColumn($payload, 'usage_limit', $data['usage_limit'] ?? null);
+        $this->putIfColumn($payload, 'description', $data['description'] ?? null);
+        $this->putIfColumn($payload, 'starts_at', $data['starts_at'] ?? null);
+        $this->putIfColumn($payload, 'expires_at', $data['expires_at'] ?? null);
+
+        $status = ($data['status'] ?? 'active') === 'active' ? 'active' : 'inactive';
+        $this->putIfColumn($payload, 'status', $status);
+        $this->putIfColumn($payload, 'is_active', $status === 'active');
+
+        return $payload;
     }
 
     public function index(Request $request)
@@ -131,7 +177,10 @@ class ApiMarketplaceCouponController extends Controller
 
     public function store(Request $request)
     {
-        $coupon = Coupon::create($this->validatedPayload($request));
+        $coupon = new Coupon();
+        $coupon->forceFill($this->couponAttributes($this->validatedPayload($request)));
+        $coupon->save();
+
         return response()->json(['success' => true, 'message' => 'Kupon berhasil dibuat.', 'data' => $this->payload($coupon, $request->user()->id)], 201);
     }
 
@@ -144,7 +193,9 @@ class ApiMarketplaceCouponController extends Controller
     public function update(Request $request, $id)
     {
         $coupon = $this->couponQueryForStore($request->user()->id)->findOrFail($id);
-        $coupon->update($this->validatedPayload($request));
+        $coupon->forceFill($this->couponAttributes($this->validatedPayload($request)));
+        $coupon->save();
+
         return response()->json(['success' => true, 'message' => 'Kupon berhasil diperbarui.', 'data' => $this->payload($coupon->fresh(), $request->user()->id)]);
     }
 
@@ -179,11 +230,15 @@ class ApiMarketplaceCouponController extends Controller
 
         $coupon = Coupon::query()
             ->when($this->hasCouponColumn('status'), fn ($query) => $query->where(function ($query) {
-                $query->where('status', 'active')->orWhereNull('status');
+                $query->where('status', 'active')->orWhere('status', 1)->orWhereNull('status');
             }))
             ->findOrFail($id);
 
         if ($this->hasCouponColumn('id_user') && (int) $coupon->id_user === (int) $request->user()->id) {
+            return response()->json(['success' => false, 'message' => 'Tidak bisa mengambil kupon toko sendiri.'], 422);
+        }
+
+        if ($this->hasCouponColumn('user_id') && (int) $coupon->user_id === (int) $request->user()->id) {
             return response()->json(['success' => false, 'message' => 'Tidak bisa mengambil kupon toko sendiri.'], 422);
         }
 
