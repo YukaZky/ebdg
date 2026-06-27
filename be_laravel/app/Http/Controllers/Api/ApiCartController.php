@@ -69,6 +69,31 @@ class ApiCartController extends Controller
                 ->firstOrFail();
         }
 
+        $availableStock = $variation ? (int) $variation->quantity : (int) $product->quantity;
+        if ((string) $product->stock_status !== 'instock' || $availableStock <= 0) {
+            return response()->json(['success' => false, 'message' => 'Stok produk habis.'], 422);
+        }
+
+        $cartItemQuery = CartItem::where('user_id', $user->id)
+            ->where('product_id', $product->id);
+
+        if ($variation) {
+            $cartItemQuery->where('variation_id', $variation->id);
+        } else {
+            $cartItemQuery->whereNull('variation_id');
+        }
+
+        $cartItem = $cartItemQuery->first();
+        $existingQty = $cartItem ? (int) $cartItem->quantity : 0;
+        $requestedQty = (int) $request->quantity;
+
+        if (($existingQty + $requestedQty) > $availableStock) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jumlah produk di keranjang melebihi stok tersedia. Sisa stok: ' . $availableStock,
+            ], 422);
+        }
+
         $selectedPrice = $variation
             ? ($variation->sale_price ?: $variation->regular_price)
             : ($product->sale_price ?: $product->regular_price);
@@ -81,19 +106,8 @@ class ApiCartController extends Controller
             ? ($variation->weight ?? 0)
             : ($product->weight ?? 0);
 
-        $cartItemQuery = CartItem::where('user_id', $user->id)
-            ->where('product_id', $product->id);
-
-        if ($variation) {
-            $cartItemQuery->where('variation_id', $variation->id);
-        } else {
-            $cartItemQuery->whereNull('variation_id');
-        }
-
-        $cartItem = $cartItemQuery->first();
-
         if ($cartItem) {
-            $cartItem->quantity += $request->quantity;
+            $cartItem->quantity += $requestedQty;
             $cartItem->price = $selectedPrice;
             $cartItem->variation_name = $variation?->name;
             $cartItem->selected_image = $selectedImage;
@@ -105,7 +119,7 @@ class ApiCartController extends Controller
                 'product_id' => $product->id,
                 'variation_id' => $variation?->id,
                 'variation_name' => $variation?->name,
-                'quantity' => $request->quantity,
+                'quantity' => $requestedQty,
                 'price' => $selectedPrice,
                 'selected_image' => $selectedImage,
                 'weight' => $selectedWeight,
