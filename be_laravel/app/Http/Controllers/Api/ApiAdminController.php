@@ -149,6 +149,44 @@ class ApiAdminController extends Controller
         return $extension !== '' ? $extension : $fallback;
     }
 
+    private function safeImageExtensionFromName($filename): string
+    {
+        $extension = pathinfo((string) $filename, PATHINFO_EXTENSION);
+        $extension = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $extension ?: 'jpg'));
+
+        if (! in_array($extension, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)) {
+            return 'jpg';
+        }
+
+        return $extension;
+    }
+
+    private function saveBase64ProductImage($base64, $filename, string $prefix): ?string
+    {
+        $base64 = trim((string) $base64);
+        if ($base64 === '' || strtolower($base64) === 'null') return null;
+
+        if (str_contains($base64, ',')) {
+            $base64 = substr($base64, strpos($base64, ',') + 1);
+        }
+
+        $bytes = base64_decode($base64, true);
+        if ($bytes === false || strlen($bytes) === 0) return null;
+
+        $directory = public_path('uploads/products');
+        if (! is_dir($directory)) {
+            mkdir($directory, 0775, true);
+        }
+
+        $extension = $this->safeImageExtensionFromName($filename);
+        $safePrefix = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $prefix);
+        $imageName = time() . '_' . $safePrefix . '_' . Str::random(8) . '.' . $extension;
+
+        file_put_contents($directory . DIRECTORY_SEPARATOR . $imageName, $bytes);
+
+        return $imageName;
+    }
+
     private function syncProductVariations(Request $request, Product $product): void
     {
         $names = $this->normalizeIndexedInput($request, 'variation_names');
@@ -157,6 +195,8 @@ class ApiAdminController extends Controller
         $salePrices = $this->normalizeIndexedInput($request, 'variation_sale_prices');
         $weights = $this->normalizeIndexedInput($request, 'variation_weights');
         $quantities = $this->normalizeIndexedInput($request, 'variation_quantities');
+        $imageBase64 = $this->normalizeIndexedInput($request, 'variation_image_base64');
+        $imageFilenames = $this->normalizeIndexedInput($request, 'variation_image_filename');
 
         $savedIds = [];
 
@@ -185,9 +225,15 @@ class ApiAdminController extends Controller
             $variation->weight = (int) $this->cleanNumber($this->arrayValue($weights, $index), 0);
             $variation->quantity = (int) $this->cleanNumber($this->arrayValue($quantities, $index), 0);
 
-            // File gambar variasi dari Android sengaja tidak dibaca di endpoint ini.
-            // Tujuannya agar Symfony/Laravel tidak crash saat menerima upload dengan path/mime kosong.
-            // Jika variasi lama punya image, nilainya tetap dipertahankan.
+            $savedImage = $this->saveBase64ProductImage(
+                $this->arrayValue($imageBase64, $index),
+                $this->arrayValue($imageFilenames, $index),
+                "var_{$product->id}_{$index}"
+            );
+
+            if ($savedImage) {
+                $variation->image = $savedImage;
+            }
 
             $variation->save();
             $savedIds[] = $variation->id;
@@ -639,6 +685,6 @@ class ApiAdminController extends Controller
     public function deleteUserAddress($id)
     {
         Address::where('user_id', auth()->id())->findOrFail($id)->delete();
-        return response()->json(['success' => true, 'message' => 'Alamat dihapus.'], 200);
+        return response()->json(['success' => true, 'message' => 'Alamat dihapus'], 200);
     }
 }
