@@ -47,6 +47,47 @@ class MarketplaceApiService {
     return null;
   }
 
+  static Future<List<dynamic>> sellerCoupons() async {
+    final response = await http.get(Uri.parse('${ApiService.baseUrl}/marketplace/coupons'), headers: _headers);
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
+    return [];
+  }
+
+  static Future<Map<String, dynamic>?> couponDetail(int id) async {
+    final response = await http.get(Uri.parse('${ApiService.baseUrl}/marketplace/coupons/$id'), headers: _headers);
+    if (response.statusCode == 200) return jsonDecode(response.body)['data'];
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> saveCoupon(Map<String, dynamic> data, {int? id}) async {
+    final uri = id == null ? Uri.parse('${ApiService.baseUrl}/marketplace/coupons') : Uri.parse('${ApiService.baseUrl}/marketplace/coupons/$id');
+    final response = id == null
+        ? await http.post(uri, headers: _headers, body: jsonEncode(data))
+        : await http.put(uri, headers: _headers, body: jsonEncode(data));
+    if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body)['data'];
+    return null;
+  }
+
+  static Future<bool> deleteCoupon(int id) async {
+    final response = await http.delete(Uri.parse('${ApiService.baseUrl}/marketplace/coupons/$id'), headers: _headers);
+    return response.statusCode == 200;
+  }
+
+  static Future<List<dynamic>> storeCoupons(String slug) async {
+    final authResponse = await http.get(Uri.parse('${ApiService.baseUrl}/marketplace/stores/$slug/coupons'), headers: _headers);
+    if (authResponse.statusCode == 200) return jsonDecode(authResponse.body)['data'] ?? [];
+
+    final publicResponse = await http.get(Uri.parse('${ApiService.baseUrl}/stores/$slug/coupons'), headers: {'Accept': 'application/json'});
+    if (publicResponse.statusCode == 200) return jsonDecode(publicResponse.body)['data'] ?? [];
+    return [];
+  }
+
+  static Future<Map<String, dynamic>?> takeCoupon(int id) async {
+    final response = await http.post(Uri.parse('${ApiService.baseUrl}/marketplace/coupons/$id/take'), headers: _headers);
+    if (response.statusCode == 200 || response.statusCode == 201) return jsonDecode(response.body)['coupon'] ?? jsonDecode(response.body)['data'];
+    return null;
+  }
+
   static Future<List<dynamic>> sellerOrders() async {
     final response = await http.get(Uri.parse('${ApiService.baseUrl}/marketplace/seller-orders'), headers: _headers);
     if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
@@ -79,9 +120,7 @@ class MarketplaceApiService {
 
   static Future<List<dynamic>> conversations({String? role}) async {
     final cleanRole = role?.trim();
-    final uri = Uri.parse('${ApiService.baseUrl}/marketplace/chats').replace(
-      queryParameters: cleanRole == null || cleanRole.isEmpty ? null : {'role': cleanRole},
-    );
+    final uri = Uri.parse('${ApiService.baseUrl}/marketplace/chats').replace(queryParameters: cleanRole == null || cleanRole.isEmpty ? null : {'role': cleanRole});
     final response = await http.get(uri, headers: _headers);
     if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
     return [];
