@@ -60,7 +60,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/marketplace/my-store', [ApiMarketplaceController::class, 'saveStore']);
     Route::get('/marketplace/seller-orders', [ApiMarketplaceController::class, 'sellerOrders']);
     Route::put('/marketplace/seller-orders/{id}/status', [ApiMarketplaceController::class, 'updateSellerOrderStatus']);
+    Route::get('/marketplace/my-reviews', [ApiMarketplaceReviewController::class, 'myReviews']);
     Route::post('/marketplace/reviews', [ApiMarketplaceReviewController::class, 'addProductReview']);
+    Route::delete('/marketplace/reviews/product/{id}', [ApiMarketplaceReviewController::class, 'deleteProductReview']);
+    Route::delete('/marketplace/reviews/store/{id}', [ApiMarketplaceReviewController::class, 'deleteStoreReview']);
     Route::post('/marketplace/stores/{id}/reviews', [ApiMarketplaceReviewController::class, 'addStoreReview']);
     Route::get('/marketplace/coupons', [ApiMarketplaceCouponController::class, 'index']);
     Route::post('/marketplace/coupons', [ApiMarketplaceCouponController::class, 'store']);
@@ -106,6 +109,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/categories', [ApiAdminController::class, 'getCategories']);
         Route::post('/categories/store', [ApiAdminController::class, 'storeCategory']);
         Route::put('/categories/update/{id}', [ApiAdminController::class, 'updateCategory']);
+        Route::delete('/categories/delete', [ApiAdminController::class, 'deleteCategory']);
         Route::delete('/categories/delete/{id}', [ApiAdminController::class, 'deleteCategory']);
 
         Route::get('/brands', [ApiAdminController::class, 'getBrands']);
