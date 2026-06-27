@@ -18,12 +18,14 @@ class ApiService {
 
   static Map<String, String> get _authHeaders => {
         "Accept": "application/json",
+        "Cache-Control": "no-cache",
         if (_token != null) "Authorization": "Bearer $_token",
       };
 
   static Map<String, String> get _jsonHeaders => {
         "Content-Type": "application/json",
         "Accept": "application/json",
+        "Cache-Control": "no-cache",
         if (_token != null) "Authorization": "Bearer $_token",
       };
 
@@ -100,8 +102,8 @@ class ApiService {
       print("=== DEBUG 1: URL Target: $baseUrl/products ===");
 
       final response = await http.get(
-        Uri.parse("$baseUrl/products"),
-        headers: {"Accept": "application/json"},
+        Uri.parse("$baseUrl/products?_=${DateTime.now().millisecondsSinceEpoch}"),
+        headers: {"Accept": "application/json", "Cache-Control": "no-cache"},
       );
 
       print("=== RESPONSE BODY ===");
@@ -110,7 +112,6 @@ class ApiService {
 
       print(
           "=== DEBUG 2: Request selesai. Status Code: ${response.statusCode} ===");
-      // print("=== DEBUG 2.1: Response Body: ${response.body}"); // Hapus tanda komentar (//) di awal baris ini jika Anda ingin melihat mentahan teks JSON-nya.
 
       if (response.statusCode == 200) {
         print("=== DEBUG 3: Status 200 OK. Memulai decode JSON ===");
@@ -123,14 +124,13 @@ class ApiService {
             "=== DEBUG 5: Sukses mengambil List. Jumlah produk di JSON: ${productsJson.length} ===");
         print("=== DEBUG 6: Memulai proses mapping JSON ke Model Flutter ===");
 
-        // Memecah proses mapping agar kita tahu jika ada error spesifik pada salah satu produk
         final List<Product> result = productsJson.map((json) {
           try {
             return Product.fromJson(Map<String, dynamic>.from(json));
           } catch (e) {
             print("=== ERROR PARSING PADA ITEM: $json ===");
             print("=== PENYEBAB ERROR PARSING: $e ===");
-            rethrow; // Lempar ulang errornya agar masuk ke blok catch utama
+            rethrow;
           }
         }).toList();
 
@@ -143,7 +143,6 @@ class ApiService {
         throw Exception("Gagal memuat produk");
       }
     } catch (e, stacktrace) {
-      // Menangkap SEMUA jenis error (Internet mati, URL salah, Error Model, dll)
       print("=== DEBUG CATCH ERROR: Proses getProducts TERHENTI! ===");
       print("=== PESAN ERROR: $e ===");
       print("=== LOKASI ERROR (Stacktrace): $stacktrace ===");
@@ -153,9 +152,11 @@ class ApiService {
 
   static Future<Product?> getProductDetails(String slug) async {
     final response = await http.get(
-      Uri.parse("$baseUrl/products/$slug"),
-      headers: {"Accept": "application/json"},
+      Uri.parse("$baseUrl/products/$slug?_=${DateTime.now().millisecondsSinceEpoch}"),
+      headers: {"Accept": "application/json", "Cache-Control": "no-cache"},
     );
+    print("Detail produk status: ${response.statusCode}");
+    print("Detail produk body: ${response.body}");
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = jsonDecode(response.body);
       return Product.fromJson(Map<String, dynamic>.from(data['data']));
@@ -470,7 +471,7 @@ class ApiService {
 
   static Future<List<dynamic>> getAdminProducts() async {
     if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/products"),
+    final response = await http.get(Uri.parse("$baseUrl/admin/products?_=${DateTime.now().millisecondsSinceEpoch}"),
         headers: _authHeaders);
     if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
     return [];
@@ -497,7 +498,7 @@ class ApiService {
         : Uri.parse("$baseUrl/admin/products/update/$productId");
     final request = http.MultipartRequest('POST', uri);
     request.headers.addAll(
-        {"Authorization": "Bearer $_token", "Accept": "application/json"});
+        {"Authorization": "Bearer $_token", "Accept": "application/json", "Cache-Control": "no-cache"});
     if (productId != null) request.fields['_method'] = 'PUT';
     request.fields.addAll(fields);
 
@@ -526,35 +527,35 @@ class ApiService {
     if (variationNames != null) {
       for (int i = 0; i < variationNames.length; i++) {
         request.fields['variation_names[$i]'] = variationNames[i];
-        if (variationIds != null && i < variationIds.length)
+        if (variationIds != null && i < variationIds.length) {
           request.fields['variation_ids[$i]'] = variationIds[i];
-        if (variationRegularPrices != null && i < variationRegularPrices.length)
+        }
+        if (variationRegularPrices != null && i < variationRegularPrices.length) {
           request.fields['variation_regular_prices[$i]'] =
               variationRegularPrices[i].isEmpty
                   ? '0'
                   : variationRegularPrices[i];
-        if (variationSalePrices != null && i < variationSalePrices.length)
+        }
+        if (variationSalePrices != null && i < variationSalePrices.length) {
           request.fields['variation_sale_prices[$i]'] = variationSalePrices[i];
-        if (variationWeights != null && i < variationWeights.length)
+        }
+        if (variationWeights != null && i < variationWeights.length) {
           request.fields['variation_weights[$i]'] =
               variationWeights[i].isEmpty ? '0' : variationWeights[i];
-        if (variationQuantities != null && i < variationQuantities.length)
+        }
+        if (variationQuantities != null && i < variationQuantities.length) {
           request.fields['variation_quantities[$i]'] =
               variationQuantities[i].isEmpty ? '0' : variationQuantities[i];
-        if (variationImages != null &&
-            i < variationImages.length &&
-            variationImages[i] != null) {
-          request.files.add(http.MultipartFile.fromBytes(
-              'variation_images[$i]', await variationImages[i]!.readAsBytes(),
-              filename: variationImages[i]!.name));
         }
       }
     }
 
     try {
       final response = await request.send();
+      final body = await response.stream.bytesToString();
+      print("saveAdminProduct status: ${response.statusCode}");
+      print("saveAdminProduct body: $body");
       if (response.statusCode == 200 || response.statusCode == 201) return true;
-      print("Error saveAdminProduct: ${await response.stream.bytesToString()}");
       return false;
     } catch (e) {
       print("Exception saveAdminProduct: $e");
