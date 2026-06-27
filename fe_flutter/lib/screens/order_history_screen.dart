@@ -135,6 +135,15 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     );
   }
 
+  Widget _countBadge(int count, bool active) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(color: active ? Colors.white : navy, borderRadius: BorderRadius.circular(999)),
+      child: Text('$count', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: active ? navy : Colors.white)),
+    );
+  }
+
   Widget _statusCards(List<dynamic> orders) {
     return Container(
       color: Colors.white,
@@ -163,12 +172,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                     Row(children: [
                       Icon(t[2] as IconData, size: 19, color: active ? Colors.white : navy),
                       const Spacer(),
-                      Container(
-                        minWidth: 24,
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(color: active ? Colors.white : navy, borderRadius: BorderRadius.circular(999)),
-                        child: Text('$count', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: active ? navy : Colors.white)),
-                      ),
+                      _countBadge(count, active),
                     ]),
                     const SizedBox(height: 9),
                     Text(t[1] as String, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: active ? Colors.white : navy)),
