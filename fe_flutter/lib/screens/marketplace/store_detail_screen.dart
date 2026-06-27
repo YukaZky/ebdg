@@ -170,7 +170,8 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
         }
       }
     });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result != null ? 'Kupon berhasil diambil.' : 'Gagal mengambil kupon.')));
+    final message = result != null ? 'Kupon berhasil diambil.' : (MarketplaceApiService.lastError ?? 'Gagal mengambil kupon.');
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     if (result == null) loadStore();
   }
 
