@@ -136,6 +136,19 @@ class ApiAdminController extends Controller
         ]);
     }
 
+    private function uploadedFileExtension($file, string $fallback = 'jpg'): string
+    {
+        $originalName = method_exists($file, 'getClientOriginalName') ? (string) $file->getClientOriginalName() : '';
+        $extension = method_exists($file, 'getClientOriginalExtension') ? (string) $file->getClientOriginalExtension() : '';
+
+        if ($extension === '' && $originalName !== '') {
+            $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+        }
+
+        $extension = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $extension ?: $fallback));
+        return $extension !== '' ? $extension : $fallback;
+    }
+
     private function variationImageFile(Request $request, int $index)
     {
         $files = $request->file('variation_images', []);
@@ -184,8 +197,8 @@ class ApiAdminController extends Controller
             $variation->quantity = (int) $this->cleanNumber($this->arrayValue($quantities, $index), 0);
 
             $varImage = $this->variationImageFile($request, $index);
-            if ($varImage) {
-                $extension = $varImage->getClientOriginalExtension() ?: $varImage->extension() ?: 'jpg';
+            if ($varImage && method_exists($varImage, 'isValid') && $varImage->isValid()) {
+                $extension = $this->uploadedFileExtension($varImage, 'jpg');
                 $varImageName = time() . "_var_{$product->id}_$index." . $extension;
                 $varImage->move(public_path('uploads/products'), $varImageName);
                 $variation->image = $varImageName;
@@ -249,7 +262,7 @@ class ApiAdminController extends Controller
             'regular_price' => 'required|numeric',
             'category_id' => 'required|exists:categories,id',
             'brand_id' => 'required|exists:brands,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
+            'image' => 'nullable|file|max:4096',
         ]);
 
         try {
@@ -270,8 +283,8 @@ class ApiAdminController extends Controller
                 $product->category_id = $request->category_id;
                 $product->brand_id = $request->brand_id;
 
-                if ($request->hasFile('image')) {
-                    $imageName = time() . '.' . $request->image->extension();
+                if ($request->hasFile('image') && $request->file('image')->isValid()) {
+                    $imageName = time() . '.' . $this->uploadedFileExtension($request->file('image'), 'jpg');
                     $request->image->move(public_path('uploads/products'), $imageName);
                     $product->image = $imageName;
                 }
@@ -308,7 +321,7 @@ class ApiAdminController extends Controller
             'regular_price' => 'required|numeric',
             'category_id' => 'required|exists:categories,id',
             'brand_id' => 'required|exists:brands,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
+            'image' => 'nullable|file|max:4096',
         ]);
 
         try {
@@ -329,8 +342,8 @@ class ApiAdminController extends Controller
                 $product->category_id = $request->category_id;
                 $product->brand_id = $request->brand_id;
 
-                if ($request->hasFile('image')) {
-                    $imageName = time() . '.' . $request->image->extension();
+                if ($request->hasFile('image') && $request->file('image')->isValid()) {
+                    $imageName = time() . '.' . $this->uploadedFileExtension($request->file('image'), 'jpg');
                     $request->image->move(public_path('uploads/products'), $imageName);
                     $product->image = $imageName;
                 }
@@ -377,7 +390,7 @@ class ApiAdminController extends Controller
 
         if ($request->hasFile('image')) {
             $image = $request->file('image');
-            $fileName = time() . '.' . $image->extension();
+            $fileName = time() . '.' . $this->uploadedFileExtension($image, 'jpg');
             $image->move(public_path('uploads/categories'), $fileName);
             $category->image = $fileName;
         }
@@ -394,7 +407,7 @@ class ApiAdminController extends Controller
 
         if ($request->hasFile('image')) {
             $image = $request->file('image');
-            $fileName = time() . '.' . $image->extension();
+            $fileName = time() . '.' . $this->uploadedFileExtension($image, 'jpg');
             $image->move(public_path('uploads/categories'), $fileName);
             $category->image = $fileName;
         }
@@ -423,7 +436,7 @@ class ApiAdminController extends Controller
         $brand->slug = Str::slug($request->name);
         if ($request->hasFile('image')) {
             $image = $request->file('image');
-            $fileName = time() . '.' . $image->extension();
+            $fileName = time() . '.' . $this->uploadedFileExtension($image, 'jpg');
             $image->move(public_path('uploads/brands'), $fileName);
             $brand->image = $fileName;
         }
@@ -438,7 +451,7 @@ class ApiAdminController extends Controller
         $brand->slug = Str::slug($brand->name);
         if ($request->hasFile('image')) {
             $image = $request->file('image');
-            $fileName = time() . '.' . $image->extension();
+            $fileName = time() . '.' . $this->uploadedFileExtension($image, 'jpg');
             $image->move(public_path('uploads/brands'), $fileName);
             $brand->image = $fileName;
         }
