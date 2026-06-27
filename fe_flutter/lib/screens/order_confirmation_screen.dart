@@ -9,8 +9,10 @@ class OrderConfirmationScreen extends StatelessWidget {
 
   const OrderConfirmationScreen({Key? key, required this.order}) : super(key: key);
 
-  static const Color _navy = Color(0xFF0B1F4D);
-  static const Color _pageBg = Color(0xFFF5F7FB);
+  static const Color _primary = Color(0xFF0C2442);
+  static const Color _accent = Color(0xFFF39C12);
+  static const Color _purple = Color(0xFF6C4DFF);
+  static const Color _surface = Color(0xFFF7F8FC);
   static const Color _muted = Color(0xFF64748B);
 
   Map<String, dynamic> _map(dynamic value) {
@@ -173,7 +175,7 @@ class OrderConfirmationScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
           decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,9 +190,9 @@ class OrderConfirmationScreen extends StatelessWidget {
               const SizedBox(height: 18),
               Row(
                 children: const [
-                  Icon(Icons.print_rounded, color: _navy),
+                  Icon(Icons.print_rounded, color: _primary),
                   SizedBox(width: 10),
-                  Text('Preview Resi Pesanan', style: TextStyle(fontSize: 16, color: _navy, fontWeight: FontWeight.w900)),
+                  Text('Preview Resi Pesanan', style: TextStyle(fontSize: 16, color: _primary, fontWeight: FontWeight.w900)),
                 ],
               ),
               const SizedBox(height: 12),
@@ -199,8 +201,8 @@ class OrderConfirmationScreen extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(14),
+                    color: _surface,
+                    borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: SingleChildScrollView(
@@ -222,12 +224,14 @@ class OrderConfirmationScreen extends StatelessWidget {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Detail resi berhasil disalin.')));
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _navy,
+                    backgroundColor: _primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
-                  icon: const Icon(Icons.copy_rounded, color: Colors.white, size: 18),
-                  label: const Text('SALIN DETAIL RESI', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900)),
+                  icon: const Icon(Icons.copy_rounded, size: 18),
+                  label: const Text('SALIN DETAIL RESI', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
                 ),
               ),
             ],
@@ -247,63 +251,68 @@ class OrderConfirmationScreen extends StatelessWidget {
     final vaNumber = paymentInfo['va_number'] ?? '-';
 
     return Scaffold(
-      backgroundColor: _pageBg,
-      appBar: AppBar(
-        title: const Text('Detail Pesanan', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800)),
-        backgroundColor: _navy,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 150),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _header(paymentId.toString()),
-            const SizedBox(height: 14),
-            _actionNotice(),
-            const SizedBox(height: 14),
-            _title('Order & Transaksi'),
-            _card([
-              _row('Order ID', '#ORDER-${order['id'] ?? '-'}'),
-              _row('Status', _statusText()),
-              _row('ID Pembayaran', paymentId.toString()),
-              _row('Status Transaksi', transaction['status']?.toString().toUpperCase() ?? '-'),
-              _row('Metode', (details['payment_type'] ?? paymentInfo['payment_type'] ?? '-').toString().toUpperCase()),
-              _row('Bank', (details['bank'] ?? '-').toString().toUpperCase()),
-              if (vaNumber.toString() != '-') _row('Nomor VA', vaNumber.toString()),
-            ]),
-            const SizedBox(height: 14),
-            _title('Pengiriman'),
-            _card([
-              _row('Penerima', '${order['name'] ?? '-'}'),
-              _row('No HP', '${order['phone'] ?? '-'}'),
-              _row('Kurir', '${order['mode_pengiriman'] ?? '-'} - ${order['jenis_pengiriman'] ?? '-'}'),
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text('${order['address'] ?? '-'}, ${order['city'] ?? '-'}, ${order['state'] ?? '-'}', style: const TextStyle(fontSize: 12, color: Color(0xFF475569), height: 1.4)),
-              ),
-            ]),
-            const SizedBox(height: 14),
-            _title('Daftar Barang'),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: _box(),
+      backgroundColor: _surface,
+      body: Column(
+        children: [
+          _pageHeader(context, paymentId.toString()),
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 150),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ...items.map(_productRow),
-                  const Divider(height: 22),
-                  _priceRow('Subtotal Produk', order['subtotal']),
-                  const SizedBox(height: 7),
-                  _priceRow('Ongkir', order['ongkir']),
-                  const Divider(height: 22),
-                  _priceRow('Total Order', order['total'], strong: true),
+                  _actionNotice(),
+                  const SizedBox(height: 14),
+                  _title('Order & Transaksi'),
+                  _card([
+                    _row('Order ID', '#ORDER-${order['id'] ?? '-'}'),
+                    _row('Status', _statusText()),
+                    _row('ID Pembayaran', paymentId.toString()),
+                    _row('Status Transaksi', transaction['status']?.toString().toUpperCase() ?? '-'),
+                    _row('Metode', (details['payment_type'] ?? paymentInfo['payment_type'] ?? '-').toString().toUpperCase()),
+                    _row('Bank', (details['bank'] ?? '-').toString().toUpperCase()),
+                    if (vaNumber.toString() != '-') _row('Nomor VA', vaNumber.toString()),
+                  ]),
+                  const SizedBox(height: 14),
+                  _title('Pengiriman'),
+                  _card([
+                    _row('Penerima', '${order['name'] ?? '-'}'),
+                    _row('No HP', '${order['phone'] ?? '-'}'),
+                    _row('Kurir', '${order['mode_pengiriman'] ?? '-'} - ${order['jenis_pengiriman'] ?? '-'}'),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text('${order['address'] ?? '-'}, ${order['city'] ?? '-'}, ${order['state'] ?? '-'}', style: const TextStyle(fontSize: 12, color: Color(0xFF475569), height: 1.4)),
+                    ),
+                  ]),
+                  const SizedBox(height: 14),
+                  _title('Daftar Barang'),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: _box(),
+                    child: Column(
+                      children: [
+                        ...items.map(_productRow),
+                        const Divider(height: 22),
+                        _priceRow('Subtotal Produk', order['subtotal']),
+                        const SizedBox(height: 7),
+                        _priceRow('Ongkir', order['ongkir']),
+                        const Divider(height: 22),
+                        _priceRow('Total Order', order['total'], strong: true),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-      bottomSheet: Container(
+      bottomSheet: _bottomActionBar(context),
+    );
+  }
+
+  Widget _bottomActionBar(BuildContext context) => Container(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
         decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(.08), blurRadius: 16, offset: const Offset(0, -5))]),
         child: SafeArea(
@@ -316,10 +325,10 @@ class OrderConfirmationScreen extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: () => _showReceiptPreview(context),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: _navy,
-                      side: const BorderSide(color: _navy),
+                      foregroundColor: _primary,
+                      side: const BorderSide(color: _primary),
                       padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
                     icon: const Icon(Icons.print_rounded, size: 18),
                     label: const Text('CETAK RESI', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
@@ -331,34 +340,85 @@ class OrderConfirmationScreen extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () => _handlePrimaryAction(context),
-                  style: ElevatedButton.styleFrom(backgroundColor: _navy, padding: const EdgeInsets.symmetric(vertical: 13), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  icon: Icon(_canResumeCheckout ? Icons.play_arrow_rounded : Icons.home_rounded, color: Colors.white, size: 18),
-                  label: Text(_primaryActionLabel(), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900)),
+                  style: ElevatedButton.styleFrom(backgroundColor: _primary, foregroundColor: Colors.white, elevation: 0, padding: const EdgeInsets.symmetric(vertical: 13), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                  icon: Icon(_canResumeCheckout ? Icons.play_arrow_rounded : Icons.home_rounded, size: 18),
+                  label: Text(_primaryActionLabel(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
                 ),
               ),
             ],
           ),
         ),
-      ),
+      );
+
+  Widget _circleAction(IconData icon, VoidCallback? onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.white.withOpacity(0.14), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.12))), child: Icon(icon, color: Colors.white, size: 21)),
     );
   }
+
+  Widget _pageHeader(BuildContext context, String paymentId) => Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(colors: [_primary, Color(0xFF123A68)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                _circleAction(Icons.arrow_back_rounded, () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  } else {
+                    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (_) => false);
+                  }
+                }),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.14), borderRadius: BorderRadius.circular(99), border: Border.all(color: Colors.white.withOpacity(0.12))),
+                  child: Text(_statusText(), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                ),
+              ]),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(26), border: Border.all(color: Colors.white.withOpacity(0.16))),
+                child: Row(children: [
+                  Container(width: 62, height: 62, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: const Icon(Icons.receipt_long_rounded, color: _primary, size: 34)),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Detail Pesanan', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 5),
+                    Text('Payment ID: $paymentId', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withOpacity(0.84), fontSize: 12)),
+                    const SizedBox(height: 3),
+                    Text('Order #${order['id'] ?? '-'}', style: TextStyle(color: Colors.white.withOpacity(0.72), fontSize: 12)),
+                  ])),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      );
 
   Widget _actionNotice() => Container(
         width: double.infinity,
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
+        decoration: _box(),
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(color: const Color(0xFFEAF0FF), borderRadius: BorderRadius.circular(12)),
-              child: Icon(_statusIcon(), color: _navy, size: 20),
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(color: _purple.withOpacity(0.10), borderRadius: BorderRadius.circular(16)),
+              child: Icon(_statusIcon(), color: _primary, size: 22),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(_statusText(), style: const TextStyle(fontSize: 13, color: _navy, fontWeight: FontWeight.w900)),
+                Text(_statusText(), style: const TextStyle(fontSize: 14, color: _primary, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 3),
                 Text(_canResumeCheckout ? 'Pesanan ini masih bisa dilanjutkan dari halaman detail.' : 'Detail akhir pesanan sudah dapat dilihat di halaman ini.', style: const TextStyle(fontSize: 11.5, color: _muted, height: 1.35)),
               ]),
@@ -367,22 +427,14 @@ class OrderConfirmationScreen extends StatelessWidget {
         ),
       );
 
-  Widget _header(String paymentId) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(gradient: const LinearGradient(colors: [_navy, Color(0xFF163A73)]), borderRadius: BorderRadius.circular(18)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 34),
-          const SizedBox(height: 12),
-          const Text('Ringkasan Pesanan', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 5),
-          Text('Payment ID: $paymentId', style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 12)),
-        ]),
+  Widget _title(String text) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(text, style: const TextStyle(fontSize: 13, color: _primary, fontWeight: FontWeight.w900)));
+
+  BoxDecoration _box() => BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(.04), blurRadius: 14, offset: const Offset(0, 6))],
       );
-
-  Widget _title(String text) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(text, style: const TextStyle(fontSize: 13, color: _navy, fontWeight: FontWeight.w900)));
-
-  BoxDecoration _box() => BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0)));
 
   Widget _card(List<Widget> children) => Container(width: double.infinity, padding: const EdgeInsets.all(14), decoration: _box(), child: Column(children: children));
 
@@ -403,7 +455,7 @@ class OrderConfirmationScreen extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(children: [
         Expanded(child: Text('${qty.toInt()}x ${product['name'] ?? 'Produk'}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
-        Text(_money(price * qty), style: const TextStyle(fontSize: 12, color: _navy, fontWeight: FontWeight.w900)),
+        Text(_money(price * qty), style: const TextStyle(fontSize: 12, color: _primary, fontWeight: FontWeight.w900)),
       ]),
     );
   }
@@ -411,8 +463,8 @@ class OrderConfirmationScreen extends StatelessWidget {
   Widget _priceRow(String label, dynamic value, {bool strong = false}) => Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(fontSize: strong ? 14 : 12, color: strong ? _navy : _muted, fontWeight: strong ? FontWeight.w900 : FontWeight.w500)),
-          Text(_money(value), style: TextStyle(fontSize: strong ? 18 : 12.5, color: strong ? _navy : const Color(0xFF111827), fontWeight: FontWeight.w900)),
+          Text(label, style: TextStyle(fontSize: strong ? 14 : 12, color: strong ? _primary : _muted, fontWeight: strong ? FontWeight.w900 : FontWeight.w500)),
+          Text(_money(value), style: TextStyle(fontSize: strong ? 18 : 12.5, color: strong ? _primary : const Color(0xFF111827), fontWeight: FontWeight.w900)),
         ],
       );
 }
