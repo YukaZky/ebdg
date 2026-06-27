@@ -131,7 +131,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
         final input = VariationInput();
         input.id = v['id'];
         input.name = v['name'] ?? '';
-        input.existingImageUrl = v['image'];
+        input.existingImageUrl = v['image_url'] ?? v['image'];
         input.regularPrice = _cleanNumber(v['regular_price']);
         input.salePrice = _cleanNumber(v['sale_price']);
         input.weight = _cleanNumber(v['weight']);
@@ -145,7 +145,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
 
   Future<void> _pickMainImage() async {
     try {
-      final picked = await _picker.pickImage(source: ImageSource.gallery);
+      final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85, maxWidth: 1600);
       if (picked != null) setState(() => _mainImage = picked);
     } catch (e) {
       print('Gagal mengambil gambar utama: $e');
@@ -154,7 +154,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
 
   Future<void> _pickVariationImage(int index) async {
     try {
-      final picked = await _picker.pickImage(source: ImageSource.gallery);
+      final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85, maxWidth: 1600);
       if (picked != null) {
         setState(() {
           variations[index].image = picked;
@@ -227,6 +227,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
       fields,
       mainImage: _mainImage,
       productId: widget.product?['id'],
+      variationImages: variations.map((v) => v.image).toList(),
       variationIds: variations.map((v) => v.id?.toString() ?? '').toList(),
       variationNames: variations.map((v) => v.name).toList(),
       variationRegularPrices: variations.map((v) => v.regularPrice).toList(),

@@ -161,6 +161,46 @@ class ApiAdminController extends Controller
         return $extension;
     }
 
+    private function productImageDirectory(): string
+    {
+        $directory = public_path('uploads/products');
+        if (! is_dir($directory)) {
+            mkdir($directory, 0775, true);
+        }
+        return $directory;
+    }
+
+    private function imageName(string $prefix, string $extension): string
+    {
+        $safePrefix = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $prefix);
+        return time() . '_' . $safePrefix . '_' . Str::random(8) . '.' . $extension;
+    }
+
+    private function saveUploadedProductImage($file, string $prefix): ?string
+    {
+        if (! $file) return null;
+        if (method_exists($file, 'isValid') && ! $file->isValid()) return null;
+
+        $originalName = method_exists($file, 'getClientOriginalName') ? $file->getClientOriginalName() : '';
+        $extension = $this->safeImageExtensionFromName($originalName);
+        $imageName = $this->imageName($prefix, $extension);
+
+        $file->move($this->productImageDirectory(), $imageName);
+
+        return $imageName;
+    }
+
+    private function variationImageFile(Request $request, int $index)
+    {
+        $files = $request->file('variation_images', []);
+
+        if (is_array($files) && array_key_exists($index, $files)) {
+            return $files[$index];
+        }
+
+        return $request->file("variation_images.$index") ?: $request->file("variation_images[$index]");
+    }
+
     private function saveBase64ProductImage($base64, $filename, string $prefix): ?string
     {
         $base64 = trim((string) $base64);
@@ -173,16 +213,11 @@ class ApiAdminController extends Controller
         $bytes = base64_decode($base64, true);
         if ($bytes === false || strlen($bytes) === 0) return null;
 
-        $directory = public_path('uploads/products');
-        if (! is_dir($directory)) {
-            mkdir($directory, 0775, true);
-        }
-
         $extension = $this->safeImageExtensionFromName($filename);
-        $safePrefix = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $prefix);
-        $imageName = time() . '_' . $safePrefix . '_' . Str::random(8) . '.' . $extension;
+        $imageName = $this->imageName($prefix, $extension);
 
-        file_put_contents($directory . DIRECTORY_SEPARATOR . $imageName, $bytes);
+        $written = file_put_contents($this->productImageDirectory() . DIRECTORY_SEPARATOR . $imageName, $bytes);
+        if ($written === false) return null;
 
         return $imageName;
     }
@@ -225,11 +260,13 @@ class ApiAdminController extends Controller
             $variation->weight = (int) $this->cleanNumber($this->arrayValue($weights, $index), 0);
             $variation->quantity = (int) $this->cleanNumber($this->arrayValue($quantities, $index), 0);
 
-            $savedImage = $this->saveBase64ProductImage(
-                $this->arrayValue($imageBase64, $index),
-                $this->arrayValue($imageFilenames, $index),
-                "var_{$product->id}_{$index}"
-            );
+            $prefix = "var_{$product->id}_{$index}";
+            $savedImage = $this->saveUploadedProductImage($this->variationImageFile($request, $index), $prefix)
+                ?: $this->saveBase64ProductImage(
+                    $this->arrayValue($imageBase64, $index),
+                    $this->arrayValue($imageFilenames, $index),
+                    $prefix
+                );
 
             if ($savedImage) {
                 $variation->image = $savedImage;
@@ -313,8 +350,6 @@ class ApiAdminController extends Controller
                 $product->category_id = $request->category_id;
                 $product->brand_id = $request->brand_id;
 
-                // File gambar utama tidak diproses di endpoint simpan/edit produk mobile agar tidak memicu error mime kosong dari Android.
-
                 $product->save();
                 $this->syncProductVariations($request, $product);
 
@@ -366,8 +401,6 @@ class ApiAdminController extends Controller
                 $product->exp_date = $request->exp_date;
                 $product->category_id = $request->category_id;
                 $product->brand_id = $request->brand_id;
-
-                // File gambar utama tidak diproses di endpoint simpan/edit produk mobile agar tidak memicu error mime kosong dari Android.
 
                 $product->save();
                 $this->syncProductVariations($request, $product);
