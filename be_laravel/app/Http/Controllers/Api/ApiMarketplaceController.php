@@ -69,18 +69,25 @@ class ApiMarketplaceController extends Controller
         $query = ProductReview::with(['user:id,name', 'product:id,name', 'order:id,status'])
             ->where(function ($q) {
                 $q->whereNull('order_id')
-                    ->orWhereHas('order', fn ($order) => $order->whereIn('status', ['delivered', 'completed', 'selesai']));
+                    ->orWhereHas('order', fn ($order) => $order->whereIn('status', ['delivered', 'done', 'completed', 'complete', 'selesai']));
             });
 
-        if ($productId) {
-            $query->where('product_id', $productId);
-        }
-
-        if ($storeId) {
-            $query->where('store_id', $storeId);
-        }
+        if ($productId) $query->where('product_id', $productId);
+        if ($storeId) $query->where('store_id', $storeId);
 
         return $query;
+    }
+
+    private function refreshStoreRating(?StoreProfile $store): void
+    {
+        if (! $store) return;
+
+        $reviewQuery = ProductReview::where('store_id', $store->id)
+            ->whereHas('product', fn ($product) => $product->where('user_id', $store->user_id));
+
+        $store->rating_average = round((float) $reviewQuery->avg('rating'), 2);
+        $store->rating_count = (clone $reviewQuery)->count();
+        $store->save();
     }
 
     private function conversationQueryForUser(Request $request, ?string $role = null)
@@ -88,17 +95,11 @@ class ApiMarketplaceController extends Controller
         $userId = $request->user()->id;
         $query = Conversation::with(['customer:id,name,email', 'merchant:id,name,email', 'product:id,user_id,name,slug,image']);
 
-        if ($role === 'seller') {
-            return $query->where('seller_id', $userId);
-        }
-
-        if ($role === 'buyer') {
-            return $query->where('buyer_id', $userId);
-        }
+        if ($role === 'seller') return $query->where('seller_id', $userId);
+        if ($role === 'buyer') return $query->where('buyer_id', $userId);
 
         return $query->where(function ($query) use ($userId) {
-            $query->where('buyer_id', $userId)
-                ->orWhere('seller_id', $userId);
+            $query->where('buyer_id', $userId)->orWhere('seller_id', $userId);
         });
     }
 
@@ -107,7 +108,6 @@ class ApiMarketplaceController extends Controller
         $isMerchant = (int) $conversation->seller_id === $userId;
         $counterpart = $isMerchant ? $conversation->customer : $conversation->merchant;
         $payload = $conversation->toArray();
-
         $payload['role'] = $isMerchant ? 'seller' : 'buyer';
         $payload['counterpart'] = $counterpart ? [
             'id' => $counterpart->id,
@@ -116,7 +116,6 @@ class ApiMarketplaceController extends Controller
         ] : null;
         $payload['buyer'] = $conversation->customer;
         $payload['seller'] = $conversation->merchant;
-
         return $payload;
     }
 
@@ -132,6 +131,7 @@ class ApiMarketplaceController extends Controller
         );
 
         [$store, $address] = $this->mergeStoreAddress($store);
+        $this->refreshStoreRating($store);
         $store->store_address = $address;
 
         return response()->json(['success' => true, 'data' => $store]);
@@ -155,31 +155,19 @@ class ApiMarketplaceController extends Controller
 
         $store = StoreProfile::firstOrNew(['user_id' => $request->user()->id]);
         $store->fill($request->only([
-            'name',
-            'phone',
-            'description',
-            'address',
-            'maps_url',
-            'province_name',
-            'city_name',
-            'instagram',
-            'tiktok',
-            'facebook',
-            'website',
+            'name', 'phone', 'description', 'address', 'maps_url', 'province_name', 'city_name',
+            'instagram', 'tiktok', 'facebook', 'website',
         ]));
         $store->slug = $store->slug ?: Str::slug($request->name . '-' . $request->user()->id);
 
         $directory = public_path('uploads/stores');
-        if (! is_dir($directory)) {
-            mkdir($directory, 0755, true);
-        }
+        if (! is_dir($directory)) mkdir($directory, 0755, true);
 
         if ($request->hasFile('logo')) {
             $logoName = time() . '_' . $request->user()->id . '_store_logo.' . $request->logo->extension();
             $request->logo->move($directory, $logoName);
             $store->logo = $logoName;
         }
-
         if ($request->hasFile('banner')) {
             $bannerName = time() . '_' . $request->user()->id . '_store_banner.' . $request->banner->extension();
             $request->banner->move($directory, $bannerName);
@@ -188,6 +176,7 @@ class ApiMarketplaceController extends Controller
 
         $store->status = 'active';
         $store->save();
+        $this->refreshStoreRating($store);
 
         return response()->json(['success' => true, 'message' => 'Profil toko berhasil disimpan', 'data' => $store]);
     }
@@ -196,6 +185,7 @@ class ApiMarketplaceController extends Controller
     {
         $store = StoreProfile::withCount('products')->where('slug', $slug)->firstOrFail();
         [$store, $storeAddress] = $this->mergeStoreAddress($store);
+        $this->refreshStoreRating($store);
 
         $products = Product::with(['category', 'brand', 'variations', 'reviews'])
             ->where('user_id', $store->user_id)
@@ -222,7 +212,6 @@ class ApiMarketplaceController extends Controller
     public function sellerOrders(Request $request)
     {
         $sellerId = (int) $request->user()->id;
-
         $orders = Order::with(['items.product', 'transaction'])
             ->whereHas('items.product', fn ($q) => $q->where('user_id', $sellerId))
             ->latest()
@@ -236,9 +225,7 @@ class ApiMarketplaceController extends Controller
 
     public function updateSellerOrderStatus(Request $request, $id)
     {
-        $request->validate([
-            'status' => 'required|string|in:packing,delivered,done,canceled',
-        ]);
+        $request->validate(['status' => 'required|string|in:packing,delivered,done,canceled']);
 
         $sellerId = (int) $request->user()->id;
         $order = Order::with(['items.product', 'transaction'])
@@ -254,19 +241,12 @@ class ApiMarketplaceController extends Controller
         ];
 
         if (! in_array($nextStatus, $allowed[$currentStatus] ?? [], true)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Status pesanan tidak bisa diperbarui dari tahap saat ini.',
-            ], 422);
+            return response()->json(['success' => false, 'message' => 'Status pesanan tidak bisa diperbarui dari tahap saat ini.'], 422);
         }
 
         $order->status = $nextStatus;
-        if ($nextStatus === 'delivered') {
-            $order->delivered_date = now()->toDateString();
-        }
-        if ($nextStatus === 'canceled') {
-            $order->canceled_date = now()->toDateString();
-        }
+        if ($nextStatus === 'delivered') $order->delivered_date = now()->toDateString();
+        if ($nextStatus === 'canceled') $order->canceled_date = now()->toDateString();
         $order->save();
 
         return response()->json([
@@ -279,10 +259,7 @@ class ApiMarketplaceController extends Controller
     private function sellerOrderPayload(Order $order, int $sellerId): array
     {
         $order->loadMissing(['items.product', 'transaction']);
-        $sellerItems = $order->items
-            ->filter(fn ($item) => $item->product && (int) $item->product->user_id === $sellerId)
-            ->values();
-
+        $sellerItems = $order->items->filter(fn ($item) => $item->product && (int) $item->product->user_id === $sellerId)->values();
         $data = $order->toArray();
         $data['items'] = $sellerItems->map(function ($item) {
             $payload = $item->toArray();
@@ -301,7 +278,6 @@ class ApiMarketplaceController extends Controller
         $data['payment_transaction_id'] = is_array($data['payment_info']) ? ($data['payment_info']['transaction_id'] ?? null) : null;
         $data['seller_status'] = $this->sellerStatus($order);
         $data['seller_status_label'] = $this->sellerStatusLabel($data['seller_status']);
-
         return $data;
     }
 
@@ -309,27 +285,11 @@ class ApiMarketplaceController extends Controller
     {
         $orderStatus = strtolower((string) $order->status);
         $transactionStatus = strtolower((string) ($order->transaction?->status ?? ''));
-
-        if (in_array($orderStatus, ['canceled', 'cancelled'], true) || in_array($transactionStatus, ['declined', 'cancel', 'canceled', 'expire', 'expired'], true)) {
-            return 'canceled';
-        }
-
-        if (in_array($orderStatus, ['done', 'completed', 'complete'], true)) {
-            return 'done';
-        }
-
-        if (in_array($orderStatus, ['delivered', 'deliver'], true)) {
-            return 'delivered';
-        }
-
-        if (in_array($orderStatus, ['packing', 'processing', 'shipped'], true)) {
-            return 'packing';
-        }
-
-        if (in_array($transactionStatus, ['approved', 'settlement', 'capture'], true)) {
-            return 'paid';
-        }
-
+        if (in_array($orderStatus, ['canceled', 'cancelled'], true) || in_array($transactionStatus, ['declined', 'cancel', 'canceled', 'expire', 'expired'], true)) return 'canceled';
+        if (in_array($orderStatus, ['done', 'completed', 'complete', 'selesai'], true)) return 'done';
+        if (in_array($orderStatus, ['delivered', 'deliver', 'dikirim'], true)) return 'delivered';
+        if (in_array($orderStatus, ['packing', 'processing', 'shipped', 'dikemas'], true)) return 'packing';
+        if (in_array($transactionStatus, ['approved', 'settlement', 'capture'], true)) return 'paid';
         return 'pending_payment';
     }
 
@@ -337,20 +297,17 @@ class ApiMarketplaceController extends Controller
     {
         return match ($status) {
             'paid' => 'Dibayar',
-            'packing' => 'Packing',
-            'delivered' => 'Delivered',
-            'done' => 'Done',
-            'canceled' => 'Canceled',
-            default => 'Pending Payment',
+            'packing' => 'Dikemas',
+            'delivered' => 'Dikirim',
+            'done' => 'Selesai',
+            'canceled' => 'Dibatalkan',
+            default => 'Belum Dibayar',
         };
     }
 
     private function transactionDetails($transaction): array
     {
-        if (! $transaction || ! Schema::hasColumn('transactions', 'payment_details') || empty($transaction->payment_details)) {
-            return [];
-        }
-
+        if (! $transaction || ! Schema::hasColumn('transactions', 'payment_details') || empty($transaction->payment_details)) return [];
         $details = json_decode($transaction->payment_details, true);
         return is_array($details) ? $details : [];
     }
@@ -359,7 +316,6 @@ class ApiMarketplaceController extends Controller
     {
         $reviews = $this->verifiedReviewQuery(productId: $productId)->latest()->get();
         $average = round((float) $this->verifiedReviewQuery(productId: $productId)->avg('rating'), 2);
-
         return response()->json(['success' => true, 'average' => $average, 'data' => $reviews]);
     }
 
@@ -367,25 +323,40 @@ class ApiMarketplaceController extends Controller
     {
         $request->validate([
             'product_id' => 'required|exists:products,id',
+            'order_id' => 'required|exists:orders,id',
             'rating' => 'required|integer|min:1|max:5',
-            'review' => 'nullable|string',
+            'review' => 'nullable|string|max:1000',
         ]);
 
         $product = Product::findOrFail($request->product_id);
-        $store = StoreProfile::where('user_id', $product->user_id)->first();
+        $order = Order::with('items.product')
+            ->where('user_id', $request->user()->id)
+            ->where('id', $request->order_id)
+            ->firstOrFail();
 
-        $review = ProductReview::updateOrCreate(
-            ['product_id' => $product->id, 'user_id' => $request->user()->id, 'order_id' => $request->order_id],
-            ['store_id' => $store?->id, 'rating' => $request->rating, 'review' => $request->review]
-        );
-
-        if ($store) {
-            $store->rating_average = round((float) ProductReview::where('store_id', $store->id)->avg('rating'), 2);
-            $store->rating_count = ProductReview::where('store_id', $store->id)->count();
-            $store->save();
+        $status = strtolower((string) $order->status);
+        if (! in_array($status, ['delivered', 'done', 'completed', 'complete', 'selesai'], true)) {
+            return response()->json(['success' => false, 'message' => 'Ulasan hanya bisa diberikan untuk pesanan dikirim atau selesai.'], 422);
         }
 
-        return response()->json(['success' => true, 'message' => 'Ulasan berhasil disimpan', 'data' => $review]);
+        $belongsToOrder = $order->items->contains(fn ($item) => (int) $item->product_id === (int) $product->id);
+        if (! $belongsToOrder) {
+            return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan pada pesanan ini.'], 422);
+        }
+
+        $store = StoreProfile::firstOrCreate(
+            ['user_id' => $product->user_id],
+            ['name' => 'Store', 'slug' => Str::slug('store-' . $product->user_id), 'status' => 'active']
+        );
+
+        $review = ProductReview::updateOrCreate(
+            ['product_id' => $product->id, 'user_id' => $request->user()->id, 'order_id' => $order->id],
+            ['store_id' => $store->id, 'rating' => $request->rating, 'review' => $request->review]
+        );
+
+        $this->refreshStoreRating($store);
+
+        return response()->json(['success' => true, 'message' => 'Ulasan berhasil disimpan', 'data' => $review->load(['user:id,name', 'product:id,name'])]);
     }
 
     public function conversations(Request $request)
@@ -393,7 +364,6 @@ class ApiMarketplaceController extends Controller
         $userId = $request->user()->id;
         $role = $request->query('role') ?: $request->query('scope');
         $role = in_array($role, ['seller', 'buyer'], true) ? $role : null;
-
         $data = $this->conversationQueryForUser($request, $role)
             ->withCount(['chatItems as unread_count' => function ($query) use ($userId) {
                 $query->where('sender_id', '!=', $userId)->whereNull('read_at');
@@ -401,7 +371,6 @@ class ApiMarketplaceController extends Controller
             ->latest('last_message_at')
             ->get()
             ->map(fn ($conversation) => $this->conversationPayload($conversation, $userId));
-
         return response()->json(['success' => true, 'data' => $data]);
     }
 
@@ -411,43 +380,26 @@ class ApiMarketplaceController extends Controller
             'seller_id' => 'nullable|required_without:product_id|exists:users,id',
             'product_id' => 'nullable|exists:products,id',
         ]);
-
-        $product = $request->product_id
-            ? Product::select('id', 'user_id')->findOrFail($request->product_id)
-            : null;
+        $product = $request->product_id ? Product::select('id', 'user_id')->findOrFail($request->product_id) : null;
         $sellerId = $product ? (int) $product->user_id : (int) $request->seller_id;
         $productId = $product ? $product->id : null;
-
-        if ($sellerId <= 0) {
-            return response()->json(['success' => false, 'message' => 'Data penjual belum tersedia'], 422);
-        }
-
-        if ($sellerId === (int) $request->user()->id) {
-            return response()->json(['success' => false, 'message' => 'Tidak bisa chat toko sendiri'], 422);
-        }
-
+        if ($sellerId <= 0) return response()->json(['success' => false, 'message' => 'Data penjual belum tersedia'], 422);
+        if ($sellerId === (int) $request->user()->id) return response()->json(['success' => false, 'message' => 'Tidak bisa chat toko sendiri'], 422);
         $conversation = Conversation::firstOrCreate(
-            [
-                'buyer_id' => $request->user()->id,
-                'seller_id' => $sellerId,
-                'product_id' => $productId,
-            ],
+            ['buyer_id' => $request->user()->id, 'seller_id' => $sellerId, 'product_id' => $productId],
             ['last_message_at' => now()]
         );
         $conversation->load(['customer:id,name,email', 'merchant:id,name,email', 'product:id,user_id,name,slug,image']);
-
         return response()->json(['success' => true, 'data' => $this->conversationPayload($conversation, $request->user()->id)]);
     }
 
     public function messages(Request $request, $conversationId)
     {
         $conversation = $this->conversationQueryForUser($request)->findOrFail($conversationId);
-
         ConversationMessage::where('conversation_id', $conversation->id)
             ->where('sender_id', '!=', $request->user()->id)
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
-
         $messages = ConversationMessage::with('author:id,name,email')
             ->where('conversation_id', $conversation->id)
             ->orderBy('id')
@@ -461,38 +413,24 @@ class ApiMarketplaceController extends Controller
                 ] : null;
                 return $payload;
             });
-
-        return response()->json([
-            'success' => true,
-            'conversation' => $this->conversationPayload($conversation, $request->user()->id),
-            'data' => $messages,
-        ]);
+        return response()->json(['success' => true, 'conversation' => $this->conversationPayload($conversation, $request->user()->id), 'data' => $messages]);
     }
 
     public function sendMessage(Request $request, $conversationId)
     {
         $request->validate(['message' => 'required|string']);
-
         $conversation = $this->conversationQueryForUser($request)->findOrFail($conversationId);
-
         $message = ConversationMessage::create([
             'conversation_id' => $conversation->id,
             'sender_id' => $request->user()->id,
             'message' => $request->message,
         ]);
         $message->load('author:id,name,email');
-
         $conversation->last_message = $request->message;
         $conversation->last_message_at = now();
         $conversation->save();
-
         $payload = $message->toArray();
-        $payload['sender'] = [
-            'id' => $request->user()->id,
-            'name' => $request->user()->name,
-            'email' => $request->user()->email,
-        ];
-
+        $payload['sender'] = ['id' => $request->user()->id, 'name' => $request->user()->name, 'email' => $request->user()->email];
         return response()->json(['success' => true, 'data' => $payload]);
     }
 }
