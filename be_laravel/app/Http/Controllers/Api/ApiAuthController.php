@@ -44,6 +44,7 @@ class ApiAuthController extends Controller
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
+            'utype' => 'ADM',
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
