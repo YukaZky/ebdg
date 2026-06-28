@@ -12,7 +12,7 @@ class TokoPesananScreen extends StatefulWidget {
 
 class _TokoPesananScreenState extends State<TokoPesananScreen> {
   static const Color _primary = Color(0xFF0C2442);
-  static const Color _accent = Color(0xFFF39C12);
+  // static const Color _accent = Color(0xFFF39C12);
   static const Color _purple = Color(0xFF6C4DFF);
   static const Color _surface = Color(0xFFF7F8FC);
   static const Color _muted = Color(0xFF64748B);
@@ -345,10 +345,10 @@ class TokoPesananDetailScreen extends StatefulWidget {
 
 class _TokoPesananDetailScreenState extends State<TokoPesananDetailScreen> {
   static const Color _primary = Color(0xFF0C2442);
-  static const Color _accent = Color(0xFFF39C12);
+  // static const Color _accent = Color(0xFFF39C12);
   static const Color _surface = Color(0xFFF7F8FC);
   static const Color _muted = Color(0xFF64748B);
-  static const Color _danger = Color(0xFFB91C1C);
+  // static const Color _danger = Color(0xFFB91C1C);
 
   Map<String, dynamic>? storeProfile;
   bool loadingStore = true;

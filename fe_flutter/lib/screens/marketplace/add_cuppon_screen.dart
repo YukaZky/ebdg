@@ -22,7 +22,7 @@ class _AddCupponScreenState extends State<AddCupponScreen> {
 
   static const Color _primary = Color(0xFF0C2442);
   static const Color _accent = Color(0xFFF39C12);
-  static const Color _purple = Color(0xFF6C4DFF);
+  // static const Color _purple = Color(0xFF6C4DFF);
   static const Color _surface = Color(0xFFF7F8FC);
 
   String _type = 'fixed';
