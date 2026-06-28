@@ -156,7 +156,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _loadShippingCost() async {
-    if (_addressData == null || _addressData!['city_id'] == null || _selectedCourier == null) return;
+    if (_addressData == null || _addressData!['city_id'] == null || _addressData!['district_id'] == null || _selectedCourier == null) return;
+    final sellerIds = widget.cartItems.map(_productSellerId).where((id) => id > 0).toSet();
+    if (sellerIds.length != 1) {
+      _showSnack('Ongkir hanya dapat dihitung untuk satu toko per checkout.', error: true);
+      return;
+    }
     setState(() {
       _isLoadingShipping = true;
       _shippingOptions = [];
@@ -164,7 +169,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _shippingCost = 0;
     });
 
-    final data = await ApiService.checkCost(_addressData!['city_id'].toString(), widget.totalWeight.toInt(), _selectedCourier!);
+    final data = await ApiService.checkCost(
+      _addressData!['city_id'].toString(),
+      _addressData!['district_id'].toString(),
+      sellerIds.first,
+      widget.totalWeight.toInt(),
+      _selectedCourier!,
+    );
     if (!mounted) return;
 
     setState(() {
@@ -175,6 +186,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _shippingCost = double.tryParse(data[0]['cost'][0]['value']?.toString() ?? '0') ?? 0;
       }
     });
+    if (data.isEmpty) {
+      _showSnack('Ongkir tidak tersedia. Pastikan penjual sudah mengatur lokasi toko dengan lengkap.', error: true);
+    }
   }
 
   Future<void> _selectPaymentMethod() async {

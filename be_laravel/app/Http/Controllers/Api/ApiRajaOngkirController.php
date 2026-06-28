@@ -3,22 +3,20 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\StoreLocationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use App\Models\About;
 
 class ApiRajaOngkirController extends Controller
 {
     protected $apiKey;
     protected $baseUrl;
-    protected $origin;
 
-    public function __construct()
+    public function __construct(private readonly StoreLocationService $storeLocations)
     {
         // Membaca dari config/rajaongkir.php
         $this->apiKey = config('rajaongkir.api_key');
         $this->baseUrl = config('rajaongkir.base_url', 'https://api.rajaongkir.com/starter');
-        $this->origin = config('rajaongkir.origin', '399');
     }
 
     public function getProvinces()
@@ -100,18 +98,39 @@ class ApiRajaOngkirController extends Controller
     public function checkCost(Request $request)
     {
         $request->validate([
-            'destination' => 'required', 
-            'weight' => 'required|numeric', 
-            'courier' => 'required' 
+            'seller_id' => 'required|integer|exists:users,id',
+            'destination' => 'required|string',
+            'destination_district' => 'nullable|string',
+            'weight' => 'required|numeric|min:1',
+            'courier' => 'required|string',
         ]);
-
-        $about = About::first();
-        $originCity = ($about && $about->city_id) ? $about->city_id : $this->origin;
 
         try {
             $isKomerce = str_contains($this->baseUrl, 'komerce');
-            $endpoint = $isKomerce 
-                ? rtrim($this->baseUrl, '/') . '/calculate/domestic-cost'
+            $storeLocation = $this->storeLocations->findForUser((int) $request->seller_id);
+
+            if (! $storeLocation) {
+                return response()->json([
+                    'error' => 'Lokasi toko belum diatur oleh penjual.',
+                ], 422);
+            }
+
+            if ($isKomerce && (empty($storeLocation->district_id) || $storeLocation->district_id === '0')) {
+                return response()->json([
+                    'error' => 'Kecamatan lokasi toko belum lengkap.',
+                ], 422);
+            }
+
+            if ($isKomerce && ! $request->filled('destination_district')) {
+                return response()->json([
+                    'error' => 'Kecamatan alamat tujuan belum lengkap.',
+                ], 422);
+            }
+
+            $origin = $isKomerce ? $storeLocation->district_id : $storeLocation->city_id;
+            $destination = $isKomerce ? $request->destination_district : $request->destination;
+            $endpoint = $isKomerce
+                ? rtrim($this->baseUrl, '/') . '/calculate/district/domestic-cost'
                 : rtrim($this->baseUrl, '/') . '/cost';
 
             // TAMBAHAN ->withoutVerifying() UNTUK MENGATASI CURL ERROR 60
@@ -119,8 +138,8 @@ class ApiRajaOngkirController extends Controller
                 'Accept' => 'application/json',
                 'key' => $this->apiKey
             ])->post($endpoint, [
-                'origin' => $originCity,
-                'destination' => $request->destination,
+                'origin' => $origin,
+                'destination' => $destination,
                 'weight' => $request->weight,
                 'courier' => strtolower($request->courier)
             ]);

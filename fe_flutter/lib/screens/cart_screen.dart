@@ -257,6 +257,14 @@ class _CartScreenState extends State<CartScreen> {
     }
 
     final itemsToCheckout = _cartItems.where((item) => item['isChecked'] == true).toList();
+    final sellerIds = itemsToCheckout.map((item) {
+      final product = item['product'] is Map ? item['product'] as Map : const {};
+      return int.tryParse((product['user_id'] ?? item['seller_id'] ?? '').toString()) ?? 0;
+    }).where((id) => id > 0).toSet();
+    if (sellerIds.length != 1) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih produk dari satu toko untuk satu proses checkout agar ongkir akurat.')));
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => CheckoutScreen(totalAmount: totalPrice, totalWeight: totalWeight, cartItems: itemsToCheckout)),

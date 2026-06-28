@@ -15,7 +15,7 @@ use App\Models\Contact;
 use App\Models\WhatsappSetting;
 use App\Models\About;
 use App\Models\Address;
-use App\Models\StoreProfile;
+use App\Services\StoreLocationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -23,34 +23,8 @@ use Throwable;
 
 class ApiAdminController extends Controller
 {
-    private function syncStoreProfileFromAddress(Address $address): void
+    public function __construct(private readonly StoreLocationService $storeLocations)
     {
-        $user = auth()->user();
-        if (! $user) return;
-
-        $store = StoreProfile::firstOrCreate(
-            ['user_id' => $user->id],
-            [
-                'name' => $user->name . ' Store',
-                'slug' => Str::slug($user->name . '-' . $user->id),
-                'status' => 'active',
-            ]
-        );
-
-        $area = collect([$address->locality, $address->city_name, $address->province_name])
-            ->filter(fn ($item) => ! empty($item) && $item !== '-')
-            ->implode(', ');
-
-        $store->address = trim($address->address . ($area ? ', ' . $area : ''));
-        $store->phone = $address->phone ?: $store->phone;
-        $store->province_name = $address->province_name ?: $store->province_name;
-        $store->city_name = $address->city_name ?: $store->city_name;
-
-        if ($address->latitude && $address->longitude) {
-            $store->maps_url = 'https://www.google.com/maps/search/?api=1&query=' . $address->latitude . ',' . $address->longitude;
-        }
-
-        $store->save();
     }
 
     private function productPayload(Product $product): Product
@@ -622,45 +596,14 @@ class ApiAdminController extends Controller
 
     public function getStoreLocation()
     {
-        $location = Address::where('user_id', auth()->id())
-            ->orderBy('is_store_address', 'desc')
-            ->orderBy('isdefault', 'desc')
-            ->first();
+        $location = $this->storeLocations->findForUser((int) auth()->id());
 
         return response()->json(['success' => (bool) $location, 'data' => $location], 200);
     }
 
     public function saveStoreLocation(Request $request)
     {
-        $request->validate(['province_id' => 'required', 'city_id' => 'required']);
-        $address = Address::where('user_id', auth()->id())->where('is_store_address', true)->first() ?? new Address();
-        $address->user_id = auth()->id();
-        $address->name = $request->name ?? auth()->user()->name;
-        $address->phone = $request->phone ?? '0';
-        $address->province_id = $request->province_id;
-        $address->city_id = $request->city_id;
-        $address->district_id = $request->district_id ?? '0';
-        $address->province_name = $request->province_name ?? '-';
-        $address->city_name = $request->city_name ?? '-';
-        $address->district_name = $request->kecamatan ?? '-';
-        $address->address = $request->detail_address ?? '-';
-        $address->locality = $request->kecamatan ?? '-';
-        $address->landmark = $request->landmark ?? '-';
-        $address->postal_code = $request->postal_code ?? '00000';
-        $address->zip = $request->postal_code ?? '00000';
-        $address->city = $request->city_name ?? '-';
-        $address->state = $request->province_name ?? '-';
-        $address->country = 'Indonesia';
-        $address->type = 'home';
-        $address->latitude = $request->latitude;
-        $address->longitude = $request->longitude;
-        $address->note = $request->note;
-        $address->label = $request->label ?? 'Toko';
-        $address->isdefault = filter_var($request->is_main, FILTER_VALIDATE_BOOLEAN);
-        $address->is_store_address = true;
-        Address::where('user_id', auth()->id())->update(['is_store_address' => false]);
-        $address->save();
-        $this->syncStoreProfileFromAddress($address);
+        $address = $this->persistAddress($request, true);
 
         return response()->json(['success' => true, 'message' => 'Alamat toko berhasil disimpan.', 'data' => $address], 200);
     }
@@ -683,73 +626,181 @@ class ApiAdminController extends Controller
 
     public function saveUserAddress(Request $request)
     {
-        $request->validate(['province_id' => 'required', 'city_id' => 'required']);
-
-        $isStore = filter_var($request->is_store, FILTER_VALIDATE_BOOLEAN);
-        $isMain = filter_var($request->is_main, FILTER_VALIDATE_BOOLEAN);
-
-        if ($isMain) {
-            Address::where('user_id', auth()->id())->update(['isdefault' => false]);
-        }
-        if ($isStore) {
-            Address::where('user_id', auth()->id())->update(['is_store_address' => false]);
-        }
-
-        $address = $request->address_id
-            ? Address::where('user_id', auth()->id())->findOrFail($request->address_id)
-            : new Address();
-
-        $address->user_id = auth()->id();
-        $address->name = $request->name ?? auth()->user()->name;
-        $address->phone = $request->phone ?? '0';
-        $address->province_id = $request->province_id;
-        $address->city_id = $request->city_id;
-        $address->district_id = $request->district_id ?? '0';
-        $address->province_name = $request->province_name ?? '-';
-        $address->city_name = $request->city_name ?? '-';
-        $address->district_name = $request->kecamatan ?? '-';
-        $address->address = $request->detail_address ?? '-';
-        $address->locality = $request->kecamatan ?? '-';
-        $address->landmark = $request->landmark ?? '-';
-        $address->postal_code = $request->postal_code ?? '00000';
-        $address->zip = $request->postal_code ?? '00000';
-        $address->city = $request->city_name ?? '-';
-        $address->state = $request->province_name ?? '-';
-        $address->country = 'Indonesia';
-        $address->type = 'home';
-        $address->latitude = $request->latitude;
-        $address->longitude = $request->longitude;
-        $address->note = $request->note;
-        $address->label = $request->label ?? 'Rumah';
-        $address->isdefault = $isMain;
-        $address->is_store_address = $isStore;
-        $address->save();
-
-        if (Address::where('user_id', auth()->id())->count() == 1) {
-            $address->isdefault = true;
-            $address->save();
-        }
-
-        if ($address->is_store_address) {
-            $this->syncStoreProfileFromAddress($address);
-        }
+        $address = $this->persistAddress($request);
 
         return response()->json(['success' => true, 'message' => 'Alamat disimpan.', 'data' => $address], 200);
     }
 
+    public function setStoreAddress($id)
+    {
+        $user = auth()->user();
+
+        $address = DB::transaction(function () use ($user, $id) {
+            DB::table('users')->where('id', $user->id)->lockForUpdate()->first();
+            $address = Address::where('user_id', $user->id)->lockForUpdate()->findOrFail($id);
+
+            return $this->storeLocations->assign($user, $address);
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Lokasi toko berhasil diubah.',
+            'data' => $address,
+        ], 200);
+    }
+
     public function setMainAddress($id)
     {
-        $userId = auth()->id();
-        Address::where('user_id', $userId)->update(['isdefault' => false]);
-        $address = Address::where('user_id', $userId)->findOrFail($id);
-        $address->isdefault = true;
-        $address->save();
+        DB::transaction(function () use ($id) {
+            $userId = auth()->id();
+            DB::table('users')->where('id', $userId)->lockForUpdate()->first();
+            $address = Address::where('user_id', $userId)->lockForUpdate()->findOrFail($id);
+            Address::where('user_id', $userId)->update(['isdefault' => false]);
+            $address->isdefault = true;
+            $address->save();
+        });
+
         return response()->json(['success' => true, 'message' => 'Alamat utama diubah.'], 200);
     }
 
     public function deleteUserAddress($id)
     {
-        Address::where('user_id', auth()->id())->findOrFail($id)->delete();
+        DB::transaction(function () use ($id) {
+            $user = auth()->user();
+            DB::table('users')->where('id', $user->id)->lockForUpdate()->first();
+            $address = Address::where('user_id', $user->id)->lockForUpdate()->findOrFail($id);
+            $wasMain = (bool) $address->isdefault;
+
+            if ((int) $address->store_owner_id === (int) $user->id) {
+                $this->storeLocations->clear($user, $address);
+            }
+
+            $address->delete();
+
+            if ($wasMain) {
+                $nextAddress = Address::where('user_id', $user->id)->latest()->first();
+                if ($nextAddress) {
+                    $nextAddress->isdefault = true;
+                    $nextAddress->save();
+                }
+            }
+        });
+
         return response()->json(['success' => true, 'message' => 'Alamat dihapus'], 200);
+    }
+
+    private function persistAddress(Request $request, bool $forceStore = false): Address
+    {
+        $data = $request->validate([
+            'address_id' => 'nullable|integer',
+            'name' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:30',
+            'province_id' => 'required|string|max:50',
+            'province_name' => 'nullable|string|max:255',
+            'city_id' => 'required|string|max:50',
+            'city_name' => 'nullable|string|max:255',
+            'district_id' => 'nullable|string|max:50',
+            'kecamatan' => 'nullable|string|max:255',
+            'postal_code' => 'nullable|string|max:10',
+            'detail_address' => 'nullable|string|max:2000',
+            'landmark' => 'nullable|string|max:255',
+            'note' => 'nullable|string|max:1000',
+            'label' => 'nullable|string|max:50',
+            'is_main' => 'nullable|boolean',
+            'isdefault' => 'nullable|boolean',
+            'is_store' => 'nullable|boolean',
+            'is_store_address' => 'nullable|boolean',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+        ]);
+
+        $user = auth()->user();
+
+        return DB::transaction(function () use ($request, $data, $user, $forceStore) {
+            DB::table('users')->where('id', $user->id)->lockForUpdate()->first();
+
+            if (isset($data['address_id'])) {
+                $address = Address::where('user_id', $user->id)
+                    ->lockForUpdate()
+                    ->findOrFail($data['address_id']);
+            } elseif ($forceStore) {
+                $address = Address::where('user_id', $user->id)
+                    ->where('store_owner_id', $user->id)
+                    ->lockForUpdate()
+                    ->first() ?? new Address(['user_id' => $user->id]);
+            } else {
+                $address = new Address(['user_id' => $user->id]);
+            }
+
+            $wasStore = (int) $address->store_owner_id === (int) $user->id;
+            $isMain = $this->booleanFromAliases($request, ['is_main', 'isdefault'], (bool) $address->isdefault);
+            $isStore = $forceStore
+                || $this->booleanFromAliases($request, ['is_store', 'is_store_address'], $wasStore);
+
+            if ($isMain) {
+                Address::where('user_id', $user->id)->update(['isdefault' => false]);
+            }
+
+            $provinceName = $data['province_name'] ?? '-';
+            $cityName = $data['city_name'] ?? '-';
+            $districtName = $data['kecamatan'] ?? '-';
+            $postalCode = $data['postal_code'] ?? '00000';
+
+            $address->fill([
+                'user_id' => $user->id,
+                'name' => $data['name'] ?? $user->name,
+                'phone' => $data['phone'] ?? '0',
+                'province_id' => $data['province_id'],
+                'province_name' => $provinceName,
+                'state' => $provinceName,
+                'city_id' => $data['city_id'],
+                'city_name' => $cityName,
+                'city' => $cityName,
+                'district_id' => $data['district_id'] ?? '0',
+                'district_name' => $districtName,
+                'locality' => $districtName,
+                'address' => $data['detail_address'] ?? '-',
+                'landmark' => $data['landmark'] ?? null,
+                'postal_code' => $postalCode,
+                'zip' => $postalCode,
+                'country' => 'Indonesia',
+                'type' => 'Rumah',
+                'latitude' => $data['latitude'] ?? null,
+                'longitude' => $data['longitude'] ?? null,
+                'note' => $data['note'] ?? null,
+                'label' => $data['label'] ?? ($forceStore ? 'Toko' : 'Rumah'),
+                'isdefault' => $isMain,
+            ]);
+            $address->save();
+
+            if ($isStore) {
+                $address = $this->storeLocations->assign($user, $address);
+            } elseif ($wasStore) {
+                $this->storeLocations->clear($user, $address);
+                $address = $address->refresh();
+            } else {
+                $address->is_store_address = false;
+                $address->store_owner_id = null;
+                $address->save();
+            }
+
+            if (Address::where('user_id', $user->id)->count() === 1 && ! $address->isdefault) {
+                $address->isdefault = true;
+                $address->save();
+            }
+
+            return $address->refresh();
+        });
+    }
+
+    private function booleanFromAliases(Request $request, array $keys, bool $default): bool
+    {
+        foreach ($keys as $key) {
+            if ($request->exists($key)) {
+                return $request->boolean($key);
+            }
+        }
+
+        return $default;
     }
 }

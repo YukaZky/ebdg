@@ -7,18 +7,19 @@ use Illuminate\Database\Eloquent\Model;
 class Address extends Model
 {
     protected $fillable = [
-        'user_id',       
-        'name',    
+        'user_id',
+        'store_owner_id',
+        'name',
         'phone',
-        'locality',      
-        'address',    
+        'locality',
+        'address',
         'city',
         'state',
         'country',
         'landmark',
         'zip',
         'type',
-        'isdefault',     
+        'isdefault',
         'province_id',
         'city_id',
         'district_id',
@@ -27,12 +28,19 @@ class Address extends Model
         'district_name',
         'postal_code',
         'label',
-        'note',              
-        'is_store_address',  
-        'latitude',  
+        'note',
+        'is_store_address',
+        'latitude',
         'longitude',
     ];
-    
+
+    protected $casts = [
+        'isdefault' => 'boolean',
+        'is_store_address' => 'boolean',
+        'latitude' => 'float',
+        'longitude' => 'float',
+    ];
+
     // Relasi ke User (Opsional tapi sangat disarankan)
     public function user()
     {
