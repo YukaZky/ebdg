@@ -186,6 +186,33 @@ class StoreLocationTest extends TestCase
         }
     }
 
+    public function test_editing_a_store_address_as_main_does_not_remove_its_store_role(): void
+    {
+        $user = $this->user();
+        Sanctum::actingAs($user);
+
+        $addressId = $this->postJson('/api/user/addresses', $this->addressPayload([
+            'is_store' => 1,
+        ]))->assertOk()->json('data.id');
+
+        $this->postJson('/api/user/addresses', $this->addressPayload([
+            'address_id' => $addressId,
+            'is_main' => 1,
+            'is_store' => 0,
+            'detail_address' => 'Alamat toko yang diperbarui',
+        ]))->assertOk()
+            ->assertJsonPath('data.isdefault', true)
+            ->assertJsonPath('data.is_store_address', true)
+            ->assertJsonPath('data.store_owner_id', $user->id);
+
+        $this->assertDatabaseHas('addresses', [
+            'id' => $addressId,
+            'isdefault' => true,
+            'is_store_address' => true,
+            'store_owner_id' => $user->id,
+        ]);
+    }
+
     public function test_deleting_the_store_location_clears_stale_store_profile_location(): void
     {
         $user = $this->user();
@@ -268,6 +295,70 @@ class StoreLocationTest extends TestCase
                 && $request['weight'] === 1000
                 && $request['courier'] === 'jne';
         });
+    }
+
+    public function test_different_store_locations_produce_distinct_rajaongkir_origins_and_rates(): void
+    {
+        config()->set('rajaongkir.base_url', 'https://rajaongkir.komerce.id/api/v1');
+
+        $bandungSeller = $this->user();
+        Sanctum::actingAs($bandungSeller);
+        $this->postJson('/api/user/addresses', $this->addressPayload([
+            'province_name' => 'Jawa Barat',
+            'city_name' => 'Bandung',
+            'district_id' => '3273010',
+            'kecamatan' => 'Bandung Wetan',
+            'is_store' => 1,
+        ]))->assertOk();
+
+        $mataramSeller = $this->user();
+        Sanctum::actingAs($mataramSeller);
+        $this->postJson('/api/user/addresses', $this->addressPayload([
+            'province_id' => '52',
+            'province_name' => 'Nusa Tenggara Barat',
+            'city_id' => '5271',
+            'city_name' => 'Mataram',
+            'district_id' => '5271010',
+            'kecamatan' => 'Mataram',
+            'is_store' => 1,
+        ]))->assertOk();
+
+        $buyer = $this->user();
+        Sanctum::actingAs($buyer);
+        Http::fake(function ($request) {
+            $origin = (string) $request['origin'];
+            $cost = $origin === '3273010' ? 18000 : 47000;
+
+            return Http::response([
+                'data' => [[
+                    'service' => 'REG',
+                    'description' => 'Reguler',
+                    'cost' => $cost,
+                    'etd' => '2-4 day',
+                ]],
+            ]);
+        });
+
+        $destination = [
+            'destination' => '3578',
+            'destination_district' => '3578010',
+            'weight' => 1000,
+            'courier' => 'jne',
+        ];
+
+        $this->postJson('/api/rajaongkir/cost', $destination + [
+            'seller_id' => $bandungSeller->id,
+        ])->assertOk()
+            ->assertJsonPath('0.cost.0.value', 18000)
+            ->assertJsonPath('0.origin.city', 'Bandung')
+            ->assertJsonPath('0.origin.location_id', '3273010');
+
+        $this->postJson('/api/rajaongkir/cost', $destination + [
+            'seller_id' => $mataramSeller->id,
+        ])->assertOk()
+            ->assertJsonPath('0.cost.0.value', 47000)
+            ->assertJsonPath('0.origin.city', 'Mataram')
+            ->assertJsonPath('0.origin.location_id', '5271010');
     }
 
     public function test_rajaongkir_does_not_fall_back_to_a_global_origin(): void

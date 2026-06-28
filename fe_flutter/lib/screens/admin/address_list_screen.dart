@@ -109,9 +109,11 @@ class _AddressListScreenState extends State<AddressListScreen> {
               ? const Center(child: Text("Belum ada alamat tersimpan."))
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
-                  itemCount: addresses.length,
+                  itemCount: addresses.length + 1,
                   itemBuilder: (context, index) {
-                    final addr = addresses[index];
+                    if (index == 0) return _roleInfoCard();
+
+                    final addr = addresses[index - 1];
 
                     // PERBAIKAN: Menangani tipe String, Integer, Boolean dan berbagai nama key dari backend
                     bool isMain = addr['isdefault'] == 1 ||
@@ -121,7 +123,8 @@ class _AddressListScreenState extends State<AddressListScreen> {
                         addr['is_main'] == '1' ||
                         addr['is_main'] == true;
 
-                    bool isStore = addr['is_store_address'] == 1 ||
+                    bool isStore = addr['store_owner_id'] != null ||
+                        addr['is_store_address'] == 1 ||
                         addr['is_store_address'] == '1' ||
                         addr['is_store_address'] == true ||
                         addr['is_store'] == 1 ||
@@ -214,7 +217,7 @@ class _AddressListScreenState extends State<AddressListScreen> {
                                         height: 1.4)),
                                 const SizedBox(height: 2),
                                 Text(
-                                    "${addr['locality']}, Kode Pos: ${addr['postal_code']}",
+                                    "${addr['district_name'] ?? addr['locality']}, ${addr['city_name']}, ${addr['province_name']} - ${addr['postal_code']}",
                                     style: TextStyle(
                                         color: Colors.grey.shade700,
                                         fontSize: 13)),
@@ -351,6 +354,31 @@ class _AddressListScreenState extends State<AddressListScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _roleInfoCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded, color: Colors.blue, size: 22),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Alamat Utama dipakai sebagai tujuan checkout. Lokasi Toko dipakai sebagai asal pengiriman dan ongkir. Keduanya terpisah, tetapi boleh menunjuk alamat yang sama.',
+              style: TextStyle(fontSize: 12.5, height: 1.45),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -56,7 +56,7 @@ class CartApiService {
 
     final success = response.statusCode == 200 || response.statusCode == 201;
     if (success) {
-      await CartBadgeService.refresh();
+      await CartBadgeService.notifyCartChanged();
     } else {
       lastError = _messageFromBody(response.body, fallback: 'Gagal menambahkan produk. Kode: ${response.statusCode}');
     }

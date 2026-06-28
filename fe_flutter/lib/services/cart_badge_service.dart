@@ -3,6 +3,12 @@ import 'api_service.dart';
 
 class CartBadgeService {
   static final ValueNotifier<int> count = ValueNotifier<int>(0);
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  static Future<void> notifyCartChanged() async {
+    revision.value++;
+    await refresh();
+  }
 
   static Future<void> refresh() async {
     if (ApiService.token == null) {

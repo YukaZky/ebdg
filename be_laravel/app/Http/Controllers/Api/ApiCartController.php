@@ -39,6 +39,7 @@ class ApiCartController extends Controller
             if ($item->product) {
                 $store = $item->product->store;
                 $seller = $item->product->user;
+                $item->seller_id = (int) $item->product->user_id;
                 $storeName = $store?->name ?: ($seller?->name ? $seller->name . ' Store' : 'Toko Penjual');
                 $storeId = $store?->id ?: 'seller_' . ($item->product->user_id ?? 'unknown');
 
@@ -114,7 +115,7 @@ class ApiCartController extends Controller
             $cartItem->weight = $selectedWeight;
             $cartItem->save();
         } else {
-            CartItem::create([
+            $cartItem = CartItem::create([
                 'user_id' => $user->id,
                 'product_id' => $product->id,
                 'variation_id' => $variation?->id,
@@ -126,7 +127,11 @@ class ApiCartController extends Controller
             ]);
         }
 
-        return response()->json(['success' => true, 'message' => 'Produk berhasil ditambahkan ke keranjang'], 200);
+        return response()->json([
+            'success' => true,
+            'message' => 'Produk berhasil ditambahkan ke keranjang',
+            'data' => $cartItem->fresh(),
+        ], 200);
     }
 
     public function remove(Request $request, $id)
