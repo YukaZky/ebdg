@@ -94,6 +94,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user/addresses', [ApiAdminController::class, 'getUserAddresses']);
     Route::post('/user/addresses', [ApiAdminController::class, 'saveUserAddress']);
     Route::put('/user/addresses/{id}/set-main', [ApiAdminController::class, 'setMainAddress']);
+    Route::put('/user/addresses/{id}/set-store', [ApiAdminController::class, 'setStoreAddress']);
     Route::delete('/user/addresses/{id}', [ApiAdminController::class, 'deleteUserAddress']);
     Route::get('/order/{id}/status', [ApiCheckoutController::class, 'checkStatus']);
 

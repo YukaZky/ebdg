@@ -8,7 +8,8 @@ import '../models/product_model.dart';
 import '../models/payment_method_model.dart';
 
 class ApiService {
-  static const String baseUrl = "https://plug-unlined-smugness.ngrok-free.dev/api";
+  static const String baseUrl =
+      "https://plug-unlined-smugness.ngrok-free.dev/api";
   static const String _tokenStorageKey = 'auth_access_token';
   static String? _token;
   static bool _sessionRestored = false;
@@ -102,7 +103,8 @@ class ApiService {
       print("=== DEBUG 1: URL Target: $baseUrl/products ===");
 
       final response = await http.get(
-        Uri.parse("$baseUrl/products?_=${DateTime.now().millisecondsSinceEpoch}"),
+        Uri.parse(
+            "$baseUrl/products?_=${DateTime.now().millisecondsSinceEpoch}"),
         headers: {"Accept": "application/json", "Cache-Control": "no-cache"},
       );
 
@@ -152,7 +154,8 @@ class ApiService {
 
   static Future<Product?> getProductDetails(String slug) async {
     final response = await http.get(
-      Uri.parse("$baseUrl/products/$slug?_=${DateTime.now().millisecondsSinceEpoch}"),
+      Uri.parse(
+          "$baseUrl/products/$slug?_=${DateTime.now().millisecondsSinceEpoch}"),
       headers: {"Accept": "application/json", "Cache-Control": "no-cache"},
     );
     print("Detail produk status: ${response.statusCode}");
@@ -193,7 +196,8 @@ class ApiService {
     if (_token == null) throw Exception("Belum login");
     final response =
         await http.get(Uri.parse("$baseUrl/orders"), headers: _authHeaders);
-    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
+    if (response.statusCode == 200)
+      return jsonDecode(response.body)['data'] ?? [];
     throw Exception("Gagal memuat riwayat pesanan");
   }
 
@@ -245,15 +249,13 @@ class ApiService {
     }
 
     try {
-      await http
-          .post(
-            Uri.parse("$baseUrl/logout"),
-            headers: {
-              "Accept": "application/json",
-              "Authorization": "Bearer $tokenBeforeLogout",
-            },
-          )
-          .timeout(const Duration(seconds: 8));
+      await http.post(
+        Uri.parse("$baseUrl/logout"),
+        headers: {
+          "Accept": "application/json",
+          "Authorization": "Bearer $tokenBeforeLogout",
+        },
+      ).timeout(const Duration(seconds: 8));
     } catch (e) {
       print("Error Logout: $e");
     }
@@ -300,7 +302,8 @@ class ApiService {
     try {
       final response = await http.get(Uri.parse("$baseUrl/user/addresses"),
           headers: _authHeaders);
-      if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
+      if (response.statusCode == 200)
+        return jsonDecode(response.body)['data'] ?? [];
     } catch (e) {
       print("Error get addresses: $e");
     }
@@ -323,6 +326,18 @@ class ApiService {
     try {
       final response = await http.put(
           Uri.parse("$baseUrl/user/addresses/$id/set-main"),
+          headers: _authHeaders);
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static Future<bool> setStoreAddress(int id) async {
+    if (_token == null) return false;
+    try {
+      final response = await http.put(
+          Uri.parse("$baseUrl/user/addresses/$id/set-store"),
           headers: _authHeaders);
       return response.statusCode == 200;
     } catch (e) {
@@ -376,13 +391,19 @@ class ApiService {
   }
 
   static Future<List<dynamic>> checkCost(
-      String destinationCityId, int weight, String courier) async {
+      String destinationCityId,
+      String destinationDistrictId,
+      int sellerId,
+      int weight,
+      String courier) async {
     if (_token == null) return [];
     final response = await http.post(
       Uri.parse("$baseUrl/rajaongkir/cost"),
       headers: _jsonHeaders,
       body: jsonEncode({
+        "seller_id": sellerId,
         "destination": destinationCityId,
+        "destination_district": destinationDistrictId,
         "weight": weight,
         "courier": courier
       }),
@@ -490,7 +511,9 @@ class ApiService {
 
     final variations = List<dynamic>.from(data['variations']);
 
-    if (variationIds != null && index < variationIds.length && variationIds[index].trim().isNotEmpty) {
+    if (variationIds != null &&
+        index < variationIds.length &&
+        variationIds[index].trim().isNotEmpty) {
       final targetId = variationIds[index].trim();
       for (final item in variations) {
         if (item is Map && item['id']?.toString() == targetId) {
@@ -515,7 +538,8 @@ class ApiService {
     return null;
   }
 
-  static Future<bool> _uploadVariationImageBase64(int variationId, XFile file, int index) async {
+  static Future<bool> _uploadVariationImageBase64(
+      int variationId, XFile file, int index) async {
     final bytes = await file.readAsBytes();
     if (bytes.isEmpty) return false;
 
@@ -540,7 +564,8 @@ class ApiService {
     List<String>? variationNames,
     List<String>? variationIds,
   ) async {
-    if (variationImages == null || variationImages.every((item) => item == null)) return true;
+    if (variationImages == null ||
+        variationImages.every((item) => item == null)) return true;
 
     final decoded = jsonDecode(saveResponseBody);
     if (decoded is! Map<String, dynamic>) return false;
@@ -550,7 +575,8 @@ class ApiService {
       final image = variationImages[i];
       if (image == null) continue;
 
-      final variationId = _variationIdFromSaveResponse(decoded, i, variationNames, variationIds);
+      final variationId = _variationIdFromSaveResponse(
+          decoded, i, variationNames, variationIds);
       if (variationId == null || variationId <= 0) {
         print('Gagal menemukan ID variasi untuk upload gambar index $i');
         allUploaded = false;
@@ -566,9 +592,12 @@ class ApiService {
 
   static Future<List<dynamic>> getAdminProducts() async {
     if (_token == null) return [];
-    final response = await http.get(Uri.parse("$baseUrl/admin/products?_=${DateTime.now().millisecondsSinceEpoch}"),
+    final response = await http.get(
+        Uri.parse(
+            "$baseUrl/admin/products?_=${DateTime.now().millisecondsSinceEpoch}"),
         headers: _authHeaders);
-    if (response.statusCode == 200) return jsonDecode(response.body)['data'] ?? [];
+    if (response.statusCode == 200)
+      return jsonDecode(response.body)['data'] ?? [];
     return [];
   }
 
@@ -592,8 +621,11 @@ class ApiService {
         ? Uri.parse("$baseUrl/admin/products/store")
         : Uri.parse("$baseUrl/admin/products/update/$productId");
     final request = http.MultipartRequest('POST', uri);
-    request.headers.addAll(
-        {"Authorization": "Bearer $_token", "Accept": "application/json", "Cache-Control": "no-cache"});
+    request.headers.addAll({
+      "Authorization": "Bearer $_token",
+      "Accept": "application/json",
+      "Cache-Control": "no-cache"
+    });
     if (productId != null) request.fields['_method'] = 'PUT';
     request.fields.addAll(fields);
 
@@ -635,7 +667,8 @@ class ApiService {
         if (variationIds != null && i < variationIds.length) {
           request.fields['variation_ids[$i]'] = variationIds[i];
         }
-        if (variationRegularPrices != null && i < variationRegularPrices.length) {
+        if (variationRegularPrices != null &&
+            i < variationRegularPrices.length) {
           request.fields['variation_regular_prices[$i]'] =
               variationRegularPrices[i].isEmpty
                   ? '0'
@@ -660,9 +693,11 @@ class ApiService {
       final body = await response.stream.bytesToString();
       print("saveAdminProduct status: ${response.statusCode}");
       print("saveAdminProduct body: $body");
-      if (response.statusCode != 200 && response.statusCode != 201) return false;
+      if (response.statusCode != 200 && response.statusCode != 201)
+        return false;
 
-      final imagesUploaded = await _uploadVariationImagesAfterSave(body, variationImages, variationNames, variationIds);
+      final imagesUploaded = await _uploadVariationImagesAfterSave(
+          body, variationImages, variationNames, variationIds);
       return imagesUploaded;
     } catch (e) {
       print("Exception saveAdminProduct: $e");

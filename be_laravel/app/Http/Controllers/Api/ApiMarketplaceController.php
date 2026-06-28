@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Address;
 use App\Models\Conversation;
 use App\Models\ConversationMessage;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductReview;
 use App\Models\StoreProfile;
+use App\Services\StoreLocationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -17,6 +17,10 @@ use Illuminate\Support\Str;
 
 class ApiMarketplaceController extends Controller
 {
+    public function __construct(private readonly StoreLocationService $storeLocations)
+    {
+    }
+
     private function attachGalleryImagesAndCover($product)
     {
         $galleryImages = DB::table('product_images')
@@ -36,17 +40,20 @@ class ApiMarketplaceController extends Controller
 
     private function storeAddress($userId)
     {
-        return Address::where('user_id', $userId)
-            ->orderBy('is_store_address', 'desc')
-            ->orderBy('isdefault', 'desc')
-            ->latest()
-            ->first();
+        return $this->storeLocations->findForUser((int) $userId);
     }
 
     private function mergeStoreAddress($store)
     {
         $address = $this->storeAddress($store->user_id);
-        if (! $address) return [$store, null];
+        if (! $address) {
+            $store->address = null;
+            $store->maps_url = null;
+            $store->province_name = null;
+            $store->city_name = null;
+
+            return [$store, null];
+        }
 
         $area = collect([$address->locality, $address->city_name, $address->province_name])
             ->filter(fn ($item) => ! empty($item) && $item !== '-')
@@ -155,8 +162,7 @@ class ApiMarketplaceController extends Controller
 
         $store = StoreProfile::firstOrNew(['user_id' => $request->user()->id]);
         $store->fill($request->only([
-            'name', 'phone', 'description', 'address', 'maps_url', 'province_name', 'city_name',
-            'instagram', 'tiktok', 'facebook', 'website',
+            'name', 'phone', 'description', 'instagram', 'tiktok', 'facebook', 'website',
         ]));
         $store->slug = $store->slug ?: Str::slug($request->name . '-' . $request->user()->id);
 
@@ -177,6 +183,7 @@ class ApiMarketplaceController extends Controller
         $store->status = 'active';
         $store->save();
         $this->refreshStoreRating($store);
+        [$store] = $this->mergeStoreAddress($store);
 
         return response()->json(['success' => true, 'message' => 'Profil toko berhasil disimpan', 'data' => $store]);
     }

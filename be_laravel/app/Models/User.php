@@ -58,6 +58,11 @@ class User extends Authenticatable
         return $this->hasMany(Address::class);
     }
 
+    public function storeLocation()
+    {
+        return $this->hasOne(Address::class, 'store_owner_id');
+    }
+
     public function orders()
     {
         return $this->hasMany(Order::class);
