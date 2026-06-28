@@ -129,6 +129,13 @@ class ApiRajaOngkirController extends Controller
 
             $origin = $isKomerce ? $storeLocation->district_id : $storeLocation->city_id;
             $destination = $isKomerce ? $request->destination_district : $request->destination;
+            $originMeta = [
+                'seller_id' => (int) $request->seller_id,
+                'province' => $storeLocation->province_name,
+                'city' => $storeLocation->city_name,
+                'district' => $storeLocation->district_name,
+                'location_id' => (string) $origin,
+            ];
             $endpoint = $isKomerce
                 ? rtrim($this->baseUrl, '/') . '/calculate/district/domestic-cost'
                 : rtrim($this->baseUrl, '/') . '/cost';
@@ -148,7 +155,7 @@ class ApiRajaOngkirController extends Controller
                 if ($isKomerce) {
                     // Konversi response Komerce agar cocok dengan format bacaan Flutter (Starter)
                     $data = $response->json()['data'] ?? [];
-                    $mapped = collect($data)->map(function($item) {
+                    $mapped = collect($data)->map(function ($item) use ($originMeta) {
                         return [
                             'service' => $item['service'] ?? ($item['code'] ?? ''),
                             'description' => $item['description'] ?? ($item['name'] ?? ''),
@@ -158,14 +165,20 @@ class ApiRajaOngkirController extends Controller
                                     'etd' => $item['etd'] ?? '',
                                     'note' => ''
                                 ]
-                            ]
+                            ],
+                            'origin' => $originMeta,
                         ];
                     })->values()->toArray();
-                    
-                    return response()->json($mapped);
+
+                    return response()->json($mapped)->header('Cache-Control', 'no-store');
                 } else {
                     $results = $response->json()['rajaongkir']['results'][0]['costs'] ?? [];
-                    return response()->json($results);
+                    $results = collect($results)
+                        ->map(fn ($item) => array_merge($item, ['origin' => $originMeta]))
+                        ->values()
+                        ->all();
+
+                    return response()->json($results)->header('Cache-Control', 'no-store');
                 }
             }
 

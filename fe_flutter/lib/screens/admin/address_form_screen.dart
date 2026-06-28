@@ -31,7 +31,6 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
 
   String _addressLabel = 'Rumah';
   bool _isMainAddress = false;
-  bool _isStoreAddress = false;
   
   double? _latitude;
   double? _longitude;
@@ -69,9 +68,6 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       _isMainAddress = storeData['isdefault'] == 1 || storeData['isdefault'] == '1' || storeData['isdefault'] == true ||
                        storeData['is_main'] == 1 || storeData['is_main'] == '1' || storeData['is_main'] == true;
                        
-      _isStoreAddress = storeData['is_store_address'] == 1 || storeData['is_store_address'] == '1' || storeData['is_store_address'] == true ||
-                        storeData['is_store'] == 1 || storeData['is_store'] == '1' || storeData['is_store'] == true;
-
       if (storeData['latitude'] != null) _latitude = double.tryParse(storeData['latitude'].toString());
       if (storeData['longitude'] != null) _longitude = double.tryParse(storeData['longitude'].toString());
       if (_latitude != null && _longitude != null) _mapAddressText = 'Koordinat Peta Telah Dikunci';
@@ -166,11 +162,9 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       'note': _noteController.text,
       'label': _addressLabel,
       
-      // PERBAIKAN: Mengirim angka integer 1/0 dan duplikasi key agar backend pasti menerimanya
+      // Status alamat utama dan lokasi toko dikelola terpisah.
       'is_main': _isMainAddress ? 1 : 0,
       'isdefault': _isMainAddress ? 1 : 0,
-      'is_store': _isStoreAddress ? 1 : 0,
-      'is_store_address': _isStoreAddress ? 1 : 0,
       
       'latitude': _latitude?.toString(),
       'longitude': _longitude?.toString(),
@@ -334,15 +328,30 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
                         value: _isMainAddress,
                         onChanged: (val) => setState(() => _isMainAddress = val),
                       ),
-                      const Divider(height: 16),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        activeColor: const Color(0xFFF39C12),
-                        title: const Text('Atur sebagai alamat toko', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                        subtitle: const Text('Gunakan untuk lokasi pengiriman toko.', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                        value: _isStoreAddress,
-                        onChanged: (val) => setState(() => _isStoreAddress = val),
-                      ),
+                      if (_isExistingStoreAddress()) ...[
+                        const Divider(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue.shade200),
+                          ),
+                          child: const Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.store_rounded, color: Colors.blue, size: 20),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Alamat ini sedang menjadi lokasi toko. Perubahan detail alamat akan otomatis memperbarui asal pengiriman toko.',
+                                  style: TextStyle(fontSize: 12, height: 1.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -373,6 +382,16 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
       width: double.infinity, margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.all(16), color: Colors.white,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)), const SizedBox(height: 16), ...children]),
     );
+  }
+
+  bool _isExistingStoreAddress() {
+    final address = widget.existingAddress;
+    if (address == null) return false;
+
+    return address['store_owner_id'] != null ||
+        address['is_store_address'] == 1 ||
+        address['is_store_address'] == '1' ||
+        address['is_store_address'] == true;
   }
 
   InputDecoration _inputDecoration(String label, {IconData? icon}) {

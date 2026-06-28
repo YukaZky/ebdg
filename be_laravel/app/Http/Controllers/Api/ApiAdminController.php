@@ -734,8 +734,10 @@ class ApiAdminController extends Controller
 
             $wasStore = (int) $address->store_owner_id === (int) $user->id;
             $isMain = $this->booleanFromAliases($request, ['is_main', 'isdefault'], (bool) $address->isdefault);
+            $storeRequested = $this->booleanFromAliases($request, ['is_store', 'is_store_address'], false);
             $isStore = $forceStore
-                || $this->booleanFromAliases($request, ['is_store', 'is_store_address'], $wasStore);
+                || $wasStore
+                || $storeRequested;
 
             if ($isMain) {
                 Address::where('user_id', $user->id)->update(['isdefault' => false]);

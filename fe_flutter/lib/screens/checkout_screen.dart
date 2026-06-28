@@ -36,6 +36,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final List<String> _couriers = ['jne', 'pos', 'tiki'];
 
   Map<String, dynamic>? _addressData;
+  Map<String, dynamic>? _shippingOrigin;
   List _shippingOptions = [];
   String? _selectedCourier;
   String? _selectedService;
@@ -75,6 +76,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String get _provinceName => _addressData?['province_name']?.toString() ?? 'Unknown';
   String get _cityName => _addressData?['city_name']?.toString() ?? 'Unknown';
   String get _courierWithService => '${_selectedCourier?.toUpperCase()} - $_selectedService';
+  String get _shippingOriginText {
+    final origin = _shippingOrigin;
+    if (origin == null) return '';
+
+    return [origin['district'], origin['city'], origin['province']]
+        .map((value) => value?.toString().trim() ?? '')
+        .where((value) => value.isNotEmpty && value != '-')
+        .join(', ');
+  }
 
   @override
   void initState() {
@@ -121,7 +131,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!mounted) return;
 
     Map<String, dynamic>? selected;
-    if (data is List && data.isNotEmpty) {
+    if (data.isNotEmpty) {
       try {
         selected = Map<String, dynamic>.from(data.firstWhere((address) => address['isdefault'] == 1 || address['isdefault'] == '1' || address['isdefault'] == true || address['is_main'] == 1 || address['is_main'] == '1' || address['is_main'] == true));
       } catch (_) {
@@ -133,6 +143,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _addressData = selected;
       _isLoadingAddress = false;
       _shippingOptions = [];
+      _shippingOrigin = null;
       _selectedService = null;
       _shippingCost = 0;
     });
@@ -165,6 +176,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() {
       _isLoadingShipping = true;
       _shippingOptions = [];
+      _shippingOrigin = null;
       _selectedService = null;
       _shippingCost = 0;
     });
@@ -181,6 +193,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() {
       _isLoadingShipping = false;
       _shippingOptions = data;
+      _shippingOrigin = data.isNotEmpty ? _asMap(data.first['origin']) : null;
       if (data.isNotEmpty && data[0]['cost'] is List && data[0]['cost'].isNotEmpty) {
         _selectedService = data[0]['service']?.toString();
         _shippingCost = double.tryParse(data[0]['cost'][0]['value']?.toString() ?? '0') ?? 0;
@@ -340,7 +353,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final response = await CheckoutApiService.getOrder(_orderId!);
       if (response != null && response['success'] == true && response['order'] != null) _orderData = Map<String, dynamic>.from(response['order']);
     }
-    if (!mounted || _orderData == null) return;
+    if (!mounted) return;
+    if (_orderData == null) return;
     Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => OrderConfirmationScreen(order: _orderData!)), (_) => false);
   }
 
@@ -516,6 +530,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget _shippingCard() {
     if (_addressData == null) return const SizedBox.shrink();
     return _card(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (_shippingOriginText.isNotEmpty) ...[
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFBFDBFE))),
+          child: Row(children: [const Icon(Icons.storefront_rounded, color: Colors.blue, size: 18), const SizedBox(width: 8), Expanded(child: Text('Dikirim dari $_shippingOriginText', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E3A8A))))]),
+        ),
+      ],
       DropdownButtonFormField<String>(value: _selectedCourier, decoration: _inputDecoration('Pilih Ekspedisi'), style: const TextStyle(fontSize: 13, color: Color(0xFF111827)), items: _couriers.map((courier) => DropdownMenuItem(value: courier, child: Text(courier.toUpperCase()))).toList(), onChanged: (value) { setState(() => _selectedCourier = value); _loadShippingCost(); }),
       const SizedBox(height: 12),
       if (_isLoadingShipping) Center(child: Padding(padding: const EdgeInsets.all(8), child: CircularProgressIndicator(color: _main))) else if (_shippingOptions.isNotEmpty) DropdownButtonFormField<String>(isExpanded: true, value: _selectedService, decoration: _inputDecoration('Pilih Layanan'), style: const TextStyle(fontSize: 13, color: Color(0xFF111827)), items: _shippingOptions.map<DropdownMenuItem<String>>((option) { final cost = option['cost'] as List?; final value = cost != null && cost.isNotEmpty ? cost[0]['value']?.toString() ?? '0' : '0'; return DropdownMenuItem(value: option['service']?.toString(), child: Text('${option['service']} - Rp $value', overflow: TextOverflow.ellipsis)); }).toList(), onChanged: (value) { final selected = _shippingOptions.firstWhere((option) => option['service']?.toString() == value); final cost = selected['cost'] as List?; setState(() { _selectedService = value; _shippingCost = double.tryParse(cost != null && cost.isNotEmpty ? cost[0]['value']?.toString() ?? '0' : '0') ?? 0; }); }),

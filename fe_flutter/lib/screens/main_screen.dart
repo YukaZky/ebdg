@@ -75,7 +75,7 @@ class _MainScreenState extends State<MainScreen> {
       _selectedIndex = index;
       _builtTabs[index] = true;
     });
-    if (index == 1) CartBadgeService.refresh();
+    if (index == 1) CartBadgeService.notifyCartChanged();
   }
 
   Widget _cartIconWithBadge({required bool active, required Color color}) {

@@ -20,11 +20,23 @@ class _CartScreenState extends State<CartScreen> {
 
   List<Map<String, dynamic>> _cartItems = [];
   bool _isLoading = true;
+  int _loadVersion = 0;
 
   @override
   void initState() {
     super.initState();
+    CartBadgeService.revision.addListener(_handleCartChanged);
     _loadCart();
+  }
+
+  @override
+  void dispose() {
+    CartBadgeService.revision.removeListener(_handleCartChanged);
+    super.dispose();
+  }
+
+  void _handleCartChanged() {
+    if (mounted) _loadCart();
   }
 
   void _syncBadgeFromLocal() {
@@ -36,10 +48,11 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   Future<void> _loadCart() async {
+    final loadVersion = ++_loadVersion;
     try {
       final cartData = await ApiService.getCart();
       final rawItems = (cartData['data'] as List? ?? []);
-      if (!mounted) return;
+      if (!mounted || loadVersion != _loadVersion) return;
 
       setState(() {
         _cartItems = rawItems.map((item) {
@@ -59,7 +72,7 @@ class _CartScreenState extends State<CartScreen> {
       });
       _syncBadgeFromLocal();
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || loadVersion != _loadVersion) return;
       setState(() => _isLoading = false);
       CartBadgeService.clear();
     }
@@ -231,6 +244,7 @@ class _CartScreenState extends State<CartScreen> {
     if (!mounted) return;
     if (!allOk) {
       await _loadCart();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sebagian produk gagal dihapus. Keranjang dimuat ulang.')));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Semua produk dari $storeName berhasil dihapus.')));
