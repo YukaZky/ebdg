@@ -231,6 +231,46 @@ class StoreLocationTest extends TestCase
             ->assertJsonPath('success', false);
     }
 
+    public function test_store_location_can_be_created_again_after_it_is_deleted(): void
+    {
+        $user = $this->user();
+        Sanctum::actingAs($user);
+
+        $deletedId = $this->postJson('/api/admin/store-location', $this->addressPayload([
+            'detail_address' => 'Lokasi Toko Lama',
+        ]))->assertOk()->json('data.id');
+
+        $this->deleteJson("/api/user/addresses/{$deletedId}")->assertOk();
+        $this->assertDatabaseCount('addresses', 0);
+
+        $newId = $this->postJson('/api/admin/store-location', $this->addressPayload([
+            'province_id' => '52',
+            'province_name' => 'Nusa Tenggara Barat',
+            'city_id' => '5271',
+            'city_name' => 'Mataram',
+            'district_id' => '5271010',
+            'kecamatan' => 'Mataram',
+            'detail_address' => 'Lokasi Toko Baru',
+        ]))->assertOk()
+            ->assertJsonPath('data.store_owner_id', $user->id)
+            ->assertJsonPath('data.is_store_address', true)
+            ->json('data.id');
+
+        $this->assertNotSame($deletedId, $newId);
+        $this->assertDatabaseCount('addresses', 1);
+        $this->assertDatabaseHas('addresses', [
+            'id' => $newId,
+            'user_id' => $user->id,
+            'store_owner_id' => $user->id,
+            'is_store_address' => true,
+            'district_id' => '5271010',
+        ]);
+        $this->assertDatabaseHas('store_profiles', [
+            'user_id' => $user->id,
+            'city_name' => 'Mataram',
+        ]);
+    }
+
     public function test_dedicated_store_location_endpoint_updates_instead_of_duplicating(): void
     {
         $user = $this->user();
