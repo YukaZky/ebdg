@@ -29,9 +29,7 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
   final TextEditingController _landmarkController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
 
-  String _addressLabel = 'Rumah';
   bool _isMainAddress = false;
-  bool _isStoreAddress = false;
 
   double? _latitude;
   double? _longitude;
@@ -61,17 +59,10 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
       _postalCodeController.text = storeData['postal_code']?.toString() ?? storeData['zip']?.toString() ?? '';
       _noteController.text = storeData['note']?.toString() ?? '';
       
-      if (storeData['label'] != null) {
-        _addressLabel = storeData['label'].toString();
-      }
-      
       // PERBAIKAN: Memastikan semua tipe parameter tersimpan terbaca sebagai true
       _isMainAddress = storeData['isdefault'] == 1 || storeData['isdefault'] == '1' || storeData['isdefault'] == true ||
                        storeData['is_main'] == 1 || storeData['is_main'] == '1' || storeData['is_main'] == true;
                        
-      _isStoreAddress = storeData['is_store_address'] == 1 || storeData['is_store_address'] == '1' || storeData['is_store_address'] == true ||
-                        storeData['is_store'] == 1 || storeData['is_store'] == '1' || storeData['is_store'] == true;
-
       if (storeData['latitude'] != null) _latitude = double.tryParse(storeData['latitude'].toString());
       if (storeData['longitude'] != null) _longitude = double.tryParse(storeData['longitude'].toString());
       if (_latitude != null && _longitude != null) _mapAddressText = 'Koordinat Peta Telah Dikunci';
@@ -164,19 +155,18 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
       'detail_address': _detailAddressController.text,
       'landmark': _landmarkController.text, 
       'note': _noteController.text,
-      'label': _addressLabel,
+      'label': 'Toko',
       
-      // PERBAIKAN: Mengirim angka integer 1/0 dan duplikasi key
       'is_main': _isMainAddress ? 1 : 0,
       'isdefault': _isMainAddress ? 1 : 0,
-      'is_store': _isStoreAddress ? 1 : 0,
-      'is_store_address': _isStoreAddress ? 1 : 0,
+      'is_store': 1,
+      'is_store_address': 1,
       
       'latitude': _latitude?.toString(),
       'longitude': _longitude?.toString(),
     };
 
-    bool success = await ApiService.saveUserAddress(payload); 
+    bool success = await ApiService.saveAdminStoreLocation(payload);
     
     if (!mounted) return;
     setState(() => _isSaving = false);
@@ -324,7 +314,28 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
                   _buildSectionContainer(
                     title: 'Pengaturan',
                     children: [
-                      _buildLabelSelector(),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.store_rounded,
+                                color: Colors.deepOrange, size: 20),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Alamat dari halaman ini selalu menjadi satu-satunya lokasi toko dan origin perhitungan ongkir.',
+                                style: TextStyle(fontSize: 12, height: 1.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       const Divider(height: 24),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
@@ -333,15 +344,6 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
                         subtitle: const Text('Pilih otomatis saat checkout.', style: TextStyle(fontSize: 12, color: Colors.grey)),
                         value: _isMainAddress,
                         onChanged: (val) => setState(() => _isMainAddress = val),
-                      ),
-                      const Divider(height: 16),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        activeColor: const Color(0xFFF39C12),
-                        title: const Text('Atur sebagai alamat toko', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                        subtitle: const Text('Gunakan untuk lokasi pengiriman toko.', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                        value: _isStoreAddress,
-                        onChanged: (val) => setState(() => _isStoreAddress = val),
                       ),
                     ],
                   ),
@@ -480,26 +482,4 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
     );
   }
 
-  Widget _buildLabelSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Tandai Sebagai', style: TextStyle(fontSize: 13, color: Colors.black54)),
-        const SizedBox(height: 12),
-        Row(children: [_buildChip('Rumah'), const SizedBox(width: 12), _buildChip('Kantor')]),
-      ],
-    );
-  }
-
-  Widget _buildChip(String label) {
-    bool isSelected = _addressLabel == label;
-    return GestureDetector(
-      onTap: () => setState(() => _addressLabel = label),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-        decoration: BoxDecoration(color: isSelected ? const Color(0xFFF39C12).withOpacity(0.1) : Colors.white, border: Border.all(color: isSelected ? const Color(0xFFF39C12) : Colors.grey.shade300, width: 1.5), borderRadius: BorderRadius.circular(20)),
-        child: Text(label, style: TextStyle(color: isSelected ? const Color(0xFFD35400) : Colors.grey.shade600, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, fontSize: 13)),
-      ),
-    );
-  }
 }

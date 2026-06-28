@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
 import '../../services/marketplace_api_service.dart';
-import '../admin/address_list_screen.dart';
+import '../admin/admin_store_location_screen.dart';
 import 'list_kupon_screen.dart';
 
 class StoreProfileScreen extends StatefulWidget {
@@ -88,11 +88,20 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
     setState(() => _loading = false);
   }
 
-  Future<void> _openAddressPage() async {
+  Future<void> _openStoreLocationPage() async {
+    final response = await ApiService.getAdminStoreLocation();
+    final existingAddress = response?['data'] is Map
+        ? Map<String, dynamic>.from(response!['data'])
+        : null;
+
+    if (!mounted) return;
     await Navigator.push(
-        context,
-        MaterialPageRoute(
-            builder: (_) => const AddressListScreen(storeSelectionMode: true)));
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            AdminStoreLocationScreen(existingAddress: existingAddress),
+      ),
+    );
     if (!mounted) return;
     await _loadStore();
   }
@@ -247,7 +256,7 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
         const SizedBox(width: 10),
         const Expanded(
           child: Text(
-              'Lokasi toko tidak diubah dari form ini. Atur melalui Alamat Saya, lalu aktifkan pilihan Atur sebagai alamat toko.',
+              'Lokasi toko tidak diubah dari form profil ini. Gunakan tombol di bawah untuk membuka halaman khusus Pengaturan Alamat Toko.',
               style: TextStyle(
                   fontSize: 12.5, height: 1.4, color: Colors.black87)),
         ),
@@ -279,7 +288,7 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
                               color: Colors.deepOrange,
                               borderRadius: BorderRadius.circular(18)),
                           child: const Text(
-                              'Lokasi toko akan otomatis mengikuti alamat yang ditandai sebagai Alamat Toko di menu Alamat Saya. Di sini kamu bisa melengkapi logo, deskripsi, link sosial media, dan kupon toko.',
+                              'Alamat toko diatur dari halaman khusus Pengaturan Alamat Toko. Di sini kamu bisa melengkapi logo, deskripsi, link sosial media, dan kupon toko.',
                               style:
                                   TextStyle(color: Colors.white, height: 1.4))),
                       const SizedBox(height: 16),
@@ -291,7 +300,7 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
                       _field('Nama Toko', _nameCtrl, required: true),
                       _field('Nomor HP Toko', _phoneCtrl),
                       _field('Deskripsi Toko', _descriptionCtrl, maxLines: 4),
-                      _section('Lokasi Toko dari Alamat Saya'),
+                      _section('Lokasi Toko'),
                       _lockedLocationNotice(),
                       _field('Kota', _cityCtrl, readOnly: true),
                       _field('Provinsi', _provinceCtrl, readOnly: true),
@@ -300,10 +309,9 @@ class _StoreProfileScreenState extends State<StoreProfileScreen> {
                       _field('Link Google Maps / Maps Toko', _mapsCtrl,
                           maxLines: 2, readOnly: true),
                       OutlinedButton.icon(
-                          onPressed: _openAddressPage,
+                          onPressed: _openStoreLocationPage,
                           icon: const Icon(Icons.location_on_outlined),
-                          label: const Text(
-                              'Buka Alamat Saya untuk Atur Alamat Toko'),
+                          label: const Text('Atur Alamat Toko'),
                           style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.deepOrange,
                               side: const BorderSide(color: Colors.deepOrange),
