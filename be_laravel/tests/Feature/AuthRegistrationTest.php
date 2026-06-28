@@ -69,7 +69,7 @@ class AuthRegistrationTest extends TestCase
         $this->assertDatabaseHas('users', [
             'name' => 'Budi Santoso',
             'email' => 'budi@example.com',
-            'utype' => 'USR',
+            'utype' => 'ADM',
         ]);
 
         $this->withHeader('Authorization', 'Bearer ' . $response->json('access_token'))
@@ -97,7 +97,7 @@ class AuthRegistrationTest extends TestCase
             'name' => 'Existing User',
             'email' => 'budi@example.com',
             'password' => Hash::make('password123'),
-            'utype' => 'USR',
+            'utype' => 'ADM',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
