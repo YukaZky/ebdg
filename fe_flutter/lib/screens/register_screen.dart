@@ -29,16 +29,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  bool _isValidEmail(String email) {
+    return RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
+  }
+
   Future<void> _register() async {
     if (_isLoading) return;
 
     final name = _nameController.text.trim();
-    final email = _emailController.text.trim();
+    final email = _emailController.text.trim().toLowerCase();
     final password = _passwordController.text;
     final confirm = _passwordConfirmController.text;
 
     if (name.isEmpty || email.isEmpty || password.isEmpty || confirm.isEmpty) {
       _showSnack('Semua data wajib diisi.', isError: true);
+      return;
+    }
+    if (!_isValidEmail(email)) {
+      _showSnack('Format email tidak valid.', isError: true);
+      return;
+    }
+    if (password.length < 8) {
+      _showSnack('Password minimal 8 karakter.', isError: true);
       return;
     }
     if (password != confirm) {
@@ -49,14 +61,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
     final success = await ApiService.register(name, email, password, confirm);
     if (!mounted) return;
-    setState(() => _isLoading = false);
 
     if (success) {
-      _showSnack('Registrasi berhasil. Silakan login.');
-      Navigator.pop(context);
-    } else {
-      _showSnack('Registrasi gagal. Periksa kembali data Anda.', isError: true);
+      final loggedIn = await ApiService.login(email, password);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (loggedIn) {
+        _showSnack('Registrasi berhasil. Anda sudah masuk.');
+        Navigator.pop(context, true);
+      } else {
+        _showSnack('Registrasi berhasil. Silakan login.', isError: false);
+        Navigator.pop(context, true);
+      }
+      return;
     }
+
+    setState(() => _isLoading = false);
+    _showSnack('Registrasi gagal. Email mungkin sudah terdaftar atau data belum valid.', isError: true);
   }
 
   void _showSnack(String message, {bool isError = false}) {
@@ -99,7 +121,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             padding: const EdgeInsets.fromLTRB(22, 16, 22, 24),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               IconButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: _isLoading ? null : () => Navigator.pop(context),
                 icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                 style: IconButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.14)),
               ),
@@ -118,23 +140,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   const Text('Data Akun', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: _primary)),
                   const SizedBox(height: 20),
-                  TextField(controller: _nameController, textInputAction: TextInputAction.next, decoration: _decoration('Nama Lengkap', Icons.person_outline_rounded)),
+                  TextField(controller: _nameController, enabled: !_isLoading, textInputAction: TextInputAction.next, decoration: _decoration('Nama Lengkap', Icons.person_outline_rounded)),
                   const SizedBox(height: 14),
-                  TextField(controller: _emailController, keyboardType: TextInputType.emailAddress, textInputAction: TextInputAction.next, decoration: _decoration('Email', Icons.email_outlined)),
+                  TextField(controller: _emailController, enabled: !_isLoading, keyboardType: TextInputType.emailAddress, textInputAction: TextInputAction.next, decoration: _decoration('Email', Icons.email_outlined)),
                   const SizedBox(height: 14),
                   TextField(
                     controller: _passwordController,
+                    enabled: !_isLoading,
                     obscureText: !_passwordVisible,
                     textInputAction: TextInputAction.next,
-                    decoration: _decoration('Password', Icons.lock_outline_rounded, suffix: IconButton(icon: Icon(_passwordVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded), onPressed: () => setState(() => _passwordVisible = !_passwordVisible))),
+                    decoration: _decoration('Password', Icons.lock_outline_rounded, suffix: IconButton(icon: Icon(_passwordVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded), onPressed: _isLoading ? null : () => setState(() => _passwordVisible = !_passwordVisible))),
                   ),
                   const SizedBox(height: 14),
                   TextField(
                     controller: _passwordConfirmController,
+                    enabled: !_isLoading,
                     obscureText: !_confirmVisible,
                     textInputAction: TextInputAction.done,
                     onSubmitted: (_) => _register(),
-                    decoration: _decoration('Konfirmasi Password', Icons.verified_user_outlined, suffix: IconButton(icon: Icon(_confirmVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded), onPressed: () => setState(() => _confirmVisible = !_confirmVisible))),
+                    decoration: _decoration('Konfirmasi Password', Icons.verified_user_outlined, suffix: IconButton(icon: Icon(_confirmVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded), onPressed: _isLoading ? null : () => setState(() => _confirmVisible = !_confirmVisible))),
                   ),
                   const SizedBox(height: 22),
                   SizedBox(
@@ -150,7 +174,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 22),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Text('Sudah punya akun? ', style: TextStyle(color: Colors.grey.shade700)),
-                GestureDetector(onTap: () => Navigator.pop(context), child: const Text('Masuk', style: TextStyle(color: _purple, fontWeight: FontWeight.w900))),
+                GestureDetector(onTap: _isLoading ? null : () => Navigator.pop(context), child: const Text('Masuk', style: TextStyle(color: _purple, fontWeight: FontWeight.w900))),
               ]),
             ]),
           ),
