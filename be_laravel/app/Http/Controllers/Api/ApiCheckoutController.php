@@ -10,6 +10,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\Transaction;
+use App\Services\StoreLocationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -156,6 +157,15 @@ class ApiCheckoutController extends Controller
             'city_name' => 'required|string',
             'courier' => 'required|string',
             'shipping_cost' => 'required|numeric|min:0',
+            'shipments' => 'nullable|array|min:1',
+            'shipments.*.seller_id' => 'required|integer|exists:users,id',
+            'shipments.*.store_name' => 'nullable|string|max:255',
+            'shipments.*.courier' => 'required|string|max:100',
+            'shipments.*.shipping_cost' => 'required|numeric|min:0',
+            'shipments.*.weight' => 'nullable|numeric|min:1',
+            'shipments.*.origin' => 'required|array',
+            'shipments.*.origin.seller_id' => 'required|integer',
+            'shipments.*.origin.location_id' => 'required|string',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|integer|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
@@ -180,12 +190,20 @@ class ApiCheckoutController extends Controller
         }
 
         $resolvedItems = $this->resolveCheckoutItems($cartItems, enforceStock: $isNewOrder, lockRows: $isNewOrder);
+        $shippingBreakdown = $this->resolveShippingBreakdown($request, $resolvedItems);
+        $shippingTotal = collect($shippingBreakdown)->sum(fn ($shipping) => (float) $shipping['shipping_cost']);
+        $request->merge([
+            'shipping_cost' => $shippingTotal,
+            'shipments' => $shippingBreakdown,
+        ]);
         $subtotal = $this->calculateSubtotalFromResolved($resolvedItems);
         $couponData = $this->calculateCouponDiscount($request, $user, $cartItems);
         $discount = (float) ($couponData['amount'] ?? 0);
         $tax = 0;
-        $total = max(0, $subtotal + (float) $request->shipping_cost - $discount);
-        $courierParts = explode(' - ', $request->courier);
+        $total = max(0, $subtotal + $shippingTotal - $discount);
+        $courierParts = count($shippingBreakdown) === 1
+            ? explode(' - ', $shippingBreakdown[0]['courier'], 2)
+            : ['MULTI_TOKO', count($shippingBreakdown).' pengiriman'];
 
         if (! $order) {
             $order = new Order();
@@ -198,7 +216,8 @@ class ApiCheckoutController extends Controller
         $order->total = $total;
         $order->mode_pengiriman = $courierParts[0] ?? 'Tidak Diketahui';
         $order->jenis_pengiriman = $courierParts[1] ?? '-';
-        $order->ongkir = $request->shipping_cost;
+        $order->ongkir = $shippingTotal;
+        $order->shipping_breakdown = $shippingBreakdown;
         $order->name = $user->name;
         $order->phone = $request->phone;
         $order->address = $request->address;
@@ -244,6 +263,7 @@ class ApiCheckoutController extends Controller
             'stage' => 'waiting_payment_method',
             'message' => 'Order sudah final, stok produk sudah dikurangi, menunggu user memilih metode pembayaran.',
             'checkout_signature' => $this->checkoutSignature($request),
+            'shipping_breakdown' => $shippingBreakdown,
             'coupon' => $couponData,
             'superseded_attempts' => $history,
         ]);
@@ -251,6 +271,83 @@ class ApiCheckoutController extends Controller
 
         if ($isNewOrder) $this->removeCheckedCartItems($cartItems, $user->id);
         return $order->fresh()->load('items.product', 'transaction');
+    }
+
+    private function resolveShippingBreakdown(Request $request, array $resolvedItems): array
+    {
+        $expectedSellerIds = collect($resolvedItems)
+            ->map(fn ($resolved) => (int) $resolved['product']->user_id)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+        $requestedShipments = $request->input('shipments', []);
+
+        if (empty($requestedShipments)) {
+            if (count($expectedSellerIds) !== 1) {
+                throw new \Exception('Pilih ongkir untuk setiap toko dalam checkout ini.');
+            }
+
+            return [[
+                'seller_id' => $expectedSellerIds[0],
+                'store_name' => null,
+                'courier' => trim((string) $request->courier),
+                'shipping_cost' => round((float) $request->shipping_cost, 2),
+                'weight' => null,
+                'origin' => null,
+            ]];
+        }
+
+        $shipments = collect($requestedShipments)->map(function ($shipping) {
+            return [
+                'seller_id' => (int) ($shipping['seller_id'] ?? 0),
+                'store_name' => isset($shipping['store_name']) ? trim((string) $shipping['store_name']) : null,
+                'courier' => trim((string) ($shipping['courier'] ?? '')),
+                'shipping_cost' => round((float) ($shipping['shipping_cost'] ?? 0), 2),
+                'weight' => isset($shipping['weight']) ? (int) $shipping['weight'] : null,
+                'origin' => is_array($shipping['origin'] ?? null) ? $shipping['origin'] : null,
+            ];
+        })->sortBy('seller_id')->values();
+
+        if ($shipments->pluck('seller_id')->duplicates()->isNotEmpty()) {
+            throw new \Exception('Setiap toko hanya boleh memiliki satu pilihan ongkir.');
+        }
+
+        $actualSellerIds = $shipments->pluck('seller_id')->all();
+        if ($actualSellerIds !== $expectedSellerIds) {
+            throw new \Exception('Rincian ongkir tidak sesuai dengan toko pemilik produk.');
+        }
+
+        $storeLocations = app(StoreLocationService::class);
+        foreach ($shipments as $shipping) {
+            if ($shipping['courier'] === '') {
+                throw new \Exception('Kurir untuk setiap toko wajib dipilih.');
+            }
+
+            $location = $storeLocations->findForUser($shipping['seller_id']);
+            if (! $location) {
+                throw new \Exception('Lokasi toko belum diatur untuk salah satu penjual.');
+            }
+
+            if ((int) ($shipping['origin']['seller_id'] ?? 0) !== $shipping['seller_id']) {
+                throw new \Exception('Asal ongkir tidak sesuai dengan pemilik toko.');
+            }
+
+            $originLocationId = (string) ($shipping['origin']['location_id'] ?? '');
+            $expectedOriginId = str_contains((string) config('rajaongkir.base_url'), 'komerce')
+                ? (string) $location->district_id
+                : (string) $location->city_id;
+            if ($originLocationId !== '' && $originLocationId !== $expectedOriginId) {
+                throw new \Exception('Asal ongkir sudah tidak sesuai dengan lokasi toko terbaru. Hitung ulang ongkir.');
+            }
+        }
+
+        $shippingTotal = $shipments->sum('shipping_cost');
+        if (abs($shippingTotal - (float) $request->shipping_cost) > 0.01) {
+            throw new \Exception('Total ongkir tidak sesuai dengan rincian ongkir per toko.');
+        }
+
+        return $shipments->all();
     }
 
     private function resolveCheckoutItems(array $cartItems, bool $enforceStock = true, bool $lockRows = false): array
@@ -506,7 +603,8 @@ class ApiCheckoutController extends Controller
         $this->normalizePaymentRequest($request);
         if ($request->filled('checkout_signature')) return (string) $request->checkout_signature;
         $items = collect($request->items ?? [])->map(fn ($item) => ['cart_item_id' => $item['cart_item_id'] ?? null, 'product_id' => (int) ($item['product_id'] ?? 0), 'quantity' => (int) ($item['quantity'] ?? 1), 'price' => isset($item['price']) ? (int) $item['price'] : null, 'variation_id' => $item['variation_id'] ?? null])->sortBy(fn ($item) => ($item['cart_item_id'] ?? '') . ':' . $item['product_id'] . ':' . ($item['variation_id'] ?? ''))->values()->all();
-        return json_encode(['address' => trim((string) $request->address), 'phone' => trim((string) $request->phone), 'province_name' => trim((string) $request->province_name), 'city_name' => trim((string) $request->city_name), 'courier' => trim((string) $request->courier), 'shipping_cost' => (int) $request->shipping_cost, 'payment_type' => (string) $request->payment_type, 'bank' => $request->input('bank'), 'coupon_take_id' => $request->input('coupon_take_id'), 'items' => $items]);
+        $shipments = collect($request->shipments ?? [])->map(fn ($shipping) => ['seller_id' => (int) ($shipping['seller_id'] ?? 0), 'courier' => trim((string) ($shipping['courier'] ?? '')), 'shipping_cost' => (int) ($shipping['shipping_cost'] ?? 0), 'weight' => isset($shipping['weight']) ? (int) $shipping['weight'] : null, 'origin' => $shipping['origin'] ?? null])->sortBy('seller_id')->values()->all();
+        return json_encode(['address' => trim((string) $request->address), 'phone' => trim((string) $request->phone), 'province_name' => trim((string) $request->province_name), 'city_name' => trim((string) $request->city_name), 'courier' => trim((string) $request->courier), 'shipping_cost' => (int) $request->shipping_cost, 'shipments' => $shipments, 'payment_type' => (string) $request->payment_type, 'bank' => $request->input('bank'), 'coupon_take_id' => $request->input('coupon_take_id'), 'items' => $items]);
     }
 
     private function activePaymentFromRequest(Request $request, $user): ?array

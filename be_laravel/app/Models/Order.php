@@ -11,10 +11,14 @@ class Order extends Model
 
     protected $fillable = [
         'user_id', 'subtotal', 'discount', 'tax', 'total', 
-        'mode_pengiriman', 'jenis_pengiriman', 'ongkir', 
+        'mode_pengiriman', 'jenis_pengiriman', 'ongkir', 'shipping_breakdown',
         'name', 'phone', 'locality', 'address', 'city', 
         'state', 'country', 'landmark', 'zip', 'type', 
         'status', 'is_shipping_different', 'delivered_date', 'canceled_date'
+    ];
+
+    protected $casts = [
+        'shipping_breakdown' => 'array',
     ];
 
     public function transaction()

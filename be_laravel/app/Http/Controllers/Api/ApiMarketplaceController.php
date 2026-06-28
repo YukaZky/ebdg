@@ -274,6 +274,18 @@ class ApiMarketplaceController extends Controller
             return $payload;
         })->all();
         $data['seller_total'] = $sellerItems->sum(fn ($item) => (float) $item->price * (int) $item->quantity);
+        $sellerShipping = collect($order->shipping_breakdown ?? [])
+            ->first(fn ($shipping) => (int) ($shipping['seller_id'] ?? 0) === $sellerId);
+        $sellerShippingCost = $sellerShipping
+            ? (float) ($sellerShipping['shipping_cost'] ?? 0)
+            : ($sellerItems->count() === $order->items->count() ? (float) $order->ongkir : 0);
+        $sellerCourier = (string) ($sellerShipping['courier'] ?? $order->mode_pengiriman.' - '.$order->jenis_pengiriman);
+        $sellerCourierParts = explode(' - ', $sellerCourier, 2);
+        $data['shipping'] = $sellerShipping;
+        $data['ongkir'] = $sellerShippingCost;
+        $data['mode_pengiriman'] = $sellerCourierParts[0] ?? '-';
+        $data['jenis_pengiriman'] = $sellerCourierParts[1] ?? '-';
+        $data['seller_grand_total'] = $data['seller_total'] + $sellerShippingCost;
         $data['seller_item_count'] = $sellerItems->sum(fn ($item) => (int) $item->quantity);
         $data['transaction'] = $order->transaction?->toArray();
         $data['transaction_status'] = $order->transaction ? (string) $order->transaction->status : 'no_transaction';
