@@ -60,22 +60,24 @@ class AuthRegistrationTest extends TestCase
             ->assertJsonPath('token_type', 'Bearer')
             ->assertJsonPath('user.name', 'Budi Santoso')
             ->assertJsonPath('user.email', 'budi@example.com')
+            ->assertJsonPath('user.utype', 'ADM')
             ->assertJsonStructure([
                 'access_token',
                 'token_type',
-                'user' => ['id', 'name', 'email'],
+                'user' => ['id', 'name', 'email', 'utype'],
             ]);
 
         $this->assertDatabaseHas('users', [
             'name' => 'Budi Santoso',
             'email' => 'budi@example.com',
-            'utype' => 'USR',
+            'utype' => 'ADM',
         ]);
 
         $this->withHeader('Authorization', 'Bearer ' . $response->json('access_token'))
             ->getJson('/api/user-profile')
             ->assertOk()
-            ->assertJsonPath('email', 'budi@example.com');
+            ->assertJsonPath('email', 'budi@example.com')
+            ->assertJsonPath('utype', 'ADM');
     }
 
     public function test_register_rejects_mismatched_password_confirmation(): void
