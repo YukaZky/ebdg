@@ -218,7 +218,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
                         return Center(
                           child:
-                              Text(message.isEmpty ? 'Belum login, silahkan masuk atau registrasi akun terlebih dahulu' : message),
+                              Text(message.isEmpty ? 'Belum login' : message),
                         );
                       }
                       final data = filtered(orders);
