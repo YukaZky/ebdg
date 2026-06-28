@@ -119,7 +119,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/brands/update/{id}', [ApiAdminBrandController::class, 'update']);
         Route::post('/brands/update/{id}', [ApiAdminBrandController::class, 'update']);
         Route::delete('/brands/delete/{id}', [ApiAdminBrandController::class, 'destroy']);
-
         Route::get('/orders', [ApiAdminController::class, 'getOrders']);
         Route::get('/orders/{id}', [ApiAdminController::class, 'getOrderDetail']);
         Route::put('/orders/update-status/{id}', [ApiAdminController::class, 'updateOrderStatus']);
