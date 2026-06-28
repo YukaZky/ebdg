@@ -340,7 +340,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           physics: const NeverScrollableScrollPhysics(),
           shrinkWrap: true,
           padding: EdgeInsets.zero,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, childAspectRatio: .82, crossAxisSpacing: 4, mainAxisSpacing: 8),
+          // PERUBAHAN: childAspectRatio diubah dari 0.82 menjadi 0.70 agar tidak bottom overflowed
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, childAspectRatio: 0.70, crossAxisSpacing: 4, mainAxisSpacing: 8),
           itemCount: visibleStatuses.length,
           itemBuilder: (context, index) {
             final item = visibleStatuses[index];
@@ -361,7 +362,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => _openOrderStatus(isLoggedIn, statusKey),
-      child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Column(children: [
+      // PERUBAHAN: vertical padding diperkecil menjadi 4 agar jarak lebih proporsional
+      child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Column(children: [
         Stack(clipBehavior: Clip.none, children: [
           Container(width: 48, height: 48, decoration: BoxDecoration(color: (isCanceled ? _danger : isReview ? _accent : _purple).withOpacity(0.10), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: isCanceled ? _danger : isReview ? _accent : _primary, size: 24)),
           if (count > 0) Positioned(right: -7, top: -7, child: _smallCountBadge(count, badgeColor)),

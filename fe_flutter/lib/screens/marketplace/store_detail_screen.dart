@@ -301,7 +301,30 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
       padding: const EdgeInsets.all(18),
       decoration: const BoxDecoration(gradient: LinearGradient(colors: [_primary, Color(0xFFE65100)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.vertical(bottom: Radius.circular(24))),
       child: SafeArea(bottom: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [_logoAvatar(radius: 34), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: 4), Text([city, province].where((e) => e.isNotEmpty && e != 'null').join(', '), style: const TextStyle(color: Colors.white70)), const SizedBox(height: 8), Row(children: [_stars(ratingAverage), const SizedBox(width: 6), Text('${ratingAverage.toStringAsFixed(1)} ($ratingCount ulasan)', style: const TextStyle(color: Colors.white))])])), TextButton.icon(onPressed: _showStoreReviewSheet, icon: const Icon(Icons.star_border_rounded, color: Colors.white), label: const Text('Ulas', style: TextStyle(color: Colors.white)))]),
+        Row(children: [
+          _logoAvatar(radius: 34),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(name, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            Text([city, province].where((e) => e.isNotEmpty && e != 'null').join(', '), style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 8),
+            Row(children: [
+              _stars(ratingAverage),
+              const SizedBox(width: 6),
+              // PERUBAHAN: Membungkus teks ulasan dengan Flexible dan menambahkan ellipsis agar tidak overflowed di layar kecil
+              Flexible(
+                child: Text(
+                  '${ratingAverage.toStringAsFixed(1)} ($ratingCount ulasan)',
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              )
+            ])
+          ])),
+          TextButton.icon(onPressed: _showStoreReviewSheet, icon: const Icon(Icons.star_border_rounded, color: Colors.white), label: const Text('Ulas', style: TextStyle(color: Colors.white)))
+        ]),
         const SizedBox(height: 16),
         Text(store?['description']?.toString() ?? 'Belum ada deskripsi toko.', style: const TextStyle(color: Colors.white, height: 1.4)),
       ])),
@@ -335,7 +358,20 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
 
   Widget _productSection() {
     final items = filteredProducts;
-    return Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(selectedCategory == 'Semua' ? 'Semua Produk Toko' : 'Produk $selectedCategory', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), const SizedBox(height: 12), if (items.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('Belum ada produk di kategori ini.'))) else GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.72, crossAxisSpacing: 12, mainAxisSpacing: 12), itemCount: items.length, itemBuilder: (context, index) => MarketplaceProductCard(product: items[index]))]));
+    return Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(selectedCategory == 'Semua' ? 'Semua Produk Toko' : 'Produk $selectedCategory', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 12),
+      if (items.isEmpty)
+        const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('Belum ada produk di kategori ini.')))
+      else
+        GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            // PERUBAHAN: Menyesuaikan childAspectRatio dari 0.72 menjadi 0.65 sebagai langkah pencegahan bottom overflow
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.65, crossAxisSpacing: 12, mainAxisSpacing: 12),
+            itemCount: items.length,
+            itemBuilder: (context, index) => MarketplaceProductCard(product: items[index]))
+    ]));
   }
 
   Widget _reviewBubble(dynamic rawReview) {
