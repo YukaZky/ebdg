@@ -49,7 +49,11 @@ class ApiCartController extends Controller
             }
         }
 
-        return response()->json(['success' => true, 'data' => $cartItems, 'total' => $total], 200);
+        return response()
+            ->json(['success' => true, 'data' => $cartItems, 'total' => $total], 200)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
     }
 
     public function add(Request $request)
