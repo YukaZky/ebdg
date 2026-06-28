@@ -28,6 +28,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _startingChat = false;
   bool _loadingReviews = true;
   bool _loadingRecommendations = true;
+  bool _wishlistBusy = false;
+  bool _isWishlisted = false;
   List<dynamic> _productReviews = [];
   List<Product> _recommendations = [];
   double _productRatingAverage = 0;
@@ -40,6 +42,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     _refreshProductDetail();
     _loadProductReviews();
     _loadRecommendations();
+    _loadWishlistState();
+  }
+
+  double _scale(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    return (width / 390).clamp(0.84, 1.08).toDouble();
+  }
+
+  double _font(BuildContext context, double size, {double min = 11, double max = 26}) {
+    return (size * _scale(context)).clamp(min, max).toDouble();
+  }
+
+  EdgeInsets _sectionPadding(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final horizontal = width < 360 ? 16.0 : 20.0;
+    return EdgeInsets.all(horizontal);
   }
 
   Future<void> _refreshProductDetail() async {
@@ -52,6 +70,45 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         _variation = matched.isNotEmpty ? matched.first : null;
       }
     });
+  }
+
+  Future<void> _loadWishlistState() async {
+    if (ApiService.token == null) return;
+    try {
+      final items = await ApiService.getWishlist();
+      if (!mounted) return;
+      setState(() => _isWishlisted = items.any((item) => item.id == _product.id));
+    } catch (_) {}
+  }
+
+  Future<void> _toggleWishlist() async {
+    if (_wishlistBusy) return;
+    if (ApiService.token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Silakan login dulu untuk menyimpan wishlist.')));
+      return;
+    }
+
+    setState(() => _wishlistBusy = true);
+    final ok = _isWishlisted
+        ? await ApiService.removeFromWishlist(_product.id)
+        : await ApiService.addToWishlist(_product.id);
+    if (!mounted) return;
+    setState(() {
+      _wishlistBusy = false;
+      if (ok) _isWishlisted = !_isWishlisted;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? _isWishlisted
+                  ? 'Produk ditambahkan ke wishlist.'
+                  : 'Produk dihapus dari wishlist.'
+              : 'Gagal memperbarui wishlist.',
+        ),
+      ),
+    );
   }
 
   Future<void> _loadProductReviews() async {
@@ -219,9 +276,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         return SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(18, 14, 18, 18), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Center(child: Container(width: 42, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(99)))),
           const SizedBox(height: 16),
-          Text(_product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(_product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: _font(sheetContext, 16, min: 14, max: 17), fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          Text(_formatPrice(_activePriceFor(selected)), style: const TextStyle(fontSize: 21, color: Colors.deepOrange, fontWeight: FontWeight.w900)),
+          Text(_formatPrice(_activePriceFor(selected)), style: TextStyle(fontSize: _font(sheetContext, 21, min: 18, max: 22), color: Colors.deepOrange, fontWeight: FontWeight.w900)),
           const SizedBox(height: 8),
           Text(missingVariant ? 'Pilih varian dulu' : outOfStock ? 'Stok habis' : 'Stok: $maxStock', style: TextStyle(color: outOfStock ? Colors.red : Colors.grey.shade700, fontWeight: FontWeight.w700)),
           if (_hasVariation) ...[const SizedBox(height: 16), const Text('Pilih Varian', style: TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 8), Wrap(spacing: 8, runSpacing: 8, children: _allVariations.map((item) { final available = item.quantity > 0 && _product.stockStatus == 'instock'; return ChoiceChip(label: Text(available ? item.name : '${item.name} (habis)'), selected: selected?.id == item.id, onSelected: available ? (_) => setSheetState(() { selected = item; quantity = 1; }) : null); }).toList())],
@@ -251,7 +308,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (sheetContext) => StatefulBuilder(builder: (context, setSheetState) {
         return Padding(padding: EdgeInsets.fromLTRB(18, 16, 18, 18 + MediaQuery.of(sheetContext).viewInsets.bottom), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [const Expanded(child: Text('Beri Ulasan Produk', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _primary))), IconButton(onPressed: submitting ? null : () => Navigator.of(sheetContext).pop(false), icon: const Icon(Icons.close_rounded))]),
+          Row(children: [Expanded(child: Text('Beri Ulasan Produk', style: TextStyle(fontSize: _font(sheetContext, 18, min: 16, max: 19), fontWeight: FontWeight.w900, color: _primary))), IconButton(onPressed: submitting ? null : () => Navigator.of(sheetContext).pop(false), icon: const Icon(Icons.close_rounded))]),
           Text(_product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontWeight: FontWeight.w700)),
           const SizedBox(height: 12),
           Row(children: List.generate(5, (index) => IconButton(onPressed: submitting ? null : () => setSheetState(() => rating = index + 1), icon: Icon(index < rating ? Icons.star_rounded : Icons.star_border_rounded, color: Colors.amber, size: 34)))),
@@ -272,11 +329,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Widget _imageArea() {
     final images = _images;
-    if (images.isEmpty) return Container(height: 300, color: Colors.white, child: const Center(child: Icon(Icons.image, size: 90, color: Colors.grey)));
-    return Container(height: 310, color: Colors.white, child: PageView.builder(itemCount: images.length, itemBuilder: (context, index) => Image.network(_url(images[index]), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, size: 90, color: Colors.grey))));
+    final width = MediaQuery.of(context).size.width;
+    final height = (width * 0.78).clamp(250.0, 340.0).toDouble();
+    if (images.isEmpty) return Container(height: height, color: Colors.white, child: Icon(Icons.image, size: _font(context, 90, min: 74, max: 90), color: Colors.grey));
+    return Container(height: height, color: Colors.white, child: PageView.builder(itemCount: images.length, itemBuilder: (context, index) => Image.network(_url(images[index]), fit: BoxFit.contain, errorBuilder: (_, __, ___) => Icon(Icons.image_not_supported, size: _font(context, 90, min: 74, max: 90), color: Colors.grey))));
   }
 
-  Widget _priceView() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [if (_hasPromoFor(_variation)) Text(_formatPrice(_regularPriceFor(_variation)), style: TextStyle(fontSize: 14, color: Colors.grey.shade600, decoration: TextDecoration.lineThrough)), Text(_formatPrice(_activePriceFor(_variation)), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFFE65100)))]);
+  Widget _priceView(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [if (_hasPromoFor(_variation)) Text(_formatPrice(_regularPriceFor(_variation)), style: TextStyle(fontSize: _font(context, 14, min: 12, max: 15), color: Colors.grey.shade600, decoration: TextDecoration.lineThrough)), Text(_formatPrice(_activePriceFor(_variation)), style: TextStyle(fontSize: _font(context, 24, min: 20, max: 25), fontWeight: FontWeight.w900, color: const Color(0xFFE65100)))]);
 
   Widget _storeSection() {
     final store = _store;
@@ -284,7 +343,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final rating = double.tryParse(store['rating_average']?.toString() ?? '0') ?? 0;
     final count = store['rating_count']?.toString() ?? '0';
     final logo = _url(store['logo']?.toString(), folder: 'stores');
-    return Container(color: Colors.white, margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.all(18), child: Row(children: [CircleAvatar(radius: 28, backgroundColor: const Color(0xFFFFF3E0), backgroundImage: logo.isNotEmpty ? NetworkImage(logo) : null, child: logo.isEmpty ? const Icon(Icons.storefront, color: Colors.deepOrange) : null), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_storeName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), const SizedBox(height: 5), Row(children: [_stars(rating), const SizedBox(width: 6), Text('${rating.toStringAsFixed(1)} ($count ulasan)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))])])), if (_hasStore) TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))), child: const Text('Lihat Toko'))]));
+    return Container(color: Colors.white, margin: const EdgeInsets.only(top: 12), padding: _sectionPadding(context), child: Row(children: [CircleAvatar(radius: 28, backgroundColor: const Color(0xFFFFF3E0), backgroundImage: logo.isNotEmpty ? NetworkImage(logo) : null, child: logo.isEmpty ? const Icon(Icons.storefront, color: Colors.deepOrange) : null), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_storeName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: _font(context, 16, min: 14, max: 17), fontWeight: FontWeight.bold)), const SizedBox(height: 5), Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, children: [_stars(rating, size: _font(context, 16, min: 14, max: 16)), Text('${rating.toStringAsFixed(1)} ($count ulasan)', style: TextStyle(fontSize: _font(context, 12, min: 11, max: 12), fontWeight: FontWeight.w600))])])), if (_hasStore) TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))), child: const Text('Lihat Toko'))]));
   }
 
   Widget _reviewBubble(dynamic rawReview) {
@@ -296,31 +355,155 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(13), decoration: BoxDecoration(color: _bubble, borderRadius: BorderRadius.circular(18), border: Border.all(color: _bubbleBorder), boxShadow: [BoxShadow(color: _primary.withOpacity(.035), blurRadius: 10, offset: const Offset(0, 5))]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [CircleAvatar(radius: 17, backgroundColor: _primary.withOpacity(.10), child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'P', style: const TextStyle(color: _primary, fontWeight: FontWeight.w900))), const SizedBox(width: 9), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _primary, fontWeight: FontWeight.w900))), const SizedBox(width: 7), Text(_timeText(review['created_at']), style: const TextStyle(color: _muted, fontSize: 10.5, fontWeight: FontWeight.w700))]), const SizedBox(height: 3), _stars(rating, size: 14)]))]), const SizedBox(height: 9), Text(text.isEmpty ? 'Pengulas tidak menulis komentar.' : text, style: const TextStyle(fontSize: 13, height: 1.45, color: Color(0xFF1F2937), fontWeight: FontWeight.w500))]));
   }
 
-  Widget _reviewSection() => Container(color: Colors.white, margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [const Expanded(child: Text('Ulasan Produk', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _primary))), TextButton.icon(onPressed: _showProductReviewSheet, icon: const Icon(Icons.star_border_rounded, size: 18), label: const Text('Beri Ulasan'))]),
+  Widget _reviewSection() => Container(color: Colors.white, margin: const EdgeInsets.only(top: 12), padding: _sectionPadding(context), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [Expanded(child: Text('Ulasan Produk', style: TextStyle(fontSize: _font(context, 18, min: 16, max: 19), fontWeight: FontWeight.bold, color: _primary))), TextButton.icon(onPressed: _showProductReviewSheet, icon: const Icon(Icons.star_border_rounded, size: 18), label: const Text('Beri Ulasan'))]),
         const SizedBox(height: 8),
-        Row(children: [_stars(_productRatingAverage), const SizedBox(width: 8), Text('${_productRatingAverage.toStringAsFixed(1)} ($_productRatingCount ulasan)', style: const TextStyle(fontWeight: FontWeight.w800, color: _primary))]),
+        Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 4, children: [_stars(_productRatingAverage), Text('${_productRatingAverage.toStringAsFixed(1)} ($_productRatingCount ulasan)', style: const TextStyle(fontWeight: FontWeight.w800, color: _primary))]),
         const SizedBox(height: 12),
         if (_loadingReviews) const Center(child: Padding(padding: EdgeInsets.all(18), child: CircularProgressIndicator())) else if (_productReviews.isEmpty) const Text('Belum ada ulasan produk.', style: TextStyle(color: _muted)) else ..._productReviews.take(8).map(_reviewBubble),
       ]));
 
-  Widget _recommendationSection() => Container(color: Colors.white, margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.fromLTRB(20, 20, 20, 24), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Mungkin Kamu Suka', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 12), if (_loadingRecommendations) const Center(child: Padding(padding: EdgeInsets.all(18), child: CircularProgressIndicator())) else if (_recommendations.isEmpty) Text('Belum ada rekomendasi produk lain.', style: TextStyle(color: Colors.grey.shade700)) else GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.72, crossAxisSpacing: 12, mainAxisSpacing: 12), itemCount: _recommendations.length, itemBuilder: (context, index) => MarketplaceProductCard(product: _recommendations[index]))]));
+  Widget _recommendationSection() => Container(color: Colors.white, margin: const EdgeInsets.only(top: 12), padding: EdgeInsets.fromLTRB(_sectionPadding(context).left, 20, _sectionPadding(context).right, 24), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Mungkin Kamu Suka', style: TextStyle(fontSize: _font(context, 18, min: 16, max: 19), fontWeight: FontWeight.bold)), const SizedBox(height: 12), if (_loadingRecommendations) const Center(child: Padding(padding: EdgeInsets.all(18), child: CircularProgressIndicator())) else if (_recommendations.isEmpty) Text('Belum ada rekomendasi produk lain.', style: TextStyle(color: Colors.grey.shade700)) else LayoutBuilder(builder: (context, constraints) { final compact = constraints.maxWidth < 360; return GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: compact ? 0.66 : 0.72, crossAxisSpacing: compact ? 10 : 12, mainAxisSpacing: compact ? 10 : 12), itemCount: _recommendations.length, itemBuilder: (context, index) => MarketplaceProductCard(product: _recommendations[index])); })]));
+
+  Widget _wishlistAction() {
+    return IconButton(
+      tooltip: _isWishlisted ? 'Hapus dari Wishlist' : 'Tambah ke Wishlist',
+      onPressed: _wishlistBusy ? null : _toggleWishlist,
+      icon: _wishlistBusy
+          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+          : Icon(_isWishlisted ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: _isWishlisted ? Colors.redAccent : null),
+    );
+  }
+
+  Widget _bottomIconButton({required IconData icon, required VoidCallback? onPressed, required Color color}) {
+    final size = MediaQuery.of(context).size.width < 360 ? 48.0 : 52.0;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          padding: EdgeInsets.zero,
+          foregroundColor: color,
+          side: BorderSide(color: color),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        child: Icon(icon, size: 24),
+      ),
+    );
+  }
+
+  Widget _responsiveButtonChild({required Widget icon, required String label, required Color color}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        icon,
+        const SizedBox(width: 7),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: TextStyle(fontSize: _font(context, 14, min: 12, max: 15), fontWeight: FontWeight.w900, color: color),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _bottomActionBar() {
+    return SafeArea(
+      top: false,
+      child: LayoutBuilder(builder: (context, constraints) {
+        final compact = constraints.maxWidth < 360;
+        final gap = compact ? 6.0 : 8.0;
+        final padding = EdgeInsets.fromLTRB(compact ? 12 : 16, 10, compact ? 12 : 16, 12);
+        return Container(
+          color: Colors.white,
+          padding: padding,
+          child: Row(children: [
+            _bottomIconButton(icon: Icons.chat_bubble_outline, onPressed: _startingChat ? null : _openSellerChat, color: Colors.green.shade700),
+            SizedBox(width: gap),
+            Expanded(
+              flex: compact ? 9 : 10,
+              child: SizedBox(
+                height: compact ? 48 : 52,
+                child: OutlinedButton(
+                  onPressed: (_saving || _cartUnavailable) ? null : () => _showAddCartSheet(),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
+                    foregroundColor: const Color(0xFF6C4D9B),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: _responsiveButtonChild(icon: const Icon(Icons.shopping_cart, size: 20, color: Color(0xFF6C4D9B)), label: 'Keranjang', color: const Color(0xFF6C4D9B)),
+                ),
+              ),
+            ),
+            SizedBox(width: gap),
+            Expanded(
+              flex: compact ? 11 : 12,
+              child: SizedBox(
+                height: compact ? 48 : 52,
+                child: ElevatedButton(
+                  onPressed: (_saving || _cartUnavailable) ? null : () => _showAddCartSheet(openCartAfterAdd: true),
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
+                    backgroundColor: const Color(0xFF1558B0),
+                    foregroundColor: Colors.white,
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: _responsiveButtonChild(
+                    icon: _saving
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.shopping_bag_rounded, size: 20, color: Colors.white),
+                    label: _saving ? 'Proses...' : 'Pesan Sekarang',
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ]),
+        );
+      }),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final bodyFont = _font(context, 15, min: 13, max: 16);
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(title: const Text('Detail Produk'), backgroundColor: Colors.white, foregroundColor: Colors.black87, actions: [IconButton(tooltip: 'Chat Penjual', onPressed: _startingChat ? null : _openSellerChat, icon: _startingChat ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chat_bubble_outline))]),
+      appBar: AppBar(
+        title: const Text('Detail Produk'),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        actions: [
+          _wishlistAction(),
+          IconButton(tooltip: 'Chat Penjual', onPressed: _startingChat ? null : _openSellerChat, icon: _startingChat ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chat_bubble_outline)),
+        ],
+      ),
       body: ListView(children: [
         _imageArea(),
-        const SizedBox(height: 16),
-        Container(color: Colors.white, padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_product.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 10), _priceView(), const SizedBox(height: 10), Row(children: [_stars(_productRatingAverage), const SizedBox(width: 6), Text('${_productRatingAverage.toStringAsFixed(1)} ($_productRatingCount ulasan)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))]), const SizedBox(height: 12), Text(_cartUnavailable ? 'Stok habis' : _hasVariation && _variation == null ? 'Varian tersedia: ${_allVariations.length}' : 'Tersedia: ${_stockFor(_variation)}'), if (_weightFor(_variation) > 0) Text('Berat: ${_weightFor(_variation)} gram') ])),
+        const SizedBox(height: 12),
+        Container(color: Colors.white, padding: _sectionPadding(context), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_product.name, style: TextStyle(fontSize: _font(context, 22, min: 18, max: 23), fontWeight: FontWeight.bold, height: 1.2)),
+          const SizedBox(height: 10),
+          _priceView(context),
+          const SizedBox(height: 10),
+          Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, runSpacing: 4, children: [_stars(_productRatingAverage, size: _font(context, 17, min: 15, max: 17)), Text('${_productRatingAverage.toStringAsFixed(1)} ($_productRatingCount ulasan)', style: TextStyle(fontSize: _font(context, 12, min: 11, max: 13), fontWeight: FontWeight.w700))]),
+          const SizedBox(height: 12),
+          Text(_cartUnavailable ? 'Stok habis' : _hasVariation && _variation == null ? 'Varian tersedia: ${_allVariations.length}' : 'Tersedia: ${_stockFor(_variation)}', style: TextStyle(fontSize: bodyFont, height: 1.35)),
+          if (_weightFor(_variation) > 0) Text('Berat: ${_weightFor(_variation)} gram', style: TextStyle(fontSize: bodyFont, height: 1.35)),
+        ])),
         _storeSection(),
-        Container(color: Colors.white, margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Deskripsi Produk', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 8), Text(_product.description ?? 'Tidak ada deskripsi tersedia.')])),
+        Container(color: Colors.white, margin: const EdgeInsets.only(top: 12), padding: _sectionPadding(context), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Deskripsi Produk', style: TextStyle(fontSize: _font(context, 18, min: 16, max: 19), fontWeight: FontWeight.bold)), const SizedBox(height: 8), Text(_product.description ?? 'Tidak ada deskripsi tersedia.', style: TextStyle(fontSize: bodyFont, height: 1.45))])),
         _recommendationSection(),
         _reviewSection(),
       ]),
-      bottomNavigationBar: SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [SizedBox(width: 48, height: 48, child: OutlinedButton(onPressed: _startingChat ? null : _openSellerChat, style: OutlinedButton.styleFrom(padding: EdgeInsets.zero, foregroundColor: Colors.green.shade700, side: BorderSide(color: Colors.green.shade600), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: _startingChat ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chat_bubble_outline))), const SizedBox(width: 8), Expanded(child: OutlinedButton.icon(onPressed: (_saving || _cartUnavailable) ? null : () => _showAddCartSheet(), icon: const Icon(Icons.shopping_cart, size: 18), label: const Text('Keranjang'), style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))), const SizedBox(width: 8), Expanded(child: ElevatedButton.icon(onPressed: (_saving || _cartUnavailable) ? null : () => _showAddCartSheet(openCartAfterAdd: true), icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.shopping_bag_rounded, size: 18), label: Text(_saving ? 'Proses...' : 'Pesan Sekarang'), style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)))))]))),
+      bottomNavigationBar: _bottomActionBar(),
     );
   }
 }
