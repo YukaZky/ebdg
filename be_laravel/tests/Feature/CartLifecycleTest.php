@@ -124,11 +124,12 @@ class CartLifecycleTest extends TestCase
             'quantity' => 1,
         ])->assertOk()->json('data.id');
 
-        $this->getJson('/api/cart')
+        $cartResponse = $this->getJson('/api/cart')
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.product.id', $product->id)
             ->assertJsonPath('data.0.seller_id', $seller->id);
+        $this->assertStringContainsString('no-store', (string) $cartResponse->headers->get('Cache-Control'));
 
         $this->deleteJson("/api/cart/remove/{$firstCartId}")->assertOk();
         $this->assertDatabaseCount('cart_items', 0);

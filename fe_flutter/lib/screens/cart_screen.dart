@@ -11,7 +11,7 @@ class CartScreen extends StatefulWidget {
   State<CartScreen> createState() => _CartScreenState();
 }
 
-class _CartScreenState extends State<CartScreen> {
+class _CartScreenState extends State<CartScreen> with WidgetsBindingObserver {
   static const Color _primary = Color(0xFF0C2442);
   static const Color _accent = Color(0xFFF39C12);
   static const Color _purple = Color(0xFF6C4DFF);
@@ -25,18 +25,32 @@ class _CartScreenState extends State<CartScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     CartBadgeService.revision.addListener(_handleCartChanged);
     _loadCart();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     CartBadgeService.revision.removeListener(_handleCartChanged);
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadCart();
+    }
+  }
+
   void _handleCartChanged() {
     if (mounted) _loadCart();
+  }
+
+  Future<void> _manualRefresh() async {
+    if (mounted) setState(() => _isLoading = true);
+    await _loadCart();
   }
 
   void _syncBadgeFromLocal() {
@@ -381,20 +395,24 @@ class _CartScreenState extends State<CartScreen> {
                       ? _circleAction(Icons.arrow_back_rounded,
                           () => Navigator.pop(context))
                       : _circleAction(Icons.shopping_cart_rounded, null),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.14),
-                        borderRadius: BorderRadius.circular(99),
-                        border:
-                            Border.all(color: Colors.white.withOpacity(0.12))),
-                    child: Text('$_selectedCount dipilih',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800)),
-                  ),
+                  Row(children: [
+                    _circleAction(Icons.refresh_rounded, _manualRefresh),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(99),
+                          border:
+                              Border.all(color: Colors.white.withOpacity(0.12))),
+                      child: Text('$_selectedCount dipilih',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800)),
+                    ),
+                  ]),
                 ],
               ),
               const SizedBox(height: 18),

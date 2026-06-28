@@ -179,8 +179,12 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getCart() async {
     if (_token == null) throw Exception("Belum login");
-    final response =
-        await http.get(Uri.parse("$baseUrl/cart"), headers: _authHeaders);
+    final uri = Uri.parse("$baseUrl/cart").replace(
+      queryParameters: {
+        'refresh': DateTime.now().microsecondsSinceEpoch.toString(),
+      },
+    );
+    final response = await http.get(uri, headers: _authHeaders);
     if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception("Gagal memuat keranjang");
   }

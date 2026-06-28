@@ -68,6 +68,10 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _onItemTapped(int index) {
+    if (index == _selectedIndex) {
+      if (index == 1) CartBadgeService.notifyCartChanged();
+      return;
+    }
     if (!_allowNavigationTap(index)) return;
 
     FocusManager.instance.primaryFocus?.unfocus();
