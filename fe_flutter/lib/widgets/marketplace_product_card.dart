@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/product_model.dart';
 import '../screens/product_detail_screen.dart';
 import '../services/api_service.dart';
@@ -24,6 +25,10 @@ class MarketplaceProductCard extends StatelessWidget {
     }
 
     return '$base/uploads/products/$cleanValue';
+  }
+
+  String _formatRupiah(double value) {
+    return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(value);
   }
 
   bool get _hasPromo {
@@ -95,7 +100,7 @@ class MarketplaceProductCard extends StatelessWidget {
 
   Widget _buildPrice() {
     return Text(
-      'Rp ${_activePrice.toStringAsFixed(0)}',
+      _formatRupiah(_activePrice),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: const TextStyle(

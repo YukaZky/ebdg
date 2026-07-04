@@ -3,8 +3,90 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/api_service.dart';
+
+String _rupiahDigitsOnly(dynamic value) {
+  if (value == null) return '';
+  return value.toString().replaceAll(RegExp(r'[^0-9]'), '');
+}
+
+String _formatRupiahDigits(String digits) {
+  if (digits.isEmpty) return '';
+
+  final normalized = digits.replaceFirst(RegExp(r'^0+(?=\d)'), '');
+  final buffer = StringBuffer();
+
+  for (int i = 0; i < normalized.length; i++) {
+    final positionFromEnd = normalized.length - i;
+    buffer.write(normalized[i]);
+
+    if (positionFromEnd > 1 && positionFromEnd % 3 == 1) {
+      buffer.write('.');
+    }
+  }
+
+  return buffer.toString();
+}
+
+String _plainNumberForPrice(dynamic value) {
+  if (value == null) return '';
+
+  var raw = value.toString().trim();
+  if (raw.isEmpty || raw.toLowerCase() == 'null') return '';
+
+  raw = raw.replaceAll(RegExp(r'(?i)\b(rp|idr)\b'), '').replaceAll(' ', '');
+
+  if (RegExp(r'^\d{1,3}(\.\d{3})+(,\d+)?$').hasMatch(raw)) {
+    return raw.split(',').first.replaceAll('.', '');
+  }
+
+  if (RegExp(r'^\d+(\.\d+)?$').hasMatch(raw)) {
+    final number = double.tryParse(raw);
+    if (number != null) return number.toInt().toString();
+  }
+
+  if (raw.contains(',') && raw.contains('.')) {
+    return raw.replaceAll('.', '').split(',').first.replaceAll(RegExp(r'[^0-9]'), '');
+  }
+
+  if (raw.contains(',')) {
+    return raw.split(',').first.replaceAll(RegExp(r'[^0-9]'), '');
+  }
+
+  return _rupiahDigitsOnly(raw);
+}
+
+String _formatPriceForInput(dynamic value) {
+  return _formatRupiahDigits(_plainNumberForPrice(value));
+}
+
+String _pricePayload(String value, {String defaultValue = '0'}) {
+  final digits = _rupiahDigitsOnly(value);
+  return digits.isEmpty ? defaultValue : digits;
+}
+
+String _nullablePricePayload(String value) {
+  return _pricePayload(value, defaultValue: '');
+}
+
+class _RupiahThousandsFormatter extends TextInputFormatter {
+  const _RupiahThousandsFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final formatted = _formatRupiahDigits(_rupiahDigitsOnly(newValue.text));
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
 
 class VariationInput {
   int? id;
@@ -108,8 +190,8 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     _nameCtrl.text = p['name'] ?? '';
     _shortDescCtrl.text = p['short_description']?.toString() == 'null' ? '' : (p['short_description'] ?? '');
     _descCtrl.text = p['description']?.toString() == 'null' ? '' : (p['description'] ?? '');
-    _priceCtrl.text = _cleanNumber(p['regular_price']);
-    _salePriceCtrl.text = _cleanNumber(p['sale_price']);
+    _priceCtrl.text = _formatPriceForInput(p['regular_price']);
+    _salePriceCtrl.text = _formatPriceForInput(p['sale_price']);
     _qtyCtrl.text = _cleanNumber(p['quantity']);
     _weightCtrl.text = _cleanNumber(p['weight']);
 
@@ -132,8 +214,8 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
         input.id = v['id'];
         input.name = v['name'] ?? '';
         input.existingImageUrl = v['image_url'] ?? v['image'];
-        input.regularPrice = _cleanNumber(v['regular_price']);
-        input.salePrice = _cleanNumber(v['sale_price']);
+        input.regularPrice = _formatPriceForInput(v['regular_price']);
+        input.salePrice = _formatPriceForInput(v['sale_price']);
         input.weight = _cleanNumber(v['weight']);
         input.quantity = _cleanNumber(v['quantity']);
         variations.add(input);
@@ -197,7 +279,7 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
       'name': _nameCtrl.text,
       'short_description': _shortDescCtrl.text,
       'description': _descCtrl.text,
-      'regular_price': _priceCtrl.text.isEmpty ? '0' : _priceCtrl.text,
+      'regular_price': _pricePayload(_priceCtrl.text),
       'weight': _weightCtrl.text.isEmpty ? '0' : _weightCtrl.text,
       'stock_status': _stockStatus,
       'quantity': _qtyCtrl.text.isEmpty ? '0' : _qtyCtrl.text,
@@ -205,7 +287,8 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
       'brand_id': _selectedBrand ?? '',
     };
 
-    if (_salePriceCtrl.text.isNotEmpty) fields['sale_price'] = _salePriceCtrl.text;
+    final salePrice = _nullablePricePayload(_salePriceCtrl.text);
+    if (salePrice.isNotEmpty) fields['sale_price'] = salePrice;
     if (_expDateCtrl.text.isNotEmpty) fields['exp_date'] = _expDateCtrl.text;
 
     try {
@@ -230,8 +313,8 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
       variationImages: variations.map((v) => v.image).toList(),
       variationIds: variations.map((v) => v.id?.toString() ?? '').toList(),
       variationNames: variations.map((v) => v.name).toList(),
-      variationRegularPrices: variations.map((v) => v.regularPrice).toList(),
-      variationSalePrices: variations.map((v) => v.salePrice).toList(),
+      variationRegularPrices: variations.map((v) => _pricePayload(v.regularPrice)).toList(),
+      variationSalePrices: variations.map((v) => _nullablePricePayload(v.salePrice)).toList(),
       variationWeights: variations.map((v) => v.weight).toList(),
       variationQuantities: variations.map((v) => v.quantity).toList(),
     );
@@ -310,9 +393,9 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                     _field('Deskripsi Singkat', _shortDescCtrl, maxLines: 2, requiredField: false),
                     _field('Deskripsi Lengkap', _descCtrl, maxLines: 4, requiredField: false),
                     Row(children: [
-                      Expanded(child: _field('Harga Reguler (Rp)', _priceCtrl, number: true)),
+                      Expanded(child: _field('Harga Reguler (Rp)', _priceCtrl, number: true, price: true)),
                       const SizedBox(width: 16),
-                      Expanded(child: _field('Harga Promo (Rp)', _salePriceCtrl, number: true, requiredField: false)),
+                      Expanded(child: _field('Harga Promo (Rp)', _salePriceCtrl, number: true, price: true, requiredField: false)),
                     ]),
                     Row(children: [
                       Expanded(child: _field('Kuantitas Stok', _qtyCtrl, number: true)),
@@ -408,9 +491,9 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
                   ]),
                   const SizedBox(height: 12),
                   Row(children: [
-                    Expanded(child: _smallVariationField('Harga Reguler', variation.regularPrice, (v) => variation.regularPrice = v)),
+                    Expanded(child: _smallVariationField('Harga Reguler', variation.regularPrice, (v) => variation.regularPrice = v, price: true)),
                     const SizedBox(width: 8),
-                    Expanded(child: _smallVariationField('Harga Promo', variation.salePrice, (v) => variation.salePrice = v)),
+                    Expanded(child: _smallVariationField('Harga Promo', variation.salePrice, (v) => variation.salePrice = v, price: true)),
                   ]),
                   const SizedBox(height: 12),
                   Row(children: [
@@ -433,25 +516,31 @@ class _AdminProductFormScreenState extends State<AdminProductFormScreen> {
     );
   }
 
-  Widget _smallVariationField(String label, String value, ValueChanged<String> onChanged) {
+  Widget _smallVariationField(String label, String value, ValueChanged<String> onChanged, {bool price = false}) {
     return TextFormField(
-      initialValue: value,
+      initialValue: price ? _formatPriceForInput(value) : value,
       keyboardType: TextInputType.number,
+      inputFormatters: price ? const [_RupiahThousandsFormatter()] : [FilteringTextInputFormatter.digitsOnly],
       onChanged: onChanged,
       decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
     );
   }
 
-  Widget _field(String label, TextEditingController controller, {bool number = false, int maxLines = 1, bool requiredField = true}) {
+  Widget _field(String label, TextEditingController controller, {bool number = false, bool price = false, int maxLines = 1, bool requiredField = true}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
         controller: controller,
         keyboardType: number ? TextInputType.number : TextInputType.text,
+        inputFormatters: price
+            ? const [_RupiahThousandsFormatter()]
+            : number
+                ? [FilteringTextInputFormatter.digitsOnly]
+                : null,
         maxLines: maxLines,
         decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
         validator: (val) {
-          if (requiredField && (val == null || val.isEmpty)) return '$label wajib diisi';
+          if (requiredField && (val == null || val.isEmpty || (price && _rupiahDigitsOnly(val).isEmpty))) return '$label wajib diisi';
           return null;
         },
       ),
