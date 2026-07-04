@@ -138,6 +138,52 @@ class ApiCartController extends Controller
         ], 200);
     }
 
+    public function updateQuantity(Request $request, $id)
+    {
+        $request->validate([
+            'quantity' => 'required|integer|min:1',
+        ]);
+
+        $cartItem = CartItem::with(['product', 'variation'])
+            ->where('user_id', $request->user()->id)
+            ->where('id', $id)
+            ->first();
+
+        if (! $cartItem) {
+            return response()->json(['success' => false, 'message' => 'Item tidak ditemukan'], 404);
+        }
+
+        $product = $cartItem->product;
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan'], 404);
+        }
+
+        $availableStock = $cartItem->variation
+            ? (int) $cartItem->variation->quantity
+            : (int) $product->quantity;
+
+        if ((string) $product->stock_status !== 'instock' || $availableStock <= 0) {
+            return response()->json(['success' => false, 'message' => 'Stok produk habis.'], 422);
+        }
+
+        $quantity = (int) $request->quantity;
+        if ($quantity > $availableStock) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jumlah produk di keranjang melebihi stok tersedia. Sisa stok: ' . $availableStock,
+            ], 422);
+        }
+
+        $cartItem->quantity = $quantity;
+        $cartItem->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Jumlah produk berhasil diperbarui',
+            'data' => $cartItem->fresh(['product.store', 'product.user:id,name', 'variation']),
+        ], 200);
+    }
+
     public function remove(Request $request, $id)
     {
         $cartItem = CartItem::where('user_id', $request->user()->id)->where('id', $id)->first();
