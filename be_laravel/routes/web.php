@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AddressController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AppStartupAdController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ShopController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\WishlistController;
 use App\Http\Controllers\MidtransController;
 use App\Http\Controllers\Api\ApiMediaController;
+use App\Http\Controllers\Api\ApiStartupAdController;
 use App\Http\Middleware\AuthAdmin;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -18,6 +20,7 @@ use App\Http\Controllers\WhatsappSettingController;
 use App\Http\Controllers\RajaOngkirController;
 use App\Http\Controllers\CouponController;
 
+Route::get('/api/startup-ad', [ApiStartupAdController::class, 'show']);
 Route::get('/uploads/products/{filename}', [ApiMediaController::class, 'productImage'])->where('filename', '.*');
 Route::get('/uploads/profiles/{filename}', [ApiMediaController::class, 'profileImage'])->where('filename', '.*');
 
@@ -166,6 +169,13 @@ Route::middleware(['auth', AuthAdmin::class])->group(function () {
     Route::get('/admin/slide/{id}/edit', [AdminController::class, 'slide_edit'])->name('admin.slide.edit');
     Route::put('/admin/slide/update', [AdminController::class, 'slide_update'])->name('admin.slide.update');
     Route::delete('/admin/slide/{id}/delete', [AdminController::class, 'slide_delete'])->name('admin.slide.delete');
+
+    Route::get('/admin/startup-ads', [AppStartupAdController::class, 'index'])->name('admin.startup-ads.index');
+    Route::get('/admin/startup-ads/create', [AppStartupAdController::class, 'create'])->name('admin.startup-ads.create');
+    Route::post('/admin/startup-ads', [AppStartupAdController::class, 'store'])->name('admin.startup-ads.store');
+    Route::get('/admin/startup-ads/{id}/edit', [AppStartupAdController::class, 'edit'])->name('admin.startup-ads.edit');
+    Route::put('/admin/startup-ads/{id}', [AppStartupAdController::class, 'update'])->name('admin.startup-ads.update');
+    Route::delete('/admin/startup-ads/{id}', [AppStartupAdController::class, 'destroy'])->name('admin.startup-ads.destroy');
 
     Route::get('/admin/contact', [AdminController::class, 'contacts'])->name('admin.contacts');
     Route::delete('/admin/contact/{id}/delete', [AdminController::class, 'contact_delete'])->name('admin.contact.delete');
