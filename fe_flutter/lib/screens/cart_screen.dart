@@ -199,7 +199,8 @@ class _CartScreenState extends State<CartScreen> with WidgetsBindingObserver {
     final ok = await ApiService.removeFromCart(id);
     if (!mounted) return;
     if (!ok) {
-      setState(() => _cartItems.insert(index.clamp(0, _cartItems.length), removed));
+      final restoreIndex = index.clamp(0, _cartItems.length).toInt();
+      setState(() => _cartItems.insert(restoreIndex, removed));
       _syncBadgeFromLocal();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal menghapus produk.')));
     }
