@@ -12,12 +12,12 @@ class AppStartupAdController extends BaseController
     public function index()
     {
         $startupAds = AppStartupAd::orderBy('created_at', 'DESC')->paginate(10);
-        return view('admin.startup-ads.index', compact('startupAds'));
+        return view('admin.startup-popups.index2', compact('startupAds'));
     }
 
     public function create()
     {
-        return view('admin.startup-ads.form', [
+        return view('admin.startup-popups.form', [
             'startupAd' => new AppStartupAd(),
             'mode' => 'create',
         ]);
@@ -42,7 +42,7 @@ class AppStartupAdController extends BaseController
     public function edit($id)
     {
         $startupAd = AppStartupAd::findOrFail($id);
-        return view('admin.startup-ads.form', [
+        return view('admin.startup-popups.form', [
             'startupAd' => $startupAd,
             'mode' => 'edit',
         ]);
