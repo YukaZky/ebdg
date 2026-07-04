@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../services/api_service.dart';
+import 'app_opening_popup_screen.dart';
 import 'main_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -18,9 +22,37 @@ class _SplashScreenState extends State<SplashScreen> {
     _bootstrap();
   }
 
+  Future<Map<String, dynamic>?> _loadOpeningPopup() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('${ApiService.baseUrl}/startup-ad'),
+            headers: const {
+              'Accept': 'application/json',
+              'Cache-Control': 'no-cache',
+            },
+          )
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode != 200) return null;
+
+      final decoded = jsonDecode(response.body);
+      final data = decoded is Map ? decoded['data'] : null;
+      if (data is! Map) return null;
+
+      final imageUrl = data['image_url']?.toString().trim() ?? '';
+      if (imageUrl.isEmpty || imageUrl == 'null') return null;
+
+      return Map<String, dynamic>.from(data);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _bootstrap() async {
     final startedAt = DateTime.now();
     await ApiService.restoreSession();
+    final openingPopup = await _loadOpeningPopup();
 
     final elapsed = DateTime.now().difference(startedAt);
     final remaining = _minimumSplashDuration - elapsed;
@@ -31,7 +63,11 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const MainScreen()),
+      MaterialPageRoute(
+        builder: (context) => openingPopup == null
+            ? const MainScreen()
+            : AppOpeningPopupScreen(popupData: openingPopup),
+      ),
     );
   }
 
