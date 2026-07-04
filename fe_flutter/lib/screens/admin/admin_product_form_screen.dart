@@ -38,13 +38,13 @@ String _plainNumberForPrice(dynamic value) {
 
   raw = raw.replaceAll(RegExp(r'(?i)\b(rp|idr)\b'), '').replaceAll(' ', '');
 
+  if (RegExp(r'^\d{1,3}(\.\d{3})+(,\d+)?$').hasMatch(raw)) {
+    return raw.split(',').first.replaceAll('.', '');
+  }
+
   if (RegExp(r'^\d+(\.\d+)?$').hasMatch(raw)) {
     final number = double.tryParse(raw);
     if (number != null) return number.toInt().toString();
-  }
-
-  if (RegExp(r'^\d{1,3}(\.\d{3})+(,\d+)?$').hasMatch(raw)) {
-    return raw.split(',').first.replaceAll('.', '');
   }
 
   if (raw.contains(',') && raw.contains('.')) {
