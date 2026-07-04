@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
 import 'admin_product_form_screen.dart';
 
@@ -50,6 +51,13 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
         return matchesSearch;
       }).toList();
     });
+  }
+
+  String _formatRupiah(dynamic value) {
+    final number = value is num
+        ? value.toDouble()
+        : double.tryParse(value?.toString() ?? '0') ?? 0;
+    return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(number);
   }
 
   String _productImageUrl(dynamic image) {
@@ -331,7 +339,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              "Rp ${item['regular_price']}",
+                              _formatRupiah(item['regular_price']),
                               style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,

@@ -62,4 +62,34 @@ class CartApiService {
     }
     return success;
   }
+
+  static Future<bool> updateCartItemQuantity({
+    required int cartItemId,
+    required int quantity,
+    bool refreshBadge = true,
+  }) async {
+    lastError = null;
+    if (ApiService.token == null) {
+      lastError = 'Silakan login dulu.';
+      return false;
+    }
+
+    final response = await http.post(
+      Uri.parse('${ApiService.baseUrl}/cart/update/$cartItemId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Bearer ${ApiService.token}',
+      },
+      body: jsonEncode({'quantity': quantity}),
+    );
+
+    final success = response.statusCode == 200 || response.statusCode == 201;
+    if (success) {
+      if (refreshBadge) await CartBadgeService.notifyCartChanged();
+    } else {
+      lastError = _messageFromBody(response.body, fallback: 'Gagal memperbarui jumlah produk. Kode: ${response.statusCode}');
+    }
+    return success;
+  }
 }
