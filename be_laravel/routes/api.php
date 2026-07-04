@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\ApiMarketplaceReviewController;
 use App\Http\Controllers\Api\ApiUserProfileController;
 use App\Http\Controllers\Api\ApiMediaController;
 use App\Http\Controllers\Api\ApiProductVariationImageController;
+use App\Http\Controllers\Api\ApiStartupAdController;
 use App\Http\Controllers\MidtransController;
 use App\Http\Controllers\Api\ApiPaymentMethodController;
 
@@ -35,6 +36,7 @@ Route::get('/stores/{slug}/reviews', [ApiMarketplaceReviewController::class, 'st
 Route::get('/products/{productId}/reviews', [ApiMarketplaceReviewController::class, 'productReviews']);
 Route::post('/midtrans/notification', [MidtransController::class, 'notificationHandler']);
 Route::get('/payment-methods', [ApiPaymentMethodController::class, 'index']);
+Route::get('/startup-ad', [ApiStartupAdController::class, 'show']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [ApiAuthController::class, 'logout']);
@@ -95,42 +97,4 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/addresses', [ApiAdminController::class, 'saveUserAddress']);
     Route::put('/user/addresses/{id}/set-main', [ApiAdminController::class, 'setMainAddress']);
     Route::put('/user/addresses/{id}/set-store', [ApiAdminController::class, 'setStoreAddress']);
-    Route::delete('/user/addresses/{id}', [ApiAdminController::class, 'deleteUserAddress']);
-    Route::get('/order/{id}/status', [ApiCheckoutController::class, 'checkStatus']);
-
-    Route::middleware('admin')->prefix('admin')->group(function () {
-        Route::get('/dashboard', [ApiAdminController::class, 'dashboardStats']);
-        Route::get('/products', [ApiAdminController::class, 'getProducts']);
-        Route::post('/products/store', [ApiAdminController::class, 'storeProduct']);
-        Route::get('/products/{id}', [ApiAdminController::class, 'getProductDetail']);
-        Route::put('/products/update/{id}', [ApiAdminController::class, 'updateProduct']);
-        Route::post('/products/update/{id}', [ApiAdminController::class, 'updateProduct']);
-        Route::delete('/products/delete/{id}', [ApiAdminController::class, 'deleteProduct']);
-        Route::post('/product-variations/{id}/image', [ApiProductVariationImageController::class, 'update']);
-
-        Route::get('/categories', [ApiAdminController::class, 'getCategories']);
-        Route::post('/categories/store', [ApiAdminController::class, 'storeCategory']);
-        Route::put('/categories/update/{id}', [ApiAdminController::class, 'updateCategory']);
-        Route::delete('/categories/delete', [ApiAdminController::class, 'deleteCategory']);
-        Route::delete('/categories/delete/{id}', [ApiAdminController::class, 'deleteCategory']);
-
-        Route::get('/brands', [ApiAdminBrandController::class, 'index']);
-        Route::post('/brands/store', [ApiAdminBrandController::class, 'store']);
-        Route::put('/brands/update/{id}', [ApiAdminBrandController::class, 'update']);
-        Route::post('/brands/update/{id}', [ApiAdminBrandController::class, 'update']);
-        Route::delete('/brands/delete/{id}', [ApiAdminBrandController::class, 'destroy']);
-        Route::get('/orders', [ApiAdminController::class, 'getOrders']);
-        Route::get('/orders/{id}', [ApiAdminController::class, 'getOrderDetail']);
-        Route::put('/orders/update-status/{id}', [ApiAdminController::class, 'updateOrderStatus']);
-
-        Route::get('/coupons', [ApiAdminController::class, 'getCoupons']);
-        Route::post('/coupons/store', [ApiAdminController::class, 'storeCoupon']);
-        Route::delete('/coupons/delete/{id}', [ApiAdminController::class, 'deleteCoupon']);
-
-        Route::get('/slides', [ApiAdminController::class, 'getSlides']);
-        Route::get('/contacts', [ApiAdminController::class, 'getContacts']);
-        Route::put('/contacts/read/{id}', [ApiAdminController::class, 'markContactRead']);
-        Route::get('/settings/whatsapp', [ApiAdminController::class, 'getWhatsappSettings']);
-        Route::put('/settings/whatsapp/update', [ApiAdminController::class, 'updateWhatsappSettings']);
-    });
-});
+    Route::delete('/user/addresses/{id}', [ApiAdminController::class, 'deleteUserAddres
