@@ -32,6 +32,14 @@ class MarketplaceProductCard extends StatelessWidget {
 
   double get _activePrice => _hasPromo ? product.salePrice! : product.price;
 
+  String _formatPrice(double value) {
+    final rounded = value.round().toString();
+    return rounded.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (match) => '.',
+    );
+  }
+
   int get _discountPercent {
     if (!_hasPromo || product.price <= 0) return 0;
     final percent = ((product.price - product.salePrice!) / product.price * 100).round();
@@ -94,15 +102,32 @@ class MarketplaceProductCard extends StatelessWidget {
   }
 
   Widget _buildPrice() {
-    return Text(
-      'Rp ${_activePrice.toStringAsFixed(0)}',
+    const priceFontSize = 14.0;
+    const rpFontSize = 10.0;
+
+    return Text.rich(
+      TextSpan(
+        children: [
+          const TextSpan(
+            text: 'Rp',
+            style: TextStyle(
+              color: Color(0xFFE65100),
+              fontWeight: FontWeight.w800,
+              fontSize: rpFontSize,
+            ),
+          ),
+          TextSpan(
+            text: _formatPrice(_activePrice),
+            style: const TextStyle(
+              color: Color(0xFFE65100),
+              fontWeight: FontWeight.w800,
+              fontSize: priceFontSize,
+            ),
+          ),
+        ],
+      ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: const TextStyle(
-        color: Color(0xFFE65100),
-        fontWeight: FontWeight.w800,
-        fontSize: 14,
-      ),
     );
   }
 

@@ -90,6 +90,60 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
     return '';
   }
 
+  String _formatPrice(dynamic value) {
+    num amount = 0;
+
+    if (value is num) {
+      amount = value;
+    } else {
+      final raw = value?.toString().trim() ?? '';
+      final clean = raw.replaceAll(RegExp(r'[^0-9,.-]'), '');
+      final isThousandDot = RegExp(r'^\d{1,3}(\.\d{3})+$').hasMatch(clean);
+      double? parsed;
+
+      if (isThousandDot) {
+        parsed = double.tryParse(clean.replaceAll('.', ''));
+      }
+
+      parsed ??= double.tryParse(clean);
+      parsed ??= double.tryParse(clean.replaceAll('.', '').replaceAll(',', '.'));
+      amount = parsed ?? 0;
+    }
+
+    final rounded = amount.round().toString();
+    return rounded.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (match) => '.',
+    );
+  }
+
+  Widget _priceText(dynamic value) {
+    return Text.rich(
+      TextSpan(
+        children: [
+          const TextSpan(
+            text: 'Rp',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.indigo,
+            ),
+          ),
+          TextSpan(
+            text: _formatPrice(value),
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Colors.indigo,
+            ),
+          ),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
   void _showCustomSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -330,14 +384,7 @@ class _AdminProductsScreenState extends State<AdminProductsScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 6),
-                            Text(
-                              "Rp ${item['regular_price']}",
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.indigo,
-                              ),
-                            ),
+                            _priceText(item['regular_price']),
                             const SizedBox(height: 6),
                             Row(
                               children: [
