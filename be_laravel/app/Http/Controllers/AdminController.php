@@ -233,60 +233,71 @@ class AdminController extends BaseController
     }
 
     public function index()
-    {
-        $orders = Order::orderBy('created_at', 'DESC')->get()->take(10);
+{
+    $orders = Order::orderBy('created_at', 'DESC')->get()->take(10);
 
-        $dashboardDatas = DB::select("Select 
-            sum(total) As TotalAmount,
-            sum(if(status='ordered', total,0)) As TotalOrderedAmount,
-            sum(if(status='shipping', total,0)) As TotalShippingAmount,
-            sum(if(status='delivered', total,0)) As TotalDeliveredAmount,
-            sum(if(status='canceled', total,0)) As TotalCanceledAmount,
-            Count(*) As Total,
-            sum(if(status='ordered', 1,0)) As TotalOrdered,
-            sum(if(status='shipping', 1,0)) As TotalShipping,
-            sum(if(status='delivered', 1,0)) As TotalDelivered,
-            sum(if(status='canceled', 1,0)) As TotalCanceled
-            From Orders");
+    $dashboardDatas = DB::select("SELECT 
+        COALESCE(SUM(total), 0) AS TotalAmount,
+        COALESCE(SUM(IF(status='ordered', total, 0)), 0) AS TotalOrderedAmount,
+        COALESCE(SUM(IF(status='shipping', total, 0)), 0) AS TotalShippingAmount,
+        COALESCE(SUM(IF(status='delivered', total, 0)), 0) AS TotalDeliveredAmount,
+        COALESCE(SUM(IF(status='canceled', total, 0)), 0) AS TotalCanceledAmount,
+        COUNT(*) AS Total,
+        COALESCE(SUM(IF(status='ordered', 1, 0)), 0) AS TotalOrdered,
+        COALESCE(SUM(IF(status='shipping', 1, 0)), 0) AS TotalShipping,
+        COALESCE(SUM(IF(status='delivered', 1, 0)), 0) AS TotalDelivered,
+        COALESCE(SUM(IF(status='canceled', 1, 0)), 0) AS TotalCanceled
+        FROM orders");
 
-        $monthlyDatas = DB::select("SELECT M.id As MonthNo, M.name As MonthName,
-            IFNULL(D.TotalAmount,0) As TotalAmount,
-            IFNULL(D.TotalOrderedAmount,0) As TotalOrderedAmount,
-            IFNULL(D.TotalShippingAmount,0) As TotalShippingAmount,
-            IFNULL(D.TotalDeliveredAmount,0) As TotalDeliveredAmount,
-            IFNULL(D.TotalCanceledAmount,0) As TotalCanceledAmount 
-            FROM month_names M
-            LEFT JOIN (
-                Select 
-                    DATE_FORMAT(created_at, '%b') As MonthName,
-                    MONTH(created_at) As MonthNo,
-                    sum(total) As TotalAmount,
-                    sum(if(status='ordered',total,0)) As TotalOrderedAmount,
-                    sum(if(status='shipping',total,0)) As TotalShippingAmount,
-                    sum(if(status='delivered',total,0)) As TotalDeliveredAmount,
-                    sum(if(status='canceled',total,0)) As TotalCanceledAmount
-                FROM Orders WHERE YEAR(created_at)=YEAR(NOW()) 
-                GROUP BY YEAR(created_at), MONTH(created_at), DATE_FORMAT(created_at, '%b')
-                Order By MONTH(created_at)
-            ) D On D.MonthNo=M.id");
+    $monthlyDatas = DB::select("SELECT M.id AS MonthNo, M.name AS MonthName,
+        IFNULL(D.TotalAmount, 0) AS TotalAmount,
+        IFNULL(D.TotalOrderedAmount, 0) AS TotalOrderedAmount,
+        IFNULL(D.TotalShippingAmount, 0) AS TotalShippingAmount,
+        IFNULL(D.TotalDeliveredAmount, 0) AS TotalDeliveredAmount,
+        IFNULL(D.TotalCanceledAmount, 0) AS TotalCanceledAmount 
+        FROM month_names M
+        LEFT JOIN (
+            SELECT 
+                DATE_FORMAT(created_at, '%b') AS MonthName,
+                MONTH(created_at) AS MonthNo,
+                SUM(total) AS TotalAmount,
+                SUM(IF(status='ordered', total, 0)) AS TotalOrderedAmount,
+                SUM(IF(status='shipping', total, 0)) AS TotalShippingAmount,
+                SUM(IF(status='delivered', total, 0)) AS TotalDeliveredAmount,
+                SUM(IF(status='canceled', total, 0)) AS TotalCanceledAmount
+            FROM orders 
+            WHERE YEAR(created_at)=YEAR(NOW()) 
+            GROUP BY YEAR(created_at), MONTH(created_at), DATE_FORMAT(created_at, '%b')
+            ORDER BY MONTH(created_at)
+        ) D ON D.MonthNo=M.id");
 
-        $AmountM = implode(',', collect($monthlyDatas)->pluck('TotalAmount')->toArray());
-        $OrderedAmountM = implode(',', collect($monthlyDatas)->pluck('TotalOrderedAmount')->toArray());
-        $ShippingAmountM = implode(',', collect($monthlyDatas)->pluck('TotalShippingAmount')->toArray()); 
-        $DeliveredAmountM = implode(',', collect($monthlyDatas)->pluck('TotalDeliveredAmount')->toArray());
-        $CanceledAmountM = implode(',', collect($monthlyDatas)->pluck('TotalCanceledAmount')->toArray());
+    $AmountM = implode(',', collect($monthlyDatas)->pluck('TotalAmount')->toArray());
+    $OrderedAmountM = implode(',', collect($monthlyDatas)->pluck('TotalOrderedAmount')->toArray());
+    $ShippingAmountM = implode(',', collect($monthlyDatas)->pluck('TotalShippingAmount')->toArray());
+    $DeliveredAmountM = implode(',', collect($monthlyDatas)->pluck('TotalDeliveredAmount')->toArray());
+    $CanceledAmountM = implode(',', collect($monthlyDatas)->pluck('TotalCanceledAmount')->toArray());
 
-        $TotalAmount = collect($monthlyDatas)->sum('TotalAmount');
-        $TotalOrderedAmount = collect($monthlyDatas)->sum('TotalOrderedAmount');
-        $TotalShippingAmount = collect($monthlyDatas)->sum('TotalShippingAmount'); 
-        $TotalDeliveredAmount = collect($monthlyDatas)->sum('TotalDeliveredAmount');
-        $TotalCanceledAmount = collect($monthlyDatas)->sum('TotalCanceledAmount');
+    $TotalAmount = collect($monthlyDatas)->sum('TotalAmount');
+    $TotalOrderedAmount = collect($monthlyDatas)->sum('TotalOrderedAmount');
+    $TotalShippingAmount = collect($monthlyDatas)->sum('TotalShippingAmount');
+    $TotalDeliveredAmount = collect($monthlyDatas)->sum('TotalDeliveredAmount');
+    $TotalCanceledAmount = collect($monthlyDatas)->sum('TotalCanceledAmount');
 
-        return view('admin.index', compact(
-            'orders', 'dashboardDatas', 'AmountM', 'OrderedAmountM', 'ShippingAmountM', 'DeliveredAmountM', 'CanceledAmountM', 
-            'TotalAmount', 'TotalOrderedAmount', 'TotalShippingAmount', 'TotalDeliveredAmount', 'TotalCanceledAmount'
-        ));
-    }
+    return view('admin.index', compact(
+        'orders',
+        'dashboardDatas',
+        'AmountM',
+        'OrderedAmountM',
+        'ShippingAmountM',
+        'DeliveredAmountM',
+        'CanceledAmountM',
+        'TotalAmount',
+        'TotalOrderedAmount',
+        'TotalShippingAmount',
+        'TotalDeliveredAmount',
+        'TotalCanceledAmount'
+    ));
+}
 
     public function brands()
     {
@@ -784,48 +795,49 @@ class AdminController extends BaseController
     }
 
     public function orderReport()
-    {
-        $dashboardDatas = DB::select("Select sum(total) As TotalAmount,
-                                 sum(if(status='ordered', total,0)) As TotalOrderedAmount,
-                                 sum(if(status='delivered', total,0)) As TotalDeliveredAmount,
-                                 sum(if(status='canceled', total,0)) As TotalCanceledAmount,
-                                 Count(*) As Total,
-                                 sum(if(status='ordered', 1,0)) As TotalOrdered,
-                                 sum(if(status='delivered', 1,0)) As TotalDelivered,
-                                 sum(if(status='canceled', 1,0)) As TotalCanceled
-                                 From Orders");
+{
+    $dashboardDatas = DB::select("SELECT 
+        COALESCE(SUM(total), 0) AS TotalAmount,
+        COALESCE(SUM(IF(status='ordered', total, 0)), 0) AS TotalOrderedAmount,
+        COALESCE(SUM(IF(status='delivered', total, 0)), 0) AS TotalDeliveredAmount,
+        COALESCE(SUM(IF(status='canceled', total, 0)), 0) AS TotalCanceledAmount,
+        COUNT(*) AS Total,
+        COALESCE(SUM(IF(status='ordered', 1, 0)), 0) AS TotalOrdered,
+        COALESCE(SUM(IF(status='delivered', 1, 0)), 0) AS TotalDelivered,
+        COALESCE(SUM(IF(status='canceled', 1, 0)), 0) AS TotalCanceled
+        FROM orders");
 
-        $monthlyDatas = DB::table('orders')
-            ->select(
-                DB::raw('MONTH(created_at) as month_num'),
-                DB::raw('DATE_FORMAT(created_at, "%M") as month_name'),
-                DB::raw('SUM(CASE WHEN status = "delivered" THEN total ELSE 0 END) as monthly_revenue')
-            )
-            ->whereYear('created_at', date('Y'))
-            ->groupBy('month_num', 'month_name')
-            ->orderBy('month_num', 'asc')
-            ->get();
+    $monthlyDatas = DB::table('orders')
+        ->select(
+            DB::raw('MONTH(created_at) as month_num'),
+            DB::raw('DATE_FORMAT(created_at, "%M") as month_name'),
+            DB::raw('SUM(CASE WHEN status = "delivered" THEN total ELSE 0 END) as monthly_revenue')
+        )
+        ->whereYear('created_at', date('Y'))
+        ->groupBy('month_num', 'month_name')
+        ->orderBy('month_num', 'asc')
+        ->get();
 
-        $bestSellingProducts = DB::table('products')
-            ->leftJoin('order_items', 'products.id', '=', 'order_items.product_id')
-            ->leftJoin('orders', 'order_items.order_id', '=', 'orders.id')
-            ->select(
-                'products.SKU',
-                'products.name',
-                'products.exp_date',
-                DB::raw('COALESCE(SUM(CASE WHEN orders.status = "delivered" THEN order_items.quantity ELSE 0 END), 0) as total_quantity_sold')
-            )
-            ->groupBy('products.id', 'products.SKU', 'products.name', 'products.exp_date')
-            ->orderByDesc('total_quantity_sold')
-            ->orderBy('products.name', 'asc')
-            ->paginate(20);
+    $bestSellingProducts = DB::table('products')
+        ->leftJoin('order_items', 'products.id', '=', 'order_items.product_id')
+        ->leftJoin('orders', 'order_items.order_id', '=', 'orders.id')
+        ->select(
+            'products.SKU',
+            'products.name',
+            'products.exp_date',
+            DB::raw('COALESCE(SUM(CASE WHEN orders.status = "delivered" THEN order_items.quantity ELSE 0 END), 0) as total_quantity_sold')
+        )
+        ->groupBy('products.id', 'products.SKU', 'products.name', 'products.exp_date')
+        ->orderByDesc('total_quantity_sold')
+        ->orderBy('products.name', 'asc')
+        ->paginate(20);
 
-        return view('admin.orders.report', compact(
-            'bestSellingProducts',
-            'dashboardDatas',
-            'monthlyDatas'
-        ));
-    }
+    return view('admin.orders.report', compact(
+        'bestSellingProducts',
+        'dashboardDatas',
+        'monthlyDatas'
+    ));
+}
 
     public function exportExcel()
     {
@@ -833,45 +845,51 @@ class AdminController extends BaseController
     }
 
     public function exportPdf()
-    {
-        $dashboardDatas = DB::select("Select sum(total) As TotalAmount,
-                                 sum(if(status='ordered', total,0)) As TotalOrderedAmount,
-                                 sum(if(status='delivered', total,0)) As TotalDeliveredAmount,
-                                 sum(if(status='canceled', total,0)) As TotalCanceledAmount,
-                                 Count(*) As Total,
-                                 sum(if(status='ordered', 1,0)) As TotalOrdered,
-                                 sum(if(status='delivered', 1,0)) As TotalDelivered,
-                                 sum(if(status='canceled', 1,0)) As TotalCanceled
-                                 From Orders");
+{
+    $dashboardDatas = DB::select("SELECT 
+        COALESCE(SUM(total), 0) AS TotalAmount,
+        COALESCE(SUM(IF(status='ordered', total, 0)), 0) AS TotalOrderedAmount,
+        COALESCE(SUM(IF(status='delivered', total, 0)), 0) AS TotalDeliveredAmount,
+        COALESCE(SUM(IF(status='canceled', total, 0)), 0) AS TotalCanceledAmount,
+        COUNT(*) AS Total,
+        COALESCE(SUM(IF(status='ordered', 1, 0)), 0) AS TotalOrdered,
+        COALESCE(SUM(IF(status='delivered', 1, 0)), 0) AS TotalDelivered,
+        COALESCE(SUM(IF(status='canceled', 1, 0)), 0) AS TotalCanceled
+        FROM orders");
+    
+    $monthlyDatas = DB::table('orders')
+        ->select(
+            DB::raw('MONTH(created_at) as month_num'),
+            DB::raw('DATE_FORMAT(created_at, "%M") as month_name'),
+            DB::raw('SUM(CASE WHEN status = "delivered" THEN total ELSE 0 END) as monthly_revenue')
+        )
+        ->whereYear('created_at', date('Y'))
+        ->groupBy('month_num', 'month_name')
+        ->orderBy('month_num', 'asc')
+        ->get();
         
-        $monthlyDatas = DB::table('orders')
-            ->select(
-                DB::raw('MONTH(created_at) as month_num'),
-                DB::raw('DATE_FORMAT(created_at, "%M") as month_name'),
-                DB::raw('SUM(CASE WHEN status = "delivered" THEN total ELSE 0 END) as monthly_revenue')
-            )
-            ->whereYear('created_at', date('Y'))
-            ->groupBy('month_num', 'month_name')
-            ->orderBy('month_num', 'asc')
-            ->get();
-            
-        $bestSellingProducts = DB::table('products')
-            ->leftJoin('order_items', 'products.id', '=', 'order_items.product_id')
-            ->leftJoin('orders', 'order_items.order_id', '=', 'orders.id')
-            ->select(
-                'products.SKU',
-                'products.name',
-                'products.exp_date',
-                DB::raw('COALESCE(SUM(CASE WHEN orders.status = "delivered" THEN order_items.quantity ELSE 0 END), 0) as total_quantity_sold')
-            )
-            ->groupBy('products.id', 'products.SKU', 'products.name', 'products.exp_date')
-            ->orderByDesc('total_quantity_sold')
-            ->orderBy('products.name', 'asc')
-            ->get();
+    $bestSellingProducts = DB::table('products')
+        ->leftJoin('order_items', 'products.id', '=', 'order_items.product_id')
+        ->leftJoin('orders', 'order_items.order_id', '=', 'orders.id')
+        ->select(
+            'products.SKU',
+            'products.name',
+            'products.exp_date',
+            DB::raw('COALESCE(SUM(CASE WHEN orders.status = "delivered" THEN order_items.quantity ELSE 0 END), 0) as total_quantity_sold')
+        )
+        ->groupBy('products.id', 'products.SKU', 'products.name', 'products.exp_date')
+        ->orderByDesc('total_quantity_sold')
+        ->orderBy('products.name', 'asc')
+        ->get();
 
-        $pdf = Pdf::loadView('admin.orders.report_pdf', compact('bestSellingProducts', 'dashboardDatas', 'monthlyDatas'));
-        return $pdf->download('laporan-penjualan.pdf');
-    }
+    $pdf = Pdf::loadView('admin.orders.report_pdf', compact(
+        'bestSellingProducts',
+        'dashboardDatas',
+        'monthlyDatas'
+    ));
+
+    return $pdf->download('laporan-penjualan.pdf');
+}
 
     public function order_details($order_id)
     {
