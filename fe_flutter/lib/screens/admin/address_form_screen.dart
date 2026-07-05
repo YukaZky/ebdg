@@ -446,6 +446,9 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
         if (provinceName.isNotEmpty) addressParts.add(provinceName);
         
         String fullSearchAddress = addressParts.join(', ');
+        final areaSearchContext = [subdistrictName, cityName, provinceName]
+            .where((part) => part.isNotEmpty)
+            .join(', ');
 
         final result = await Navigator.push(
           context,
@@ -453,6 +456,7 @@ class _AddressFormScreenState extends State<AddressFormScreen> {
             initialLat: _latitude,
             initialLng: _longitude,
             searchAddress: fullSearchAddress,
+            searchContext: areaSearchContext,
           )),
         );
 

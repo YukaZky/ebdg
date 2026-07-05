@@ -1,11 +1,10 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:http/http.dart' as http;
+
+import '../services/map_geocoding_service.dart';
 
 class MapPickerScreen extends StatefulWidget {
   final double? initialLat;
@@ -28,13 +27,18 @@ class MapPickerScreen extends StatefulWidget {
 class _MapPickerScreenState extends State<MapPickerScreen> {
   final MapController _mapController = MapController();
   final TextEditingController _searchController = TextEditingController();
+  final MapGeocodingService _geocodingService = MapGeocodingService();
 
-  LatLng _currentPosition = const LatLng(-6.200000, 106.816666); // Default jika gagal semua
+  LatLng _currentPosition =
+      const LatLng(-6.200000, 106.816666); // Default jika gagal semua
   bool _isLoading = true;
   bool _isSearching = false;
-  bool _skipNextReverseGeocode = false;
+  bool _mapMovedByUser = false;
   String _addressText = "Mencari lokasi...";
+  String? _accuracyMessage;
+  MapLocationPrecision? _currentPrecision;
   bool _hasLocationPermission = false;
+  int _reverseGeocodeRequestId = 0;
 
   @override
   void initState() {
@@ -46,6 +50,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _geocodingService.close();
     _mapController.dispose();
     super.dispose();
   }
@@ -60,7 +65,8 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
         permission = await Geolocator.requestPermission();
       }
 
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
         _hasLocationPermission = true;
       }
     } catch (e) {
@@ -74,15 +80,18 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     if (widget.initialLat != null && widget.initialLng != null) {
       _currentPosition = LatLng(widget.initialLat!, widget.initialLng!);
       await _getAddressFromLatLng(_currentPosition);
-    } else if (widget.searchAddress != null && widget.searchAddress!.isNotEmpty) {
-      final results = await _searchSmartLocations(widget.searchAddress!);
+    } else if (widget.searchAddress != null &&
+        widget.searchAddress!.isNotEmpty) {
+      final results = await _geocodingService.search(
+        widget.searchAddress!,
+        context: widget.searchContext,
+      );
       if (results.isNotEmpty) {
         final selected = results.first;
-        final position = _positionFromResult(selected);
-        if (position != null) {
-          _currentPosition = position;
-          _addressText = _displayNameFromResult(selected);
-        }
+        _currentPosition = LatLng(selected.latitude, selected.longitude);
+        _addressText = selected.displayName;
+        _accuracyMessage = selected.accuracyMessage;
+        _currentPrecision = selected.precision;
       } else if (_hasLocationPermission) {
         await _fetchCurrentLocation();
       }
@@ -93,14 +102,15 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     if (mounted) {
       setState(() => _isLoading = false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _mapController.move(_currentPosition, 17.0);
+        if (mounted) _mapController.move(_currentPosition, 17.0);
       });
     }
   }
 
   Future<void> _fetchCurrentLocation() async {
     try {
-      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
       _currentPosition = LatLng(position.latitude, position.longitude);
       await _getAddressFromLatLng(_currentPosition);
     } catch (e) {
@@ -108,141 +118,39 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     }
   }
 
-  String _normalizeSearchText(String value) {
-    var text = value.trim();
-    text = text.replaceAll(RegExp(r'\bjl\.?\b', caseSensitive: false), 'Jalan');
-    text = text.replaceAll(RegExp(r'\bjln\.?\b', caseSensitive: false), 'Jalan');
-    text = text.replaceAll(RegExp(r'\bno\.?\b', caseSensitive: false), 'Nomor');
-    text = text.replaceAll(RegExp(r'\s+'), ' ');
-    return text.trim();
-  }
-
-  List<String> _importantTokens(String value) {
-    final stopWords = <String>{
-      'jalan', 'nomor', 'no', 'jl', 'jln', 'rt', 'rw', 'gang', 'gg',
-      'kecamatan', 'kabupaten', 'kota', 'provinsi', 'indonesia', 'jawa',
-      'tengah', 'barat', 'timur', 'utara', 'selatan', 'daerah', 'khusus'
-    };
-
-    return _normalizeSearchText(value)
-        .toLowerCase()
-        .split(RegExp(r'[^a-z0-9]+'))
-        .where((token) => token.isNotEmpty && !stopWords.contains(token) && (token.length > 2 || RegExp(r'^\d+$').hasMatch(token)))
-        .toList();
-  }
-
-  String _joinUniqueAddressParts(List<String?> parts) {
-    final seen = <String>{};
-    final cleanParts = <String>[];
-
-    for (final part in parts) {
-      final clean = _normalizeSearchText(part ?? '');
-      if (clean.isEmpty) continue;
-
-      final key = clean.toLowerCase();
-      if (seen.contains(key)) continue;
-      seen.add(key);
-      cleanParts.add(clean);
-    }
-
-    return cleanParts.join(', ');
-  }
-
-  String _smartSearchQuery(String rawQuery) {
-    final context = _normalizeSearchText(widget.searchContext ?? widget.searchAddress ?? '');
-    return _joinUniqueAddressParts([
-      rawQuery,
-      context,
-      'Indonesia',
-    ]);
-  }
-
-  double _scoreSearchResult(Map<String, dynamic> result, String rawQuery) {
-    final displayName = _displayNameFromResult(result).toLowerCase();
-    final address = result['address'] is Map ? result['address'] as Map : const {};
-    double score = double.tryParse(result['importance']?.toString() ?? '') ?? 0;
-
-    for (final token in _importantTokens(rawQuery)) {
-      if (displayName.contains(token)) score += RegExp(r'^\d+$').hasMatch(token) ? 2.0 : 1.0;
-    }
-
-    final houseNumber = address['house_number']?.toString().toLowerCase() ?? '';
-    final road = address['road']?.toString().toLowerCase() ?? '';
-    for (final token in _importantTokens(rawQuery)) {
-      if (houseNumber == token) score += 4.0;
-      if (road.contains(token)) score += 3.0;
-    }
-
-    return score;
-  }
-
-  Future<List<Map<String, dynamic>>> _searchSmartLocations(String rawQuery) async {
-    final smartQuery = _smartSearchQuery(rawQuery);
-    var results = await _searchWithNominatim(smartQuery, rawQuery);
-
-    if (results.isEmpty) {
-      final backupQuery = _joinUniqueAddressParts([rawQuery, 'Indonesia']);
-      if (backupQuery.toLowerCase() != smartQuery.toLowerCase()) {
-        results = await _searchWithNominatim(backupQuery, rawQuery);
-      }
-    }
-
-    return results;
-  }
-
-  Future<List<Map<String, dynamic>>> _searchWithNominatim(String query, String rawQuery) async {
-    try {
-      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
-        'format': 'jsonv2',
-        'q': query,
-        'limit': '8',
-        'addressdetails': '1',
-        'countrycodes': 'id',
-        'dedupe': '1',
-      });
-
-      final response = await http.get(
-        uri,
-        headers: const {
-          'Accept': 'application/json',
-          'User-Agent': 'fe_flutter/1.0 map picker',
-        },
-      );
-
-      if (response.statusCode != 200) return [];
-
-      final decoded = jsonDecode(response.body);
-      if (decoded is! List) return [];
-
-      final results = decoded
-          .whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .where((item) => _positionFromResult(item) != null)
-          .toList();
-
-      results.sort((a, b) => _scoreSearchResult(b, rawQuery).compareTo(_scoreSearchResult(a, rawQuery)));
-      return results;
-    } catch (e) {
-      debugPrint('Pencarian Nominatim gagal: $e');
-      return [];
+  Color get _accuracyColor {
+    switch (_currentPrecision) {
+      case MapLocationPrecision.exact:
+        return Colors.green.shade700;
+      case MapLocationPrecision.street:
+        return Colors.orange.shade800;
+      case MapLocationPrecision.area:
+      case null:
+        return Colors.blueGrey.shade700;
     }
   }
 
-  LatLng? _positionFromResult(Map<String, dynamic> result) {
-    final lat = double.tryParse(result['lat']?.toString() ?? '');
-    final lon = double.tryParse(result['lon']?.toString() ?? '');
-    if (lat == null || lon == null) return null;
-    return LatLng(lat, lon);
+  IconData get _accuracyIcon {
+    switch (_currentPrecision) {
+      case MapLocationPrecision.exact:
+        return Icons.verified_rounded;
+      case MapLocationPrecision.street:
+        return Icons.alt_route_rounded;
+      case MapLocationPrecision.area:
+      case null:
+        return Icons.info_outline_rounded;
+    }
   }
 
-  String _displayNameFromResult(Map<String, dynamic> result) {
-    return result['display_name']?.toString() ?? 'Lokasi ditemukan';
-  }
+  Future<MapSearchResult?> _showSearchResultPicker(
+    List<MapSearchResult> results,
+  ) async {
+    if (results.length == 1 &&
+        results.first.precision == MapLocationPrecision.exact) {
+      return results.first;
+    }
 
-  Future<Map<String, dynamic>?> _showSearchResultPicker(List<Map<String, dynamic>> results) async {
-    if (results.length == 1) return results.first;
-
-    return showModalBottomSheet<Map<String, dynamic>>(
+    return showModalBottomSheet<MapSearchResult>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -262,34 +170,54 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Jika nomor rumah belum tepat, pilih area terdekat lalu geser pin manual sampai benar.',
-                  style: TextStyle(fontSize: 12, color: Colors.black54, height: 1.4),
+                  'Hasil dengan label "perkiraan" perlu diperiksa dan digeser ke bangunan yang benar.',
+                  style: TextStyle(
+                      fontSize: 12, color: Colors.black54, height: 1.4),
                 ),
                 const SizedBox(height: 12),
                 ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.48),
+                  constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.48),
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: results.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final result = results[index];
-                      final position = _positionFromResult(result);
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.location_on_outlined, color: Color(0xFF0C2442)),
+                        leading: const Icon(Icons.location_on_outlined,
+                            color: Color(0xFF0C2442)),
                         title: Text(
-                          _displayNameFromResult(result),
+                          result.displayName,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600),
                         ),
-                        subtitle: position == null
-                            ? null
-                            : Text(
-                                '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}',
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                result.precisionLabel,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: result.precision ==
+                                          MapLocationPrecision.exact
+                                      ? Colors.green.shade700
+                                      : Colors.orange.shade800,
+                                ),
+                              ),
+                              Text(
+                                '${result.latitude.toStringAsFixed(6)}, ${result.longitude.toStringAsFixed(6)}',
                                 style: const TextStyle(fontSize: 11),
                               ),
+                            ],
+                          ),
+                        ),
                         onTap: () => Navigator.pop(context, result),
                       );
                     },
@@ -319,39 +247,55 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     setState(() {
       _isSearching = true;
       _addressText = 'Mencari lokasi...';
+      _accuracyMessage = null;
+      _currentPrecision = null;
     });
 
     try {
-      final results = await _searchSmartLocations(query);
-      Map<String, dynamic>? selectedResult;
-
-      if (results.isNotEmpty && mounted) {
-        selectedResult = await _showSearchResultPicker(results);
-      }
-
-      if (selectedResult != null) {
-        final targetPosition = _positionFromResult(selectedResult);
-        if (targetPosition == null) return;
-
+      final results = await _geocodingService.search(
+        query,
+        context: widget.searchContext,
+      );
+      if (results.isNotEmpty) {
         if (!mounted) return;
+        final selectedResult = await _showSearchResultPicker(results);
+        if (selectedResult == null || !mounted) return;
+
+        final targetPosition = LatLng(
+          selectedResult.latitude,
+          selectedResult.longitude,
+        );
         setState(() {
           _currentPosition = targetPosition;
-          _addressText = _displayNameFromResult(selectedResult!);
-          _skipNextReverseGeocode = true;
+          _addressText = selectedResult.displayName;
+          _accuracyMessage = selectedResult.accuracyMessage;
+          _currentPrecision = selectedResult.precision;
+          _mapMovedByUser = false;
         });
-        _mapController.move(targetPosition, 18.0);
+        _mapController.move(
+          targetPosition,
+          selectedResult.precision == MapLocationPrecision.exact ? 19.0 : 17.5,
+        );
         return;
       }
 
-      // Fallback terakhir untuk device geocoder jika Nominatim tidak memberi hasil.
-      final fallbackQuery = _smartSearchQuery(query);
+      // Fallback terakhir bila kedua sumber online tidak memberi hasil.
+      final fallbackQuery = [
+        MapGeocodingService.normalizeIndonesianAddress(query),
+        MapGeocodingService.normalizeIndonesianAddress(
+          widget.searchContext ?? '',
+        ),
+        'Indonesia',
+      ].where((part) => part.isNotEmpty).join(', ');
       final locations = await locationFromAddress(fallbackQuery);
       if (locations.isEmpty) {
         if (mounted) {
-          setState(() => _addressText = 'Lokasi tidak ditemukan. Coba masukkan alamat lebih lengkap.');
+          setState(() => _addressText =
+              'Lokasi tidak ditemukan. Coba masukkan alamat lebih lengkap.');
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Lokasi tidak ditemukan. Coba masukkan alamat lebih lengkap.'),
+              content: Text(
+                  'Lokasi tidak ditemukan. Coba masukkan alamat lebih lengkap.'),
               backgroundColor: Colors.redAccent,
             ),
           );
@@ -359,19 +303,28 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
         return;
       }
 
-      final targetPosition = LatLng(locations.first.latitude, locations.first.longitude);
+      final targetPosition =
+          LatLng(locations.first.latitude, locations.first.longitude);
       if (!mounted) return;
 
-      setState(() => _currentPosition = targetPosition);
+      setState(() {
+        _currentPosition = targetPosition;
+        _accuracyMessage =
+            'Hasil ini masih berupa perkiraan dari perangkat. Geser pin ke bangunan yang benar.';
+        _currentPrecision = MapLocationPrecision.area;
+        _mapMovedByUser = false;
+      });
       _mapController.move(targetPosition, 17.0);
       await _getAddressFromLatLng(targetPosition);
     } catch (e) {
       debugPrint('Pencarian lokasi gagal: $e');
       if (mounted) {
-        setState(() => _addressText = 'Lokasi tidak ditemukan. Coba masukkan alamat lebih lengkap.');
+        setState(() => _addressText =
+            'Lokasi tidak ditemukan. Coba masukkan alamat lebih lengkap.');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Lokasi tidak ditemukan. Coba masukkan alamat lebih lengkap.'),
+            content: Text(
+                'Lokasi tidak ditemukan. Coba masukkan alamat lebih lengkap.'),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -382,32 +335,61 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   }
 
   void _goToDeviceLocation() async {
-    setState(() => _addressText = "Mencari lokasi anda...");
+    setState(() {
+      _addressText = "Mencari lokasi anda...";
+      _accuracyMessage = null;
+      _currentPrecision = null;
+    });
     await _checkPermission();
+    if (!mounted) return;
     if (_hasLocationPermission) {
       await _fetchCurrentLocation();
+      if (!mounted) return;
+      setState(() {
+        _accuracyMessage =
+            'Titik diambil dari GPS perangkat. Pastikan ujung pin tepat di bangunan tujuan.';
+        _currentPrecision = null;
+        _mapMovedByUser = false;
+      });
       _mapController.move(_currentPosition, 17.0);
-      setState(() {});
     } else {
       setState(() => _addressText = "Akses GPS/Lokasi HP belum diizinkan.");
     }
   }
 
   Future<void> _getAddressFromLatLng(LatLng position) async {
+    final requestId = ++_reverseGeocodeRequestId;
     try {
-      List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+      final onlineAddress = await _geocodingService.reverse(
+        position.latitude,
+        position.longitude,
+      );
+      if (onlineAddress != null && onlineAddress.isNotEmpty) {
+        if (mounted && requestId == _reverseGeocodeRequestId) {
+          setState(() => _addressText = onlineAddress);
+        }
+        return;
+      }
+
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
       if (placemarks.isNotEmpty) {
-        Placemark place = placemarks[0];
-        if (mounted) {
+        final place = placemarks[0];
+        if (mounted && requestId == _reverseGeocodeRequestId) {
           setState(() {
-            String rawAddress = "${place.street}, ${place.subLocality}, ${place.locality}, ${place.administrativeArea}";
-            _addressText = rawAddress.replaceAll(RegExp(r',\s*,|,\s*$'), '').trim();
+            String rawAddress =
+                "${place.street}, ${place.subLocality}, ${place.locality}, ${place.administrativeArea}";
+            _addressText =
+                rawAddress.replaceAll(RegExp(r',\s*,|,\s*$'), '').trim();
           });
         }
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _addressText = "Koordinat: ${position.latitude}, ${position.longitude}");
+      if (mounted && requestId == _reverseGeocodeRequestId) {
+        setState(() => _addressText =
+            "Koordinat: ${position.latitude}, ${position.longitude}");
       }
     }
   }
@@ -432,11 +414,14 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                 onSubmitted: (_) => _isSearching ? null : _searchLocation(),
                 decoration: InputDecoration(
                   hintText: 'Contoh: Jl Kisoreng No 43 Blora',
-                  hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-                  prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF0C2442)),
+                  hintStyle:
+                      TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                  prefixIcon: const Icon(Icons.search_rounded,
+                      color: Color(0xFF0C2442)),
                   filled: true,
                   fillColor: Colors.grey.shade50,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                     borderSide: BorderSide(color: Colors.grey.shade300),
@@ -447,7 +432,8 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFF0C2442), width: 1.4),
+                    borderSide:
+                        const BorderSide(color: Color(0xFF0C2442), width: 1.4),
                   ),
                 ),
               ),
@@ -459,16 +445,20 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0C2442),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: _isSearching ? null : _searchLocation,
                 child: _isSearching
                     ? const SizedBox(
                         height: 18,
                         width: 18,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2),
                       )
-                    : const Text('Cari', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    : const Text('Cari',
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -481,12 +471,14 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pilih Lokasi', style: TextStyle(color: Colors.black87, fontSize: 16)),
+        title: const Text('Pilih Lokasi',
+            style: TextStyle(color: Colors.black87, fontSize: 16)),
         backgroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.black87),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF0C2442)))
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFF0C2442)))
           : Stack(
               children: [
                 FlutterMap(
@@ -496,50 +488,88 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                     initialZoom: 17.0,
                     onPositionChanged: (camera, hasGesture) {
                       _currentPosition = camera.center ?? _currentPosition;
+                      if (hasGesture) _mapMovedByUser = true;
                     },
                     onMapEvent: (event) {
                       if (event is MapEventMoveEnd) {
-                        if (_skipNextReverseGeocode) {
-                          _skipNextReverseGeocode = false;
-                          return;
-                        }
+                        if (!_mapMovedByUser) return;
+                        _mapMovedByUser = false;
+                        setState(() {
+                          _accuracyMessage =
+                              'Pin telah digeser manual. Pastikan ujung pin tepat di bangunan tujuan.';
+                          _currentPrecision = null;
+                        });
                         _getAddressFromLatLng(_currentPosition);
                       }
                     },
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.example.fe_flutter',
                     ),
                   ],
                 ),
-
                 Positioned(
                   top: 16,
                   left: 16,
                   right: 16,
                   child: _buildSearchBox(),
                 ),
-
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: 35.0),
-                    child: Icon(Icons.location_on, size: 50, color: Colors.red),
+                Center(
+                  child: IgnorePointer(
+                    child: Transform.translate(
+                      offset: const Offset(0, -25),
+                      child: const Icon(
+                        Icons.location_on,
+                        size: 50,
+                        color: Colors.red,
+                      ),
+                    ),
                   ),
                 ),
-
+                Positioned(
+                  top: 100,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: IgnorePointer(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.94),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black12, blurRadius: 8),
+                          ],
+                        ),
+                        child: const Text(
+                          'Geser peta agar ujung pin tepat di bangunan',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF0C2442),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 Positioned(
                   right: 20,
-                  bottom: 220,
+                  bottom: 285,
                   child: FloatingActionButton(
                     heroTag: "myLocationBtn",
                     backgroundColor: Colors.white,
                     onPressed: _goToDeviceLocation,
-                    child: const Icon(Icons.my_location, color: Color(0xFF0C2442)),
+                    child:
+                        const Icon(Icons.my_location, color: Color(0xFF0C2442)),
                   ),
                 ),
-
                 Positioned(
                   bottom: 20,
                   left: 20,
@@ -549,22 +579,65 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10)],
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black12, blurRadius: 10)
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text("Lokasi Terpilih:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                        const Text("Lokasi Terpilih:",
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey)),
                         const SizedBox(height: 8),
-                        Text(_addressText, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        Text(_addressText,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.bold)),
+                        if (_accuracyMessage != null) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: _accuracyColor.withOpacity(0.09),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: _accuracyColor.withOpacity(0.24),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  _accuracyIcon,
+                                  size: 17,
+                                  color: _accuracyColor,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _accuracyMessage!,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      height: 1.35,
+                                      color: _accuracyColor,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF0C2442),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8)),
                             ),
                             onPressed: () {
                               Navigator.pop(context, {
@@ -576,8 +649,10 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                             child: const Padding(
                               padding: EdgeInsets.symmetric(vertical: 14.0),
                               child: Text(
-                                "TETAPKAN SEBAGAI MAP ANDA",
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                "PIN SUDAH TEPAT — SIMPAN",
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold),
                               ),
                             ),
                           ),
