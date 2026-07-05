@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import '../../services/api_service.dart';
 import '../map_picker_screen.dart'; 
 
@@ -401,82 +399,6 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
     );
   }
 
-  Widget _buildLockedMapPreview() {
-    final position = LatLng(_latitude!, _longitude!);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: SizedBox(
-            height: 145,
-            width: double.infinity,
-            child: Stack(
-              children: [
-                AbsorbPointer(
-                  child: FlutterMap(
-                    key: ValueKey('locked-store-map-${_latitude!.toStringAsFixed(7)}-${_longitude!.toStringAsFixed(7)}'),
-                    options: MapOptions(
-                      initialCenter: position,
-                      initialZoom: 17.0,
-                      interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.example.fe_flutter',
-                      ),
-                    ],
-                  ),
-                ),
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: 22.0),
-                    child: Icon(Icons.location_on, color: Colors.red, size: 44),
-                  ),
-                ),
-                Positioned(
-                  left: 10,
-                  right: 10,
-                  bottom: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.92),
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.push_pin_rounded, color: Colors.red, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Pin peta toko: ${_latitude!.toStringAsFixed(6)}, ${_longitude!.toStringAsFixed(6)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Ketuk kartu ini untuk mengubah titik pin toko.',
-          style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
-        ),
-      ],
-    );
-  }
-
   Widget _buildMapPin() {
     bool hasLocation = _latitude != null && _longitude != null;
     return GestureDetector(
@@ -506,8 +428,7 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
         if (cityName.isNotEmpty) addressParts.add(cityName);
         if (provinceName.isNotEmpty) addressParts.add(provinceName);
         
-        final fullSearchAddress = addressParts.join(', ');
-        final areaSearchContext = [subdistrictName, cityName, provinceName].where((part) => part.isNotEmpty).join(', ');
+        String fullSearchAddress = addressParts.join(', ');
 
         final result = await Navigator.push(
           context,
@@ -515,7 +436,6 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
             initialLat: _latitude,
             initialLng: _longitude,
             searchAddress: fullSearchAddress,
-            searchContext: areaSearchContext,
           )),
         );
 
@@ -541,27 +461,21 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: hasLocation ? Colors.green : Colors.blue.shade200),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Icon(Icons.location_on, color: hasLocation ? Colors.green : Colors.blue, size: 28),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_mapAddressText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: hasLocation ? Colors.green : Colors.blue)),
-                      const SizedBox(height: 2),
-                      Text(hasLocation ? 'Akurat: $_latitude, $_longitude' : 'Akurasi tinggi untuk kurir pengiriman', style: const TextStyle(fontSize: 11, color: Colors.black54)),
-                    ],
-                  ),
-                ),
-                Icon(hasLocation ? Icons.check_circle : Icons.arrow_forward_ios_rounded, size: 14, color: hasLocation ? Colors.green : Colors.blue),
-              ],
+            Icon(Icons.location_on, color: hasLocation ? Colors.green : Colors.blue, size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_mapAddressText, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: hasLocation ? Colors.green : Colors.blue)),
+                  const SizedBox(height: 2),
+                  Text(hasLocation ? 'Akurat: $_latitude, $_longitude' : 'Akurasi tinggi untuk kurir pengiriman', style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                ],
+              ),
             ),
-            if (hasLocation) _buildLockedMapPreview(),
+            Icon(hasLocation ? Icons.check_circle : Icons.arrow_forward_ios_rounded, size: 14, color: hasLocation ? Colors.green : Colors.blue),
           ],
         ),
       ),
