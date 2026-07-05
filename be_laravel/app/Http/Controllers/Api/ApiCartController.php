@@ -138,6 +138,45 @@ class ApiCartController extends Controller
         ], 200);
     }
 
+    public function updateQuantity(Request $request, $id)
+    {
+        $request->validate([
+            'quantity' => 'required|integer|min:1',
+        ]);
+
+        $cartItem = CartItem::with(['product', 'variation'])
+            ->where('user_id', $request->user()->id)
+            ->where('id', $id)
+            ->first();
+
+        if (!$cartItem) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Item tidak ditemukan',
+            ], 404);
+        }
+
+        $availableStock = $cartItem->variation
+            ? (int) $cartItem->variation->quantity
+            : (int) ($cartItem->product->quantity ?? 0);
+
+        if ((int) $request->quantity > $availableStock) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jumlah produk melebihi stok tersedia. Sisa stok: ' . $availableStock,
+            ], 422);
+        }
+
+        $cartItem->quantity = (int) $request->quantity;
+        $cartItem->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Jumlah produk berhasil diperbarui',
+            'data' => $cartItem->fresh(['product', 'variation']),
+        ], 200);
+    }
+
     public function remove(Request $request, $id)
     {
         $cartItem = CartItem::where('user_id', $request->user()->id)->where('id', $id)->first();

@@ -196,6 +196,22 @@ class ApiService {
     return response.statusCode == 200;
   }
 
+  static Future<bool> updateCartQuantity(int id, int quantity) async {
+    if (_token == null) return false;
+
+    final response = await http
+        .post(
+          Uri.parse("$baseUrl/cart/update/$id"),
+          headers: _jsonHeaders,
+          body: jsonEncode({
+            "quantity": quantity,
+          }),
+        )
+        .timeout(const Duration(seconds: 12));
+
+    return response.statusCode == 200;
+  }
+
   static Future<List<dynamic>> getOrders() async {
     if (_token == null) throw Exception("Belum login");
     final response =

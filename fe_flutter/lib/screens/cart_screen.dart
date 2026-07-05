@@ -314,14 +314,43 @@ class _CartScreenState extends State<CartScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _updateQuantity(int index, int change) {
+  Future<void> _updateQuantity(int index, int change) async {
+    if (index < 0 || index >= _cartItems.length) return;
+
+    final item = _cartItems[index];
+    final cartItemId = int.tryParse((item['id'] ?? '').toString());
+
+    if (cartItemId == null) {
+      await _loadCart();
+      return;
+    }
+
+    final currentQty = int.tryParse(item['quantity'].toString()) ?? 1;
+    final newQuantity = currentQty + change;
+
+    if (newQuantity < 1) return;
+
     setState(() {
-      final currentQty =
-          int.tryParse(_cartItems[index]['quantity'].toString()) ?? 1;
-      final newQuantity = currentQty + change;
-      if (newQuantity > 0) _cartItems[index]['quantity'] = newQuantity;
+      _cartItems[index]['quantity'] = newQuantity;
     });
     _syncBadgeFromLocal();
+
+    final success =
+        await ApiService.updateCartQuantity(cartItemId, newQuantity);
+
+    if (!mounted) return;
+
+    if (!success) {
+      await _loadCart();
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Jumlah produk gagal diperbarui. Keranjang dimuat ulang.'),
+        ),
+      );
+    }
   }
 
   void _toggleCheckbox(int index, bool? value) {
@@ -404,8 +433,8 @@ class _CartScreenState extends State<CartScreen> with WidgetsBindingObserver {
                       decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.14),
                           borderRadius: BorderRadius.circular(99),
-                          border:
-                              Border.all(color: Colors.white.withOpacity(0.12))),
+                          border: Border.all(
+                              color: Colors.white.withOpacity(0.12))),
                       child: Text('$_selectedCount dipilih',
                           style: const TextStyle(
                               color: Colors.white,
