@@ -201,6 +201,95 @@
       }
   };  
 
+  var popupImageOptimizer = function () {
+    var input = document.querySelector('[data-popup-image-input]');
+    if (!input) return;
+
+    var button = document.querySelector('[data-popup-submit]');
+    var note = document.querySelector('[data-popup-note]');
+
+    function setFile(file) {
+      var dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+    }
+
+    function loadImage(file) {
+      return new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function(event) {
+          var img = new Image();
+          img.onload = function() { resolve(img); };
+          img.onerror = reject;
+          img.src = event.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function toBlob(canvas, quality) {
+      return new Promise(function(resolve) {
+        canvas.toBlob(resolve, 'image/webp', quality);
+      });
+    }
+
+    async function makeSmall(file) {
+      if (!file || !file.type || !file.type.startsWith('image/')) return file;
+      if (file.size <= 1700 * 1024) return file;
+
+      var img = await loadImage(file);
+      var limit = 1100;
+      var scale = Math.min(1, limit / Math.max(img.width, img.height));
+      var width = Math.max(1, Math.round(img.width * scale));
+      var height = Math.max(1, Math.round(img.height * scale));
+
+      var canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      var ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+
+      var quality = 0.9;
+      var blob = await toBlob(canvas, quality);
+      while (blob && blob.size > 1700 * 1024 && quality > 0.55) {
+        quality -= 0.08;
+        blob = await toBlob(canvas, quality);
+      }
+
+      if (!blob || blob.size >= file.size) return file;
+      return new File([blob], 'popup-' + Date.now() + '.webp', { type: 'image/webp' });
+    }
+
+    input.addEventListener('change', async function () {
+      var file = input.files && input.files[0] ? input.files[0] : null;
+      if (!file) return;
+
+      var oldSize = file.size;
+      if (note) note.textContent = 'Menyiapkan gambar...';
+      input.disabled = true;
+      if (button) button.disabled = true;
+
+      try {
+        var prepared = await makeSmall(file);
+        setFile(prepared);
+        var beforeKb = Math.round(oldSize / 1024);
+        var afterKb = Math.round(prepared.size / 1024);
+        if (note) {
+          note.textContent = prepared.size < oldSize
+            ? 'Gambar otomatis diperkecil: ' + beforeKb + ' KB menjadi ' + afterKb + ' KB.'
+            : 'Gambar siap diupload: ' + afterKb + ' KB.';
+        }
+      } catch (e) {
+        if (note) note.textContent = 'Gambar siap diupload.';
+      } finally {
+        input.disabled = false;
+        if (button) button.disabled = false;
+      }
+    });
+  };
+
   var preloader = function () {
     setTimeout(function () {
     $("#preload").fadeOut("slow", function () {
@@ -225,6 +314,7 @@
     icon_function();
     box_search();
     retinaLogos();
+    popupImageOptimizer();
     preloader();
     
   });
