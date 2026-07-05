@@ -1,15 +1,25 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:http/http.dart' as http;
 
 class MapPickerScreen extends StatefulWidget {
   final double? initialLat;
   final double? initialLng;
   final String? searchAddress;
+  final String? searchContext;
 
-  const MapPickerScreen({Key? key, this.initialLat, this.initialLng, this.searchAddress}) : super(key: key);
+  const MapPickerScreen({
+    Key? key,
+    this.initialLat,
+    this.initialLng,
+    this.searchAddress,
+    this.searchContext,
+  }) : super(key: key);
 
   @override
   State<MapPickerScreen> createState() => _MapPickerScreenState();
@@ -22,6 +32,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   LatLng _currentPosition = const LatLng(-6.200000, 106.816666); // Default jika gagal semua
   bool _isLoading = true;
   bool _isSearching = false;
+  bool _skipNextReverseGeocode = false;
   String _addressText = "Mencari lokasi...";
   bool _hasLocationPermission = false;
 
@@ -60,36 +71,29 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   Future<void> _initializeMap() async {
     await _checkPermission();
 
-    // 1. Jika Mode Edit (sudah ada koordinat tersimpan dari database sebelumnya)
     if (widget.initialLat != null && widget.initialLng != null) {
       _currentPosition = LatLng(widget.initialLat!, widget.initialLng!);
       await _getAddressFromLatLng(_currentPosition);
-    }
-    // 2. PRIORITAS UTAMA (Standar E-Commerce): Lempar peta ke area yang dipilih dari Dropdown RajaOngkir
-    else if (widget.searchAddress != null && widget.searchAddress!.isNotEmpty) {
-      try {
-        List<Location> locations = await locationFromAddress(widget.searchAddress!);
-        if (locations.isNotEmpty) {
-          _currentPosition = LatLng(locations.first.latitude, locations.first.longitude);
-          await _getAddressFromLatLng(_currentPosition);
-        } else {
-          // Jika satelit gagal mengidentifikasi nama daerah, baru pakai GPS HP
-          if (_hasLocationPermission) await _fetchCurrentLocation();
+    } else if (widget.searchAddress != null && widget.searchAddress!.isNotEmpty) {
+      final results = await _searchSmartLocations(widget.searchAddress!);
+      if (results.isNotEmpty) {
+        final selected = results.first;
+        final position = _positionFromResult(selected);
+        if (position != null) {
+          _currentPosition = position;
+          _addressText = _displayNameFromResult(selected);
         }
-      } catch (e) {
-        debugPrint("Pencarian lokasi satelit dari dropdown gagal: $e");
-        if (_hasLocationPermission) await _fetchCurrentLocation();
+      } else if (_hasLocationPermission) {
+        await _fetchCurrentLocation();
       }
-    }
-    // 3. FALLBACK: Jika dropdown kosong sama sekali, baru gunakan murni GPS Device
-    else if (_hasLocationPermission) {
+    } else if (_hasLocationPermission) {
       await _fetchCurrentLocation();
     }
 
     if (mounted) {
       setState(() => _isLoading = false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _mapController.move(_currentPosition, 16.0);
+        _mapController.move(_currentPosition, 17.0);
       });
     }
   }
@@ -102,6 +106,201 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     } catch (e) {
       debugPrint("Error mengambil GPS: $e");
     }
+  }
+
+  String _normalizeSearchText(String value) {
+    var text = value.trim();
+    text = text.replaceAll(RegExp(r'\bjl\.?\b', caseSensitive: false), 'Jalan');
+    text = text.replaceAll(RegExp(r'\bjln\.?\b', caseSensitive: false), 'Jalan');
+    text = text.replaceAll(RegExp(r'\bno\.?\b', caseSensitive: false), 'Nomor');
+    text = text.replaceAll(RegExp(r'\s+'), ' ');
+    return text.trim();
+  }
+
+  List<String> _importantTokens(String value) {
+    final stopWords = <String>{
+      'jalan', 'nomor', 'no', 'jl', 'jln', 'rt', 'rw', 'gang', 'gg',
+      'kecamatan', 'kabupaten', 'kota', 'provinsi', 'indonesia', 'jawa',
+      'tengah', 'barat', 'timur', 'utara', 'selatan', 'daerah', 'khusus'
+    };
+
+    return _normalizeSearchText(value)
+        .toLowerCase()
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((token) => token.isNotEmpty && !stopWords.contains(token) && (token.length > 2 || RegExp(r'^\d+$').hasMatch(token)))
+        .toList();
+  }
+
+  String _joinUniqueAddressParts(List<String?> parts) {
+    final seen = <String>{};
+    final cleanParts = <String>[];
+
+    for (final part in parts) {
+      final clean = _normalizeSearchText(part ?? '');
+      if (clean.isEmpty) continue;
+
+      final key = clean.toLowerCase();
+      if (seen.contains(key)) continue;
+      seen.add(key);
+      cleanParts.add(clean);
+    }
+
+    return cleanParts.join(', ');
+  }
+
+  String _smartSearchQuery(String rawQuery) {
+    final context = _normalizeSearchText(widget.searchContext ?? widget.searchAddress ?? '');
+    return _joinUniqueAddressParts([
+      rawQuery,
+      context,
+      'Indonesia',
+    ]);
+  }
+
+  double _scoreSearchResult(Map<String, dynamic> result, String rawQuery) {
+    final displayName = _displayNameFromResult(result).toLowerCase();
+    final address = result['address'] is Map ? result['address'] as Map : const {};
+    double score = double.tryParse(result['importance']?.toString() ?? '') ?? 0;
+
+    for (final token in _importantTokens(rawQuery)) {
+      if (displayName.contains(token)) score += RegExp(r'^\d+$').hasMatch(token) ? 2.0 : 1.0;
+    }
+
+    final houseNumber = address['house_number']?.toString().toLowerCase() ?? '';
+    final road = address['road']?.toString().toLowerCase() ?? '';
+    for (final token in _importantTokens(rawQuery)) {
+      if (houseNumber == token) score += 4.0;
+      if (road.contains(token)) score += 3.0;
+    }
+
+    return score;
+  }
+
+  Future<List<Map<String, dynamic>>> _searchSmartLocations(String rawQuery) async {
+    final smartQuery = _smartSearchQuery(rawQuery);
+    var results = await _searchWithNominatim(smartQuery, rawQuery);
+
+    if (results.isEmpty) {
+      final backupQuery = _joinUniqueAddressParts([rawQuery, 'Indonesia']);
+      if (backupQuery.toLowerCase() != smartQuery.toLowerCase()) {
+        results = await _searchWithNominatim(backupQuery, rawQuery);
+      }
+    }
+
+    return results;
+  }
+
+  Future<List<Map<String, dynamic>>> _searchWithNominatim(String query, String rawQuery) async {
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'format': 'jsonv2',
+        'q': query,
+        'limit': '8',
+        'addressdetails': '1',
+        'countrycodes': 'id',
+        'dedupe': '1',
+      });
+
+      final response = await http.get(
+        uri,
+        headers: const {
+          'Accept': 'application/json',
+          'User-Agent': 'fe_flutter/1.0 map picker',
+        },
+      );
+
+      if (response.statusCode != 200) return [];
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) return [];
+
+      final results = decoded
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .where((item) => _positionFromResult(item) != null)
+          .toList();
+
+      results.sort((a, b) => _scoreSearchResult(b, rawQuery).compareTo(_scoreSearchResult(a, rawQuery)));
+      return results;
+    } catch (e) {
+      debugPrint('Pencarian Nominatim gagal: $e');
+      return [];
+    }
+  }
+
+  LatLng? _positionFromResult(Map<String, dynamic> result) {
+    final lat = double.tryParse(result['lat']?.toString() ?? '');
+    final lon = double.tryParse(result['lon']?.toString() ?? '');
+    if (lat == null || lon == null) return null;
+    return LatLng(lat, lon);
+  }
+
+  String _displayNameFromResult(Map<String, dynamic> result) {
+    return result['display_name']?.toString() ?? 'Lokasi ditemukan';
+  }
+
+  Future<Map<String, dynamic>?> _showSearchResultPicker(List<Map<String, dynamic>> results) async {
+    if (results.length == 1) return results.first;
+
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Pilih hasil lokasi paling sesuai',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Jika nomor rumah belum tepat, pilih area terdekat lalu geser pin manual sampai benar.',
+                  style: TextStyle(fontSize: 12, color: Colors.black54, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.48),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: results.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final result = results[index];
+                      final position = _positionFromResult(result);
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.location_on_outlined, color: Color(0xFF0C2442)),
+                        title: Text(
+                          _displayNameFromResult(result),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: position == null
+                            ? null
+                            : Text(
+                                '${position.latitude.toStringAsFixed(6)}, ${position.longitude.toStringAsFixed(6)}',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                        onTap: () => Navigator.pop(context, result),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _searchLocation() async {
@@ -123,7 +322,30 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     });
 
     try {
-      final locations = await locationFromAddress(query);
+      final results = await _searchSmartLocations(query);
+      Map<String, dynamic>? selectedResult;
+
+      if (results.isNotEmpty && mounted) {
+        selectedResult = await _showSearchResultPicker(results);
+      }
+
+      if (selectedResult != null) {
+        final targetPosition = _positionFromResult(selectedResult);
+        if (targetPosition == null) return;
+
+        if (!mounted) return;
+        setState(() {
+          _currentPosition = targetPosition;
+          _addressText = _displayNameFromResult(selectedResult!);
+          _skipNextReverseGeocode = true;
+        });
+        _mapController.move(targetPosition, 18.0);
+        return;
+      }
+
+      // Fallback terakhir untuk device geocoder jika Nominatim tidak memberi hasil.
+      final fallbackQuery = _smartSearchQuery(query);
+      final locations = await locationFromAddress(fallbackQuery);
       if (locations.isEmpty) {
         if (mounted) {
           setState(() => _addressText = 'Lokasi tidak ditemukan. Coba masukkan alamat lebih lengkap.');
@@ -141,7 +363,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       if (!mounted) return;
 
       setState(() => _currentPosition = targetPosition);
-      _mapController.move(targetPosition, 16.0);
+      _mapController.move(targetPosition, 17.0);
       await _getAddressFromLatLng(targetPosition);
     } catch (e) {
       debugPrint('Pencarian lokasi gagal: $e');
@@ -159,13 +381,12 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     }
   }
 
-  // Fungsi untuk tombol My Location
   void _goToDeviceLocation() async {
     setState(() => _addressText = "Mencari lokasi anda...");
     await _checkPermission();
     if (_hasLocationPermission) {
       await _fetchCurrentLocation();
-      _mapController.move(_currentPosition, 16.0);
+      _mapController.move(_currentPosition, 17.0);
       setState(() {});
     } else {
       setState(() => _addressText = "Akses GPS/Lokasi HP belum diizinkan.");
@@ -179,7 +400,6 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
         Placemark place = placemarks[0];
         if (mounted) {
           setState(() {
-            // Mencegah munculnya koma berlebih jika ada data alamat yang kosong dari satelit
             String rawAddress = "${place.street}, ${place.subLocality}, ${place.locality}, ${place.administrativeArea}";
             _addressText = rawAddress.replaceAll(RegExp(r',\s*,|,\s*$'), '').trim();
           });
@@ -211,7 +431,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) => _isSearching ? null : _searchLocation(),
                 decoration: InputDecoration(
-                  hintText: 'Cari alamat atau lokasi toko',
+                  hintText: 'Contoh: Jl Kisoreng No 43 Blora',
                   hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13),
                   prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF0C2442)),
                   filled: true,
@@ -273,12 +493,16 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                   mapController: _mapController,
                   options: MapOptions(
                     initialCenter: _currentPosition,
-                    initialZoom: 16.0,
+                    initialZoom: 17.0,
                     onPositionChanged: (camera, hasGesture) {
                       _currentPosition = camera.center ?? _currentPosition;
                     },
                     onMapEvent: (event) {
                       if (event is MapEventMoveEnd) {
+                        if (_skipNextReverseGeocode) {
+                          _skipNextReverseGeocode = false;
+                          return;
+                        }
                         _getAddressFromLatLng(_currentPosition);
                       }
                     },
@@ -291,7 +515,6 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                   ],
                 ),
 
-                // Form pencarian agar admin bisa memasukkan lokasi dan peta otomatis berpindah.
                 Positioned(
                   top: 16,
                   left: 16,
@@ -299,7 +522,6 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                   child: _buildSearchBox(),
                 ),
 
-                // Pin Peta Berada di Tengah Layar
                 const Center(
                   child: Padding(
                     padding: EdgeInsets.only(bottom: 35.0),
@@ -307,7 +529,6 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                   ),
                 ),
 
-                // Tombol "My Location" untuk memusatkan kembali peta ke lokasi HP
                 Positioned(
                   right: 20,
                   bottom: 220,
@@ -319,7 +540,6 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                   ),
                 ),
 
-                // Panel Konfirmasi Bawah
                 Positioned(
                   bottom: 20,
                   left: 20,
