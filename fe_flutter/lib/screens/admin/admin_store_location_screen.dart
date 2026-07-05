@@ -417,9 +417,10 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
               children: [
                 AbsorbPointer(
                   child: FlutterMap(
+                    key: ValueKey('locked-store-map-${_latitude!.toStringAsFixed(7)}-${_longitude!.toStringAsFixed(7)}'),
                     options: MapOptions(
                       initialCenter: position,
-                      initialZoom: 16.0,
+                      initialZoom: 17.0,
                       interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
                     ),
                     children: [
@@ -427,17 +428,13 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
                         urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.example.fe_flutter',
                       ),
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: position,
-                            width: 46,
-                            height: 46,
-                            child: const Icon(Icons.location_on, color: Colors.red, size: 44),
-                          ),
-                        ],
-                      ),
                     ],
+                  ),
+                ),
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: 22.0),
+                    child: Icon(Icons.location_on, color: Colors.red, size: 44),
                   ),
                 ),
                 Positioned(
@@ -509,7 +506,8 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
         if (cityName.isNotEmpty) addressParts.add(cityName);
         if (provinceName.isNotEmpty) addressParts.add(provinceName);
         
-        String fullSearchAddress = addressParts.join(', ');
+        final fullSearchAddress = addressParts.join(', ');
+        final areaSearchContext = [subdistrictName, cityName, provinceName].where((part) => part.isNotEmpty).join(', ');
 
         final result = await Navigator.push(
           context,
@@ -517,6 +515,7 @@ class _AdminStoreLocationScreenState extends State<AdminStoreLocationScreen> {
             initialLat: _latitude,
             initialLng: _longitude,
             searchAddress: fullSearchAddress,
+            searchContext: areaSearchContext,
           )),
         );
 
