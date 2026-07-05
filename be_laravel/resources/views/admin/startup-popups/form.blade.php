@@ -1,17 +1,52 @@
 @extends('layouts.admin')
+
 @section('content')
-<div class="main-content-inner"><div class="main-content-wrap"><div class="wg-box">
-<h3>{{ $mode === 'edit' ? 'Edit' : 'Tambah' }} Popup Pembuka Aplikasi</h3>
-<form method="POST" enctype="multipart/form-data" action="{{ $mode === 'edit' ? url('/admin/' . 'startup-' . 'ads/' . $startupAd->id) : url('/admin/' . 'startup-' . 'ads') }}">
-@csrf
-@if ($mode === 'edit') @method('PUT') @endif
-<label>Judul</label><input type="text" name="title" value="{{ old('title', $startupAd->title) }}">
-<label>Subjudul</label><input type="text" name="subtitle" value="{{ old('subtitle', $startupAd->subtitle) }}">
-<label>Teks Tombol</label><input type="text" name="button_text" value="{{ old('button_text', $startupAd->button_text ?: 'Belanja Sekarang') }}">
-<label>Link Tujuan</label><input type="url" name="target_url" value="{{ old('target_url', $startupAd->target_url) }}">
-<label>Gambar</label><input type="file" name="image" accept="image/*">
-<label><input type="checkbox" name="is_active" value="1" {{ old('is_active', $startupAd->is_active) ? 'checked' : '' }}> Aktif</label>
-<button type="submit" class="tf-button style-1">Simpan</button>
-</form>
-</div></div></div>
+<div class="main-content-inner">
+    <div class="main-content-wrap">
+        <div class="flex items-center flex-wrap justify-between gap20 mb-27 page-header">
+            <div>
+                <h3>{{ $mode === 'edit' ? 'Edit' : 'Tambah' }} Iklan Pembuka</h3>
+                <div class="text-tiny">Upload gambar iklan yang akan tampil saat aplikasi pertama kali dibuka.</div>
+            </div>
+            <a class="tf-button style-1 w208" href="{{ route('admin.startup-ads.index') }}">Kembali</a>
+        </div>
+
+        <div class="wg-box">
+            @if ($errors->any())
+                <div class="alert alert-danger">
+                    <ul class="mb-0">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            <form method="POST" enctype="multipart/form-data" action="{{ $mode === 'edit' ? route('admin.startup-ads.update', $startupAd->id) : route('admin.startup-ads.store') }}">
+                @csrf
+                @if ($mode === 'edit')
+                    @method('PUT')
+                @endif
+
+                <fieldset class="name mb-3">
+                    <label>Gambar Iklan {{ $mode === 'create' ? '(wajib)' : '(opsional)' }}</label>
+                    <input type="file" name="image" accept="image/png,image/jpeg,image/webp">
+                    <div class="text-tiny mt-1">Gunakan gambar PNG, JPG, JPEG, atau WEBP. Ukuran maksimal 4MB.</div>
+                    @if ($startupAd->image)
+                        <div class="mt-3">
+                            <img src="{{ asset('uploads/startup-ads/' . $startupAd->image) }}" alt="Iklan Pembuka" style="width:160px;max-height:220px;object-fit:contain;border-radius:16px;border:1px solid #eee;">
+                        </div>
+                    @endif
+                </fieldset>
+
+                <label class="d-flex align-items-center gap-2 mb-4">
+                    <input type="checkbox" name="is_active" value="1" {{ old('is_active', $startupAd->is_active) ? 'checked' : '' }}>
+                    Aktifkan iklan ini
+                </label>
+
+                <button type="submit" class="tf-button style-1">Simpan</button>
+            </form>
+        </div>
+    </div>
+</div>
 @endsection
