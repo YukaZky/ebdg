@@ -37,6 +37,18 @@ class Order extends Model
     }
 
     /**
+     * Alias relasi untuk kompatibilitas kode lama di dashboard admin.
+     *
+     * Beberapa view masih memanggil $order->orderItems. Dengan alias ini,
+     * pemanggilan tersebut tetap menghasilkan collection order item dan
+     * tidak lagi menyebabkan error "Call to a member function count() on null".
+     */
+    public function orderItems()
+    {
+        return $this->items();
+    }
+
+    /**
      * Relasi ke tabel users
      */
     public function user()
