@@ -72,14 +72,26 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SizedBox.expand(
-        child: Image.asset(
-          'assets/logoapk.png',
-          fit: BoxFit.cover,
-        ),
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: Colors.white,
+    body: SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final shortestSide = constraints.biggest.shortestSide;
+
+          final logoSize = (shortestSide * 0.62).clamp(190.0, 380.0).toDouble();
+
+          return Center(
+            child: Image.asset(
+              'assets/logoapk.png',
+              width: logoSize,
+              fit: BoxFit.contain,
+            ),
+          );
+        },
       ),
-    );
-  }
+    ),
+  );
+}
 }

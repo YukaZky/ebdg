@@ -97,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.10), blurRadius: 22, offset: const Offset(0, 12))],
       ),
-      child: Image.asset('assets/logonobg.png', fit: BoxFit.contain),
+      child: Image.asset('assets/logoapk5.png', fit: BoxFit.contain),
     );
   }
 

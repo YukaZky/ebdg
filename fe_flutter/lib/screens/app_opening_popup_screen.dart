@@ -25,12 +25,12 @@ class AppOpeningPopupScreen extends StatelessWidget {
       body: Stack(
         children: [
           const Positioned.fill(child: MainScreen()),
-          const Positioned.fill(
-            child: ModalBarrier(
-              color: Colors.transparent,
-              dismissible: false,
-            ),
-          ),
+          Positioned.fill(
+  child: ModalBarrier(
+    color: Colors.black.withOpacity(0.45),
+    dismissible: false,
+  ),
+),
           SafeArea(
             child: Center(
               child: Stack(
