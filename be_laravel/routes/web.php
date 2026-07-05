@@ -23,6 +23,16 @@ use App\Http\Controllers\CouponController;
 Route::get('/api/startup-ad', [ApiStartupAdController::class, 'show']);
 Route::get('/uploads/products/{filename}', [ApiMediaController::class, 'productImage'])->where('filename', '.*');
 Route::get('/uploads/profiles/{filename}', [ApiMediaController::class, 'profileImage'])->where('filename', '.*');
+Route::get('/uploads/startup-ads/{filename}', function ($filename) {
+    $safeFilename = basename($filename);
+    $path = public_path('uploads/startup-ads/' . $safeFilename);
+
+    if (!is_file($path)) {
+        abort(404);
+    }
+
+    return response()->file($path);
+})->where('filename', '.*');
 
 // routes/web.php
 Route::post('/apply-coupon', [CartController::class, 'apply_coupon_code'])

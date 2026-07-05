@@ -6,6 +6,7 @@ use App\Models\AppStartupAd;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
+use Illuminate\Validation\ValidationException;
 
 class AppStartupAdController extends BaseController
 {
@@ -93,7 +94,13 @@ class AppStartupAdController extends BaseController
     private function validateRequest(Request $request, bool $imageRequired): array
     {
         return $request->validate([
-            'image' => ($imageRequired ? 'required' : 'nullable') . '|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'image' => ($imageRequired ? 'required' : 'nullable') . '|file|image|mimes:jpg,jpeg,png,webp|max:10240',
+        ], [
+            'image.required' => 'Gambar iklan wajib dipilih.',
+            'image.image' => 'File harus berupa gambar.',
+            'image.mimes' => 'Format gambar harus JPG, JPEG, PNG, atau WEBP.',
+            'image.max' => 'Ukuran gambar maksimal 10MB.',
+            'image.uploaded' => 'Gambar gagal diupload. Pastikan ukuran file tidak melebihi batas upload server.',
         ]);
     }
 
@@ -105,7 +112,14 @@ class AppStartupAdController extends BaseController
         }
 
         $image = $request->file('image');
-        $fileName = 'startup-ad-' . Carbon::now()->timestamp . '-' . uniqid() . '.' . $image->extension();
+        if (!$image || !$image->isValid()) {
+            throw ValidationException::withMessages([
+                'image' => 'Gambar gagal diupload. Coba gunakan gambar yang lebih kecil atau format JPG/PNG/WEBP.',
+            ]);
+        }
+
+        $extension = strtolower($image->getClientOriginalExtension() ?: $image->extension());
+        $fileName = 'startup-ad-' . Carbon::now()->timestamp . '-' . uniqid() . '.' . $extension;
         $image->move($destinationPath, $fileName);
 
         return $fileName;

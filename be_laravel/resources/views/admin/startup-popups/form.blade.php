@@ -30,8 +30,8 @@
 
                 <fieldset class="name mb-3">
                     <label>Gambar Iklan {{ $mode === 'create' ? '(wajib)' : '(opsional)' }}</label>
-                    <input type="file" name="image" accept="image/png,image/jpeg,image/webp">
-                    <div class="text-tiny mt-1">Gunakan gambar PNG, JPG, JPEG, atau WEBP. Ukuran maksimal 4MB.</div>
+                    <input type="file" name="image" accept="image/*" {{ $mode === 'create' ? 'required' : '' }}>
+                    <div class="text-tiny mt-1">Gunakan gambar JPG, JPEG, PNG, atau WEBP. Ukuran maksimal 10MB. Jika masih gagal, kompres gambar lebih kecil terlebih dahulu.</div>
                     @if ($startupAd->image)
                         <div class="mt-3">
                             <img src="{{ asset('uploads/startup-ads/' . $startupAd->image) }}" alt="Iklan Pembuka" style="width:160px;max-height:220px;object-fit:contain;border-radius:16px;border:1px solid #eee;">
