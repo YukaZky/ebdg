@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\File;
 
 class AppStartupAdController extends BaseController
 {
+    private const INTERNAL_BUTTON_TEXT = 'Belanja Sekarang';
+
     public function index()
     {
         $startupAds = AppStartupAd::orderBy('created_at', 'DESC')->paginate(10);
@@ -30,7 +32,7 @@ class AppStartupAdController extends BaseController
         $startupAd = new AppStartupAd();
         $startupAd->title = null;
         $startupAd->subtitle = null;
-        $startupAd->button_text = null;
+        $startupAd->button_text = self::INTERNAL_BUTTON_TEXT;
         $startupAd->target_url = null;
         $startupAd->start_at = null;
         $startupAd->end_at = null;
@@ -61,7 +63,7 @@ class AppStartupAdController extends BaseController
 
         $startupAd->title = null;
         $startupAd->subtitle = null;
-        $startupAd->button_text = null;
+        $startupAd->button_text = self::INTERNAL_BUTTON_TEXT;
         $startupAd->target_url = null;
         $startupAd->start_at = null;
         $startupAd->end_at = null;
