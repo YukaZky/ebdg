@@ -25,9 +25,15 @@ class AppStartupAdController extends BaseController
 
     public function store(Request $request)
     {
-        $validated = $this->validateRequest($request, true);
+        $this->validateRequest($request, true);
 
-        $startupAd = new AppStartupAd($validated);
+        $startupAd = new AppStartupAd();
+        $startupAd->title = null;
+        $startupAd->subtitle = null;
+        $startupAd->button_text = null;
+        $startupAd->target_url = null;
+        $startupAd->start_at = null;
+        $startupAd->end_at = null;
         $startupAd->is_active = $request->boolean('is_active');
         $startupAd->image = $this->storeImage($request);
         $startupAd->save();
@@ -51,9 +57,14 @@ class AppStartupAdController extends BaseController
     public function update(Request $request, $id)
     {
         $startupAd = AppStartupAd::findOrFail($id);
-        $validated = $this->validateRequest($request, false);
+        $this->validateRequest($request, false);
 
-        $startupAd->fill($validated);
+        $startupAd->title = null;
+        $startupAd->subtitle = null;
+        $startupAd->button_text = null;
+        $startupAd->target_url = null;
+        $startupAd->start_at = null;
+        $startupAd->end_at = null;
         $startupAd->is_active = $request->boolean('is_active');
 
         if ($request->hasFile('image')) {
@@ -82,12 +93,6 @@ class AppStartupAdController extends BaseController
     private function validateRequest(Request $request, bool $imageRequired): array
     {
         return $request->validate([
-            'title' => 'nullable|string|max:120',
-            'subtitle' => 'nullable|string|max:180',
-            'button_text' => 'nullable|string|max:50',
-            'target_url' => 'nullable|url|max:255',
-            'start_at' => 'nullable|date',
-            'end_at' => 'nullable|date|after_or_equal:start_at',
             'image' => ($imageRequired ? 'required' : 'nullable') . '|image|mimes:jpg,jpeg,png,webp|max:4096',
         ]);
     }
