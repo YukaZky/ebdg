@@ -25,6 +25,43 @@ class ApiCartController extends Controller
         return $galleryImage ?: null;
     }
 
+    private function currentPrice(Product $product, ?ProductVariation $variation = null)
+    {
+        if ($variation) {
+            return $variation->sale_price ?: $variation->regular_price ?: 0;
+        }
+
+        return $product->sale_price ?: $product->regular_price ?: 0;
+    }
+
+    private function currentImage(Product $product, ?ProductVariation $variation = null): ?string
+    {
+        if ($variation && ! empty($variation->image)) {
+            return $variation->image;
+        }
+
+        return $this->productCoverImage($product);
+    }
+
+    private function currentWeight(Product $product, ?ProductVariation $variation = null): int
+    {
+        return (int) ($variation ? ($variation->weight ?? 0) : ($product->weight ?? 0));
+    }
+
+    private function syncCartItemSnapshot(CartItem $item): void
+    {
+        if (! $item->product) return;
+
+        $product = $item->product;
+        $variation = $item->variation;
+
+        $item->price = $this->currentPrice($product, $variation);
+        $item->variation_name = $variation?->name;
+        $item->selected_image = $this->currentImage($product, $variation);
+        $item->weight = $this->currentWeight($product, $variation);
+        $item->save();
+    }
+
     public function index(Request $request)
     {
         $cartItems = CartItem::with(['product.store', 'product.user:id,name', 'variation'])
@@ -34,6 +71,8 @@ class ApiCartController extends Controller
 
         $total = 0;
         foreach ($cartItems as $item) {
+            $this->syncCartItemSnapshot($item);
+            $item->refresh()->load(['product.store', 'product.user:id,name', 'variation']);
             $total += $item->price * $item->quantity;
 
             if ($item->product) {
@@ -99,17 +138,9 @@ class ApiCartController extends Controller
             ], 422);
         }
 
-        $selectedPrice = $variation
-            ? ($variation->sale_price ?: $variation->regular_price)
-            : ($product->sale_price ?: $product->regular_price);
-
-        $selectedImage = $variation && ! empty($variation->image)
-            ? $variation->image
-            : $this->productCoverImage($product);
-
-        $selectedWeight = $variation
-            ? ($variation->weight ?? 0)
-            : ($product->weight ?? 0);
+        $selectedPrice = $this->currentPrice($product, $variation);
+        $selectedImage = $this->currentImage($product, $variation);
+        $selectedWeight = $this->currentWeight($product, $variation);
 
         if ($cartItem) {
             $cartItem->quantity += $requestedQty;
@@ -168,7 +199,7 @@ class ApiCartController extends Controller
         }
 
         $cartItem->quantity = (int) $request->quantity;
-        $cartItem->save();
+        $this->syncCartItemSnapshot($cartItem);
 
         return response()->json([
             'success' => true,
