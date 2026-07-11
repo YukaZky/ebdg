@@ -25,13 +25,44 @@ class _WishlistScreenState extends State<WishlistScreen> {
     });
   }
 
+  String _imageUrl(String? image) {
+    final value = image?.trim() ?? '';
+    if (value.isEmpty || value == 'null') return '';
+
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+
+    final base = ApiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+    final cleanValue = value.startsWith('/') ? value.substring(1) : value;
+
+    if (cleanValue.startsWith('uploads/') ||
+        cleanValue.startsWith('storage/')) {
+      return '$base/$cleanValue';
+    }
+
+    return '$base/uploads/products/$cleanValue';
+  }
+
+  Widget _imagePlaceholder({bool isError = false}) {
+    return Center(
+      child: Icon(
+        isError ? Icons.image_not_supported_outlined : Icons.image_outlined,
+        size: 50,
+        color: Colors.grey.shade400,
+      ),
+    );
+  }
+
   Future<void> _removeFromWishlist(int productId) async {
-    bool success = await ApiService.removeFromWishlist(productId);
+    final success = await ApiService.removeFromWishlist(productId);
+    if (!mounted) return;
+
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Berhasil dihapus dari Wishlist')),
       );
-      _loadWishlist(); // Render ulang setelah menghapus
+      _loadWishlist();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Gagal menghapus dari Wishlist')),
@@ -43,7 +74,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Wishlist Saya", style: TextStyle(color: Colors.black87)),
+        title: const Text(
+          'Wishlist Saya',
+          style: TextStyle(color: Colors.black87),
+        ),
         backgroundColor: Colors.white,
         elevation: 1,
         iconTheme: const IconThemeData(color: Colors.black87),
@@ -58,17 +92,27 @@ class _WishlistScreenState extends State<WishlistScreen> {
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
-            } else if (snapshot.hasError) {
-              return Center(child: Text("Terjadi kesalahan: ${snapshot.error}"));
-            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            }
+
+            if (snapshot.hasError) {
+              return Center(
+                child: Text('Terjadi kesalahan: ${snapshot.error}'),
+              );
+            }
+
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
               return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.favorite_border, size: 80, color: Colors.grey.shade300),
+                    Icon(
+                      Icons.favorite_border,
+                      size: 80,
+                      color: Colors.grey.shade300,
+                    ),
                     const SizedBox(height: 16),
                     const Text(
-                      "Wishlist Anda masih kosong",
+                      'Wishlist Anda masih kosong',
                       style: TextStyle(fontSize: 16, color: Colors.grey),
                     ),
                   ],
@@ -81,19 +125,22 @@ class _WishlistScreenState extends State<WishlistScreen> {
               padding: const EdgeInsets.all(16),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                childAspectRatio: 0.60, // Sedikit lebih tinggi dari katalog biasa untuk ikon hapus
+                childAspectRatio: 0.60,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
               ),
               itemCount: products.length,
               itemBuilder: (context, index) {
                 final product = products[index];
+                final imageUrl = _imageUrl(product.image);
+
                 return GestureDetector(
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => ProductDetailScreen(product: product),
+                        builder: (context) =>
+                            ProductDetailScreen(product: product),
                       ),
                     );
                   },
@@ -107,7 +154,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           blurRadius: 10,
                           spreadRadius: 1,
                           offset: const Offset(0, 5),
-                        )
+                        ),
                       ],
                     ),
                     child: Column(
@@ -117,33 +164,60 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           child: Stack(
                             children: [
                               ClipRRect(
-                                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(16),
+                                ),
                                 child: Container(
                                   width: double.infinity,
                                   height: double.infinity,
                                   color: Colors.white,
-                                  child: product.image != null
+                                  child: imageUrl.isNotEmpty
                                       ? Image.network(
-                                          "http://127.0.0.1:8000/uploads/products/${product.image}",
+                                          imageUrl,
                                           fit: BoxFit.cover,
-                                          cacheWidth: 300,
+                                          cacheWidth: 500,
+                                          loadingBuilder: (
+                                            context,
+                                            child,
+                                            loadingProgress,
+                                          ) {
+                                            if (loadingProgress == null) {
+                                              return child;
+                                            }
+                                            return const Center(
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            );
+                                          },
+                                          errorBuilder: (
+                                            context,
+                                            error,
+                                            stackTrace,
+                                          ) =>
+                                              _imagePlaceholder(isError: true),
                                         )
-                                      : const Icon(Icons.image, size: 50, color: Colors.grey),
+                                      : _imagePlaceholder(),
                                 ),
                               ),
-                              // Tombol Silang Hapus
                               Positioned(
                                 top: 8,
                                 right: 8,
                                 child: InkWell(
-                                  onTap: () => _removeFromWishlist(product.id),
+                                  onTap: () =>
+                                      _removeFromWishlist(product.id),
+                                  borderRadius: BorderRadius.circular(99),
                                   child: Container(
                                     padding: const EdgeInsets.all(4),
                                     decoration: const BoxDecoration(
                                       color: Colors.white,
                                       shape: BoxShape.circle,
                                     ),
-                                    child: const Icon(Icons.close, size: 20, color: Colors.red),
+                                    child: const Icon(
+                                      Icons.close,
+                                      size: 20,
+                                      color: Colors.red,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -151,24 +225,31 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.all(12.0),
+                          padding: const EdgeInsets.all(12),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 product.name,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                "Rp ${product.price.toStringAsFixed(0)}",
-                                style: const TextStyle(color: Color(0xFFE65100), fontWeight: FontWeight.w800, fontSize: 15),
+                                'Rp ${product.price.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  color: Color(0xFFE65100),
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                ),
                               ),
                             ],
                           ),
-                        )
+                        ),
                       ],
                     ),
                   ),
