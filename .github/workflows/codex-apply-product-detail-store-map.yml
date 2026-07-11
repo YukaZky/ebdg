@@ -1,0 +1,240 @@
+name: Apply product detail store map
+
+on:
+  push:
+    branches:
+      - codex/product-detail-store-map
+
+permissions:
+  contents: write
+
+jobs:
+  apply-product-map:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/product-detail-store-map
+          fetch-depth: 0
+
+      - name: Apply product detail map changes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text()
+              if old not in text:
+                  raise SystemExit(f'Expected source block not found in {path}')
+              path.write_text(text.replace(old, new, 1))
+
+          product_path = Path('fe_flutter/lib/screens/product_detail_screen.dart')
+
+          replace_once(
+              product_path,
+              "import 'package:flutter/material.dart';\n",
+              "import 'package:flutter/material.dart';\n"
+              "import 'package:flutter_map/flutter_map.dart';\n"
+              "import 'package:latlong2/latlong.dart';\n",
+          )
+
+          seller_getters = """  int? get _sellerId => _product.userId ?? int.tryParse(_store?['user_id']?.toString() ?? '');
+  List<ProductVariation> get _allVariations => _product.variations ?? <ProductVariation>[];
+"""
+
+          seller_getters_with_location = """  int? get _sellerId => _product.userId ?? int.tryParse(_store?['user_id']?.toString() ?? '');
+
+  Map<String, dynamic>? get _storeLocation {
+    final raw = _store?['location'];
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
+  LatLng? get _storeCoordinates {
+    double? latitude = double.tryParse(
+      (_storeLocation?['latitude'] ?? _store?['latitude'])?.toString() ?? '',
+    );
+    double? longitude = double.tryParse(
+      (_storeLocation?['longitude'] ?? _store?['longitude'])?.toString() ?? '',
+    );
+
+    if (latitude == null || longitude == null) {
+      final mapsUrl = _store?['maps_url']?.toString() ?? '';
+      final uri = Uri.tryParse(mapsUrl);
+      final parts = uri?.queryParameters['query']?.split(',') ?? const <String>[];
+      if (parts.length >= 2) {
+        latitude = double.tryParse(parts[0].trim());
+        longitude = double.tryParse(parts[1].trim());
+      }
+    }
+
+    if (latitude == null || longitude == null) return null;
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+    return LatLng(latitude, longitude);
+  }
+
+  List<ProductVariation> get _allVariations => _product.variations ?? <ProductVariation>[];
+"""
+          replace_once(product_path, seller_getters, seller_getters_with_location)
+
+          old_store_section = """  Widget _storeSection() {
+    final store = _store;
+    if (store == null) return const SizedBox.shrink();
+    final rating = double.tryParse(store['rating_average']?.toString() ?? '0') ?? 0;
+    final count = store['rating_count']?.toString() ?? '0';
+    final logo = _url(store['logo']?.toString(), folder: 'stores');
+    return Container(color: Colors.white, margin: const EdgeInsets.only(top: 12), padding: _sectionPadding(context), child: Row(children: [
+      CircleAvatar(radius: 28, backgroundColor: const Color(0xFFFFF3E0), backgroundImage: logo.isNotEmpty ? NetworkImage(logo) : null, child: logo.isEmpty ? const Icon(Icons.storefront, color: Colors.deepOrange) : null),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(_storeName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: _font(context, 16, min: 14, max: 17), fontWeight: FontWeight.bold)),
+        const SizedBox(height: 5),
+        Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, children: [_stars(rating, size: _font(context, 16, min: 14, max: 16)), Text('${rating.toStringAsFixed(1)} ($count ulasan)', style: TextStyle(fontSize: _font(context, 12, min: 11, max: 12), fontWeight: FontWeight.w600))]),
+      ])),
+      if (_hasStore) TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))), child: const Text('Lihat Toko')),
+    ]));
+  }
+"""
+
+          new_store_section = """  Widget _storeMapPreview(Map<String, dynamic> store) {
+    final coordinates = _storeCoordinates;
+    if (coordinates == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _hasStore
+            ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString())))
+            : null,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.location_on_rounded, size: 18, color: Colors.deepOrange),
+            const SizedBox(width: 6),
+            Text('Lokasi Toko', style: TextStyle(fontSize: _font(context, 13, min: 12, max: 14), fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 8),
+          Container(
+            height: 165,
+            width: double.infinity,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.grey.shade300)),
+            child: Stack(children: [
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: FlutterMap(
+                    key: ValueKey('${coordinates.latitude},${coordinates.longitude}'),
+                    options: MapOptions(initialCenter: coordinates, initialZoom: 15.5),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.example.fe_flutter',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 28),
+                  child: Icon(Icons.location_on, size: 46, color: Colors.red, shadows: [Shadow(color: Colors.black38, blurRadius: 5)]),
+                ),
+              ),
+              Positioned(
+                right: 8,
+                bottom: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.92), borderRadius: BorderRadius.circular(20), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)]),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.store_mall_directory_outlined, size: 15),
+                    SizedBox(width: 5),
+                    Text('Lihat detail toko', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _storeSection() {
+    final store = _store;
+    if (store == null) return const SizedBox.shrink();
+    final rating = double.tryParse(store['rating_average']?.toString() ?? '0') ?? 0;
+    final count = store['rating_count']?.toString() ?? '0';
+    final logo = _url(store['logo']?.toString(), folder: 'stores');
+    return Container(
+      color: Colors.white,
+      margin: const EdgeInsets.only(top: 12),
+      padding: _sectionPadding(context),
+      child: Column(children: [
+        Row(children: [
+          CircleAvatar(radius: 28, backgroundColor: const Color(0xFFFFF3E0), backgroundImage: logo.isNotEmpty ? NetworkImage(logo) : null, child: logo.isEmpty ? const Icon(Icons.storefront, color: Colors.deepOrange) : null),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(_storeName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: _font(context, 16, min: 14, max: 17), fontWeight: FontWeight.bold)),
+            const SizedBox(height: 5),
+            Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, children: [_stars(rating, size: _font(context, 16, min: 14, max: 16)), Text('${rating.toStringAsFixed(1)} ($count ulasan)', style: TextStyle(fontSize: _font(context, 12, min: 11, max: 12), fontWeight: FontWeight.w600))]),
+          ])),
+          if (_hasStore) TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))), child: const Text('Lihat Toko')),
+        ]),
+        _storeMapPreview(store),
+      ]),
+    );
+  }
+"""
+          replace_once(product_path, old_store_section, new_store_section)
+
+          store_model = Path('be_laravel/app/Models/StoreProfile.php')
+          replace_once(
+              store_model,
+              """    public function reviews()
+    {
+        return $this->hasMany(ProductReview::class, 'store_id');
+    }
+""",
+              """    public function location()
+    {
+        return $this->hasOne(Address::class, 'store_owner_id', 'user_id');
+    }
+
+    public function reviews()
+    {
+        return $this->hasMany(ProductReview::class, 'store_id');
+    }
+""",
+          )
+
+          product_controller = Path('be_laravel/app/Http/Controllers/Api/ApiProductController.php')
+          replace_once(
+              product_controller,
+              "Product::with(['category', 'brand', 'variations', 'store'])",
+              "Product::with(['category', 'brand', 'variations', 'store.location:id,store_owner_id,latitude,longitude,address,locality,city_name,province_name'])",
+          )
+          replace_once(
+              product_controller,
+              "                'store',\n",
+              "                'store.location:id,store_owner_id,latitude,longitude,address,locality,city_name,province_name',\n",
+          )
+          PY
+
+          php -l be_laravel/app/Models/StoreProfile.php
+          php -l be_laravel/app/Http/Controllers/Api/ApiProductController.php
+
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          rm .github/workflows/codex-apply-product-detail-store-map.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add fe_flutter/lib/screens/product_detail_screen.dart \
+                  be_laravel/app/Models/StoreProfile.php \
+                  be_laravel/app/Http/Controllers/Api/ApiProductController.php \
+                  .github/workflows/codex-apply-product-detail-store-map.yml
+          git commit -m "feat: show store map on product detail"
+          git push origin HEAD:codex/product-detail-store-map
