@@ -27,7 +27,7 @@ class ApiProductController extends Controller
 
     public function index()
     {
-        $products = Product::with(['category', 'brand', 'variations', 'store'])
+        $products = Product::with(['category', 'brand', 'variations', 'store.location:id,store_owner_id,latitude,longitude,address,locality,city_name,province_name'])
             ->withCount('reviews')
             ->orderBy('id', 'desc')
             ->get();
@@ -49,7 +49,7 @@ class ApiProductController extends Controller
                 'category',
                 'brand',
                 'user:id,name,email',
-                'store',
+                'store.location:id,store_owner_id,latitude,longitude,address,locality,city_name,province_name',
                 'variations',
                 'reviews.user:id,name',
             ])

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/product_model.dart';
 import '../services/api_service.dart';
 import '../services/cart_api_service.dart';
@@ -156,6 +158,36 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool get _hasStore => _store != null && (_store!['slug']?.toString().isNotEmpty ?? false);
   String get _storeName => _store?['name']?.toString() ?? 'Penjual';
   int? get _sellerId => _product.userId ?? int.tryParse(_store?['user_id']?.toString() ?? '');
+
+  Map<String, dynamic>? get _storeLocation {
+    final raw = _store?['location'];
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
+  LatLng? get _storeCoordinates {
+    double? latitude = double.tryParse(
+      (_storeLocation?['latitude'] ?? _store?['latitude'])?.toString() ?? '',
+    );
+    double? longitude = double.tryParse(
+      (_storeLocation?['longitude'] ?? _store?['longitude'])?.toString() ?? '',
+    );
+
+    if (latitude == null || longitude == null) {
+      final mapsUrl = _store?['maps_url']?.toString() ?? '';
+      final uri = Uri.tryParse(mapsUrl);
+      final parts = uri?.queryParameters['query']?.split(',') ?? const <String>[];
+      if (parts.length >= 2) {
+        latitude = double.tryParse(parts[0].trim());
+        longitude = double.tryParse(parts[1].trim());
+      }
+    }
+
+    if (latitude == null || longitude == null) return null;
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+    return LatLng(latitude, longitude);
+  }
+
   List<ProductVariation> get _allVariations => _product.variations ?? <ProductVariation>[];
   bool get _hasVariation => _allVariations.isNotEmpty;
 
@@ -361,22 +393,94 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     _priceText(_activePriceFor(_variation), fontSize: _font(context, 24, min: 20, max: 25), color: const Color(0xFFE65100)),
   ]);
 
+  Widget _storeMapPreview(Map<String, dynamic> store) {
+    final coordinates = _storeCoordinates;
+    if (coordinates == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _hasStore
+  ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString())))
+  : null,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+Row(children: [
+  const Icon(Icons.location_on_rounded, size: 18, color: Colors.deepOrange),
+  const SizedBox(width: 6),
+  Text('Lokasi Toko', style: TextStyle(fontSize: _font(context, 13, min: 12, max: 14), fontWeight: FontWeight.w800)),
+]),
+const SizedBox(height: 8),
+Container(
+  height: 165,
+  width: double.infinity,
+  clipBehavior: Clip.antiAlias,
+  decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.grey.shade300)),
+  child: Stack(children: [
+    Positioned.fill(
+      child: IgnorePointer(
+        child: FlutterMap(
+          key: ValueKey('${coordinates.latitude},${coordinates.longitude}'),
+          options: MapOptions(initialCenter: coordinates, initialZoom: 15.5),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.example.fe_flutter',
+            ),
+          ],
+        ),
+      ),
+    ),
+    const Center(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: 28),
+        child: Icon(Icons.location_on, size: 46, color: Colors.red, shadows: [Shadow(color: Colors.black38, blurRadius: 5)]),
+      ),
+    ),
+    Positioned(
+      right: 8,
+      bottom: 8,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.92), borderRadius: BorderRadius.circular(20), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)]),
+        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.store_mall_directory_outlined, size: 15),
+          SizedBox(width: 5),
+          Text('Lihat detail toko', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    ),
+  ]),
+),
+        ]),
+      ),
+    );
+  }
+
   Widget _storeSection() {
     final store = _store;
     if (store == null) return const SizedBox.shrink();
     final rating = double.tryParse(store['rating_average']?.toString() ?? '0') ?? 0;
     final count = store['rating_count']?.toString() ?? '0';
     final logo = _url(store['logo']?.toString(), folder: 'stores');
-    return Container(color: Colors.white, margin: const EdgeInsets.only(top: 12), padding: _sectionPadding(context), child: Row(children: [
-      CircleAvatar(radius: 28, backgroundColor: const Color(0xFFFFF3E0), backgroundImage: logo.isNotEmpty ? NetworkImage(logo) : null, child: logo.isEmpty ? const Icon(Icons.storefront, color: Colors.deepOrange) : null),
-      const SizedBox(width: 12),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(_storeName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: _font(context, 16, min: 14, max: 17), fontWeight: FontWeight.bold)),
-        const SizedBox(height: 5),
-        Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, children: [_stars(rating, size: _font(context, 16, min: 14, max: 16)), Text('${rating.toStringAsFixed(1)} ($count ulasan)', style: TextStyle(fontSize: _font(context, 12, min: 11, max: 12), fontWeight: FontWeight.w600))]),
-      ])),
-      if (_hasStore) TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))), child: const Text('Lihat Toko')),
-    ]));
+    return Container(
+      color: Colors.white,
+      margin: const EdgeInsets.only(top: 12),
+      padding: _sectionPadding(context),
+      child: Column(children: [
+        Row(children: [
+CircleAvatar(radius: 28, backgroundColor: const Color(0xFFFFF3E0), backgroundImage: logo.isNotEmpty ? NetworkImage(logo) : null, child: logo.isEmpty ? const Icon(Icons.storefront, color: Colors.deepOrange) : null),
+const SizedBox(width: 12),
+Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  Text(_storeName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: _font(context, 16, min: 14, max: 17), fontWeight: FontWeight.bold)),
+  const SizedBox(height: 5),
+  Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, children: [_stars(rating, size: _font(context, 16, min: 14, max: 16)), Text('${rating.toStringAsFixed(1)} ($count ulasan)', style: TextStyle(fontSize: _font(context, 12, min: 11, max: 12), fontWeight: FontWeight.w600))]),
+])),
+if (_hasStore) TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoreDetailScreen(slug: store['slug'].toString()))), child: const Text('Lihat Toko')),
+        ]),
+        _storeMapPreview(store),
+      ]),
+    );
   }
 
   Widget _reviewBubble(dynamic rawReview) {
