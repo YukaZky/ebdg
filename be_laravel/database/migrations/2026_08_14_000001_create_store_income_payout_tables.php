@@ -83,6 +83,13 @@ return new class extends Migration
                 $table->timestamp('completed_at')->nullable()->after('delivered_date');
             });
         }
+
+        if (Schema::hasTable('orders') && Schema::hasColumn('orders', 'completed_at')) {
+            DB::table('orders')
+                ->whereIn('status', ['done', 'completed', 'complete', 'selesai'])
+                ->whereNull('completed_at')
+                ->update(['completed_at' => DB::raw('updated_at')]);
+        }
     }
 
     public function down(): void
