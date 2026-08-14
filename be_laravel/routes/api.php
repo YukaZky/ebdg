@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\ApiMarketplaceReviewController;
 use App\Http\Controllers\Api\ApiUserProfileController;
 use App\Http\Controllers\Api\ApiMediaController;
 use App\Http\Controllers\Api\ApiProductVariationImageController;
+use App\Http\Controllers\Api\ApiStoreIncomeController;
 use App\Http\Controllers\MidtransController;
 use App\Http\Controllers\Api\ApiPaymentMethodController;
 
@@ -63,6 +64,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/marketplace/my-store', [ApiMarketplaceController::class, 'saveStore']);
     Route::get('/marketplace/seller-orders', [ApiMarketplaceController::class, 'sellerOrders']);
     Route::put('/marketplace/seller-orders/{id}/status', [ApiMarketplaceController::class, 'updateSellerOrderStatus']);
+    Route::get('/marketplace/income', [ApiStoreIncomeController::class, 'sellerIncome']);
+    Route::get('/marketplace/income/{date}', [ApiStoreIncomeController::class, 'sellerIncomeByDate']);
+    Route::get('/marketplace/payouts', [ApiStoreIncomeController::class, 'sellerPayouts']);
+    Route::get('/marketplace/bank-accounts', [ApiStoreIncomeController::class, 'bankAccounts']);
+    Route::put('/marketplace/bank-accounts', [ApiStoreIncomeController::class, 'saveBankAccounts']);
     Route::get('/marketplace/my-reviews', [ApiMarketplaceReviewController::class, 'myReviews']);
     Route::post('/marketplace/reviews', [ApiMarketplaceReviewController::class, 'addProductReview']);
     Route::delete('/marketplace/reviews/product/{id}', [ApiMarketplaceReviewController::class, 'deleteProductReview']);
@@ -102,6 +108,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('admin')->prefix('admin')->group(function () {
         Route::get('/dashboard', [ApiAdminController::class, 'dashboardStats']);
+        Route::get('/store-payouts', [ApiStoreIncomeController::class, 'superAdminStores']);
+        Route::get('/store-payouts/{sellerId}', [ApiStoreIncomeController::class, 'superAdminSellerDetail']);
+        Route::post('/store-payouts/{sellerId}/pay', [ApiStoreIncomeController::class, 'processPayout']);
+
         Route::get('/products', [ApiAdminController::class, 'getProducts']);
         Route::post('/products/store', [ApiAdminController::class, 'storeProduct']);
         Route::get('/products/{id}', [ApiAdminController::class, 'getProductDetail']);
