@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/api_service.dart';
 import '../../services/store_income_api_service.dart';
 
 class PendapatanTokoScreen extends StatefulWidget {
@@ -372,7 +373,11 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
       const SizedBox(height: 12),
       ...payouts.map((raw) {
         final payout = _map(raw);
-        final proofUrl = payout['proof_url']?.toString();
+        final payoutId = int.tryParse(payout['id']?.toString() ?? '0') ?? 0;
+        final hasProof = payout['proof_photo']?.toString().isNotEmpty == true;
+        final proofUrl = hasProof && payoutId > 0
+            ? '${ApiService.baseUrl}/marketplace/payouts/$payoutId/proof'
+            : null;
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           elevation: 0,
@@ -395,7 +400,7 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
                   _detailLine('Rekening', '${payout['bank_provider'] ?? '-'} • ${payout['account_number'] ?? '-'}'),
                   _detailLine('Atas nama', payout['account_name']?.toString().isNotEmpty == true ? payout['account_name'].toString() : '-'),
                   _detailLine('Deskripsi', payout['description']?.toString().isNotEmpty == true ? payout['description'].toString() : '-'),
-                  if (proofUrl != null && proofUrl.isNotEmpty) ...[
+                  if (proofUrl != null) ...[
                     const SizedBox(height: 10),
                     const Text('Bukti Pencairan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 8),
@@ -403,6 +408,9 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
                       borderRadius: BorderRadius.circular(14),
                       child: Image.network(
                         proofUrl,
+                        headers: ApiService.token == null
+                            ? null
+                            : {'Authorization': 'Bearer ${ApiService.token}', 'Accept': 'image/*'},
                         width: double.infinity,
                         height: 190,
                         fit: BoxFit.cover,
