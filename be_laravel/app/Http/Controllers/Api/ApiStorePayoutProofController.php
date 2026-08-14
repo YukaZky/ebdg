@@ -31,7 +31,7 @@ class ApiStorePayoutProofController extends Controller
         }
 
         $filename = basename((string) $payout->proof_photo);
-        $path = public_path('uploads/payouts/' . $filename);
+        $path = storage_path('app/private/payouts/' . $filename);
         if (! is_file($path)) {
             return response()->json(['success' => false, 'message' => 'File bukti pencairan tidak ditemukan.'], 404);
         }
