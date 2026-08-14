@@ -22,6 +22,16 @@ class Order extends Model
         'completed_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::saving(function (Order $order) {
+            $completedStatuses = ['done', 'completed', 'complete', 'selesai'];
+            if (in_array(strtolower((string) $order->status), $completedStatuses, true) && ! $order->completed_at) {
+                $order->completed_at = now();
+            }
+        });
+    }
+
     public function transaction()
     {
         return $this->hasOne(Transaction::class);
