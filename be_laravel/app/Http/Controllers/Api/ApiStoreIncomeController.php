@@ -172,7 +172,7 @@ class ApiStoreIncomeController extends Controller
             'description' => $payout->description,
             'proof_photo' => $payout->proof_photo,
             'proof_url' => $payout->proof_photo
-                ? url('/uploads/payouts/' . ltrim($payout->proof_photo, '/'))
+                ? url('/api/marketplace/payouts/' . $payout->id . '/proof')
                 : null,
             'bank_provider' => $payout->bank_provider,
             'account_number' => $payout->account_number,
@@ -415,7 +415,7 @@ class ApiStoreIncomeController extends Controller
 
         $proofName = null;
         if ($request->hasFile('proof_photo')) {
-            $directory = public_path('uploads/payouts');
+            $directory = storage_path('app/private/payouts');
             if (! is_dir($directory)) mkdir($directory, 0775, true);
             $extension = strtolower($request->file('proof_photo')->getClientOriginalExtension() ?: 'jpg');
             $proofName = now()->format('YmdHis') . '_seller_' . $sellerId . '_' . Str::random(8) . '.' . $extension;
