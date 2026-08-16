@@ -16,6 +16,12 @@ class StoreIncomeApiService {
           'Authorization': 'Bearer ${ApiService.token}',
       };
 
+  static Map<String, String> get authenticatedImageHeaders => {
+        'Accept': 'image/*',
+        if (ApiService.token != null)
+          'Authorization': 'Bearer ${ApiService.token}',
+      };
+
   static String _message(String body, {String fallback = 'Terjadi kesalahan.'}) {
     try {
       final decoded = jsonDecode(body);
@@ -141,34 +147,35 @@ class StoreIncomeApiService {
 
   static Future<bool> processPayout({
     required int sellerId,
-    required String incomeDate,
+    required List<int> orderIds,
+    required int bankAccountId,
+    required XFile proofPhoto,
     String? description,
-    int? bankAccountId,
-    XFile? proofPhoto,
   }) async {
     lastError = null;
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('${ApiService.baseUrl}/admin/store-payouts/$sellerId/pay'),
     );
+
     request.headers['Accept'] = 'application/json';
     if (ApiService.token != null) {
       request.headers['Authorization'] = 'Bearer ${ApiService.token}';
     }
-    request.fields['income_date'] = incomeDate;
-    request.fields['description'] = description?.trim() ?? '';
-    if (bankAccountId != null) {
-      request.fields['bank_account_id'] = bankAccountId.toString();
+
+    for (int i = 0; i < orderIds.length; i++) {
+      request.fields['order_ids[$i]'] = orderIds[i].toString();
     }
 
-    if (proofPhoto != null) {
-      final bytes = await proofPhoto.readAsBytes();
-      request.files.add(http.MultipartFile.fromBytes(
-        'proof_photo',
-        bytes,
-        filename: proofPhoto.name.isEmpty ? 'bukti_pencairan.jpg' : proofPhoto.name,
-      ));
-    }
+    request.fields['bank_account_id'] = bankAccountId.toString();
+    request.fields['description'] = description?.trim() ?? '';
+
+    final bytes = await proofPhoto.readAsBytes();
+    request.files.add(http.MultipartFile.fromBytes(
+      'proof_photo',
+      bytes,
+      filename: proofPhoto.name.isEmpty ? 'bukti_pencairan.jpg' : proofPhoto.name,
+    ));
 
     final streamed = await request.send();
     final body = await streamed.stream.bytesToString();
