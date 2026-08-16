@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../services/api_service.dart';
 import '../../services/store_income_api_service.dart';
 
 class PendapatanTokoScreen extends StatefulWidget {
@@ -65,6 +64,18 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
     return text;
   }
 
+  String _dateTime(dynamic value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) return '-';
+    try {
+      final parsed = DateTime.parse(raw).toLocal();
+      String two(int n) => n.toString().padLeft(2, '0');
+      return '${two(parsed.day)}/${two(parsed.month)}/${parsed.year} ${two(parsed.hour)}:${two(parsed.minute)}';
+    } catch (_) {
+      return raw;
+    }
+  }
+
   Map<String, dynamic> _map(dynamic value) {
     if (value is Map<String, dynamic>) return value;
     if (value is Map) return Map<String, dynamic>.from(value);
@@ -72,6 +83,18 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
   }
 
   List<dynamic> get _daily => income['daily'] is List ? income['daily'] : [];
+
+  Widget _badge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.22)),
+      ),
+      child: Text(text, style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w900)),
+    );
+  }
 
   Future<void> _showBankSetting() async {
     final fallbackProviders = <String>[
@@ -110,7 +133,9 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
               );
               return;
             }
-            if ((optionalProvider == null) != optionalNumber.text.trim().isEmpty) {
+
+            final optionalHasData = optionalProvider != null || optionalNumber.text.trim().isNotEmpty;
+            if (optionalHasData && (optionalProvider == null || optionalNumber.text.trim().isEmpty)) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Rekening opsi harus diisi lengkap atau dikosongkan.')),
               );
@@ -126,6 +151,7 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
                 'account_name': primaryName.text.trim(),
               }
             ];
+
             if (optionalProvider != null && optionalNumber.text.trim().isNotEmpty) {
               payload.add({
                 'slot': 2,
@@ -138,18 +164,19 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
             final ok = await StoreIncomeApiService.saveBankAccounts(payload);
             if (!context.mounted) return;
             setModalState(() => saving = false);
+
             if (!ok) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text(StoreIncomeApiService.lastError ?? 'Gagal menyimpan rekening.')),
               );
               return;
             }
+
             Navigator.pop(context);
           }
 
           Widget accountSection({
             required String title,
-            required String subtitle,
             required bool requiredAccount,
             required String? provider,
             required ValueChanged<String?> onProviderChanged,
@@ -168,9 +195,7 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
                   Expanded(child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900))),
                   Text(requiredAccount ? 'Wajib' : 'Opsional', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: requiredAccount ? Colors.red : Colors.grey[600])),
                 ]),
-                const SizedBox(height: 4),
-                Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: choices.contains(provider) ? provider : null,
                   decoration: const InputDecoration(labelText: 'Jenis Bank / Dompet', border: OutlineInputBorder()),
@@ -186,7 +211,7 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Nama Pemilik Rekening (opsional)', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(labelText: 'Nama Pemilik Rekening', border: OutlineInputBorder()),
                 ),
               ]),
             );
@@ -194,10 +219,7 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
 
           return Container(
             padding: EdgeInsets.fromLTRB(18, 18, 18, 18 + MediaQuery.of(context).viewInsets.bottom),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
+            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
             child: SafeArea(
               top: false,
               child: SingleChildScrollView(
@@ -207,11 +229,10 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
                     IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
                   ]),
                   const SizedBox(height: 6),
-                  Text('Isi rekening utama untuk pencairan. Rekening kedua dapat dipakai sebagai opsi pencairan.', style: TextStyle(color: Colors.grey[600], fontSize: 12.5)),
+                  Text('Rekening ini menjadi tujuan pencairan dana oleh Super Admin.', style: TextStyle(color: Colors.grey[600], fontSize: 12.5)),
                   const SizedBox(height: 18),
                   accountSection(
                     title: 'Rekening Utama',
-                    subtitle: 'Dipakai otomatis oleh Super Admin saat melakukan pencairan.',
                     requiredAccount: true,
                     provider: primaryProvider,
                     onProviderChanged: (value) => setModalState(() => primaryProvider = value),
@@ -221,7 +242,6 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
                   const SizedBox(height: 14),
                   accountSection(
                     title: 'Rekening Opsi',
-                    subtitle: 'Alternatif bila pencairan tidak menggunakan rekening utama.',
                     requiredAccount: false,
                     provider: optionalProvider,
                     onProviderChanged: (value) => setModalState(() => optionalProvider = value),
@@ -238,7 +258,11 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
                           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                           : const Icon(Icons.save_outlined),
                       label: Text(saving ? 'Menyimpan...' : 'Simpan Rekening'),
-                      style: ElevatedButton.styleFrom(backgroundColor: _primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
                     ),
                   ),
                 ]),
@@ -294,16 +318,26 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
           const SizedBox(height: 8),
           Text(_currency(income['available_balance']), style: const TextStyle(color: Colors.white, fontSize: 31, fontWeight: FontWeight.w900)),
           const SizedBox(height: 8),
-          Text('${income['available_order_count'] ?? 0} order selesai siap dicairkan', style: TextStyle(color: Colors.white.withOpacity(0.84), fontSize: 12.5)),
+          Text('${income['available_order_count'] ?? 0} order sudah dibayar dan belum dicairkan', style: TextStyle(color: Colors.white.withOpacity(0.84), fontSize: 12.5)),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+            child: Row(children: [
+              const Icon(Icons.schedule_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Sudah melewati 3×24 jam: ${_currency(income['eligible_payout_balance'])}', style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700))),
+            ]),
+          ),
         ]),
       ),
       const SizedBox(height: 24),
-      const Text('Pendapatan per Tanggal', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+      const Text('Pendapatan per Tanggal Pembayaran', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
       const SizedBox(height: 6),
-      Text('Klik tanggal untuk melihat daftar order dan nominal pendapatan yang belum dicairkan.', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+      Text('Semua order dengan transaksi approved masuk pendapatan, mulai status Dibayar sampai Selesai. Order belum dibayar dan dibatalkan tidak dihitung.', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
       const SizedBox(height: 12),
       if (_daily.isEmpty)
-        _emptyCard(Icons.account_balance_wallet_outlined, 'Belum ada saldo dari pesanan yang selesai.')
+        _emptyCard(Icons.account_balance_wallet_outlined, 'Belum ada order berbayar yang belum dicairkan.')
       else
         ..._daily.map((rawDay) {
           final day = _map(rawDay);
@@ -318,14 +352,12 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
               leading: Container(width: 44, height: 44, decoration: BoxDecoration(color: _success.withOpacity(0.10), borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.calendar_month_outlined, color: _success)),
               title: Text(_date(day['date']), style: const TextStyle(fontWeight: FontWeight.w900)),
               subtitle: Text('${day['order_count'] ?? orders.length} order belum dicairkan', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-              trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(_currency(day['available_total']), style: const TextStyle(fontWeight: FontWeight.w900, color: _success)),
-                const SizedBox(height: 2),
-                const Text('Belum dicairkan', style: TextStyle(fontSize: 9.5, color: Colors.orange, fontWeight: FontWeight.w800)),
-              ]),
+              trailing: Text(_currency(day['available_total']), style: const TextStyle(fontWeight: FontWeight.w900, color: _success)),
               children: orders.map((rawOrder) {
                 final order = _map(rawOrder);
                 final items = order['items'] is List ? order['items'] as List : <dynamic>[];
+                final eligible = order['payout_eligible'] == true;
+                final remainingHours = int.tryParse(order['remaining_hours']?.toString() ?? '0') ?? 0;
                 return Container(
                   margin: const EdgeInsets.fromLTRB(14, 0, 14, 12),
                   padding: const EdgeInsets.all(13),
@@ -335,12 +367,20 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
                       Expanded(child: Text(order['order_number']?.toString() ?? '#${order['id']}', style: const TextStyle(fontWeight: FontWeight.w900))),
                       Text(_currency(order['amount']), style: const TextStyle(fontWeight: FontWeight.w900, color: _success)),
                     ]),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 6),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      _badge(order['status_label']?.toString() ?? order['status']?.toString() ?? '-', _primary),
+                      if (eligible)
+                        _badge('Sudah 3×24 jam', _success)
+                      else
+                        _badge(remainingHours > 0 ? 'Tunggu ±$remainingHours jam' : 'Belum 3 hari', Colors.orange.shade800),
+                    ]),
+                    const SizedBox(height: 7),
                     Text('Pembeli: ${order['buyer_name'] ?? '-'}', style: TextStyle(fontSize: 11.5, color: Colors.grey[700])),
-                    const SizedBox(height: 5),
-                    Text('${items.length} jenis produk • Status ${order['status'] ?? '-'}', style: TextStyle(fontSize: 11.5, color: Colors.grey[600])),
+                    const SizedBox(height: 3),
+                    Text('Pembayaran approved: ${_dateTime(order['payment_approved_at'])}', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
                     if (items.isNotEmpty) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 9),
                       ...items.map((rawItem) {
                         final item = _map(rawItem);
                         return Padding(
@@ -369,15 +409,11 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Info Pencairan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
       const SizedBox(height: 6),
-      Text('Klik pencairan untuk membuka detail tanggal, deskripsi, rekening, dan bukti transfer.', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+      Text('Klik pencairan untuk melihat detail order, rekening, deskripsi, dan bukti transfer.', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
       const SizedBox(height: 12),
       ...payouts.map((raw) {
         final payout = _map(raw);
-        final payoutId = int.tryParse(payout['id']?.toString() ?? '0') ?? 0;
-        final hasProof = payout['proof_photo']?.toString().isNotEmpty == true;
-        final proofUrl = hasProof && payoutId > 0
-            ? '${ApiService.baseUrl}/marketplace/payouts/$payoutId/proof'
-            : null;
+        final proofUrl = payout['proof_url']?.toString();
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           elevation: 0,
@@ -385,8 +421,7 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
           child: ExpansionTile(
             leading: Container(width: 44, height: 44, decoration: BoxDecoration(color: _success.withOpacity(0.10), borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.check_circle_outline_rounded, color: _success)),
             title: Text(_currency(payout['amount']), style: const TextStyle(fontWeight: FontWeight.w900)),
-            subtitle: Text('Dicairkan ${_date(payout['payout_date'])}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-            trailing: const Chip(label: Text('Sudah dicairkan', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: _success)), side: BorderSide(color: Color(0xFFBBF7D0)), backgroundColor: Color(0xFFF0FDF4)),
+            subtitle: Text('Dicairkan ${_date(payout['payout_date'])} • ${payout['order_count'] ?? 0} order', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
             children: [
               Container(
                 width: double.infinity,
@@ -394,13 +429,12 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(14)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _detailLine('Tanggal pendapatan', _date(payout['income_date'])),
                   _detailLine('Tanggal pencairan', _date(payout['payout_date'])),
                   _detailLine('Jumlah order', '${payout['order_count'] ?? 0} order'),
                   _detailLine('Rekening', '${payout['bank_provider'] ?? '-'} • ${payout['account_number'] ?? '-'}'),
                   _detailLine('Atas nama', payout['account_name']?.toString().isNotEmpty == true ? payout['account_name'].toString() : '-'),
                   _detailLine('Deskripsi', payout['description']?.toString().isNotEmpty == true ? payout['description'].toString() : '-'),
-                  if (proofUrl != null) ...[
+                  if (proofUrl != null && proofUrl.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     const Text('Bukti Pencairan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 8),
@@ -408,13 +442,16 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
                       borderRadius: BorderRadius.circular(14),
                       child: Image.network(
                         proofUrl,
-                        headers: ApiService.token == null
-                            ? null
-                            : {'Authorization': 'Bearer ${ApiService.token}', 'Accept': 'image/*'},
+                        headers: StoreIncomeApiService.authenticatedImageHeaders,
                         width: double.infinity,
                         height: 190,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(height: 100, alignment: Alignment.center, color: Colors.grey[200], child: const Text('Bukti foto tidak dapat dimuat.')),
+                        errorBuilder: (_, __, ___) => Container(
+                          height: 100,
+                          alignment: Alignment.center,
+                          color: Colors.grey[200],
+                          child: const Text('Bukti foto tidak dapat dimuat.'),
+                        ),
                       ),
                     ),
                   ],
@@ -442,7 +479,11 @@ class _PendapatanTokoScreenState extends State<PendapatanTokoScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 30),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE2E8F0))),
-      child: Column(children: [Icon(icon, size: 36, color: Colors.grey[400]), const SizedBox(height: 10), Text(text, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[600], fontSize: 12.5))]),
+      child: Column(children: [
+        Icon(icon, size: 36, color: Colors.grey[400]),
+        const SizedBox(height: 10),
+        Text(text, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[600], fontSize: 12.5)),
+      ]),
     );
   }
 
