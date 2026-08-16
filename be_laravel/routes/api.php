@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\ApiMediaController;
 use App\Http\Controllers\Api\ApiProductVariationImageController;
 use App\Http\Controllers\Api\ApiStoreIncomeController;
 use App\Http\Controllers\Api\ApiStorePayoutProofController;
+use App\Http\Controllers\Api\ApiStorePayoutDetailController;
 use App\Http\Controllers\MidtransController;
 use App\Http\Controllers\Api\ApiPaymentMethodController;
 
@@ -68,6 +69,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/marketplace/income', [ApiStoreIncomeController::class, 'sellerIncome']);
     Route::get('/marketplace/income/{date}', [ApiStoreIncomeController::class, 'sellerIncomeByDate']);
     Route::get('/marketplace/payouts', [ApiStoreIncomeController::class, 'sellerPayouts']);
+    Route::get('/marketplace/payouts/{id}', [ApiStorePayoutDetailController::class, 'show']);
     Route::get('/marketplace/payouts/{id}/proof', [ApiStorePayoutProofController::class, 'show']);
     Route::get('/marketplace/bank-accounts', [ApiStoreIncomeController::class, 'bankAccounts']);
     Route::put('/marketplace/bank-accounts', [ApiStoreIncomeController::class, 'saveBankAccounts']);
