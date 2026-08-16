@@ -82,6 +82,25 @@ class StoreIncomeApiService {
     return [];
   }
 
+  static Future<Map<String, dynamic>?> sellerPayoutDetail(int payoutId) async {
+    lastError = null;
+    final response = await http.get(
+      Uri.parse('${ApiService.baseUrl}/marketplace/payouts/$payoutId'),
+      headers: _headers,
+    );
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map && decoded['data'] is Map) {
+        return Map<String, dynamic>.from(decoded['data']);
+      }
+    }
+    lastError = _message(
+      response.body,
+      fallback: 'Gagal memuat detail pencairan.',
+    );
+    return null;
+  }
+
   static Future<Map<String, dynamic>> bankAccounts() async {
     final response = await http.get(
       Uri.parse('${ApiService.baseUrl}/marketplace/bank-accounts'),
