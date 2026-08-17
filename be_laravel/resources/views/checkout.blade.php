@@ -416,7 +416,7 @@
 {{-- ====== SCRIPT ====== --}}
 @push('scripts')
 {{-- Midtrans Snap --}}
-<script type="text/javascript" src="https://app.sandbox.midtrans.com/snap/snap.js"
+<script type="text/javascript" src="{{ config('midtrans.snap_url') }}"
   data-client-key="{{ config('midtrans.client_key') }}"></script>
 
 <script type="text/javascript">
@@ -459,9 +459,8 @@
                 sendPaymentResult(result);
               },
               onPending: function(result) {
-                alert("Pembayaran Gagal!");
-                cancelOrder(pendingOrderId);
-                payButton.prop('disabled', false).text('Buat Pesanan');
+                pendingOrderId = null;
+                sendPaymentResult(result);
               },
               onError: function() {
                 alert("Pembayaran Gagal!");
