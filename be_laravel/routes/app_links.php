@@ -7,21 +7,42 @@ $openAppOrRedirect = static function (Request $request, string $type, string $sl
     $allowedTypes = ['product', 'store'];
     abort_unless(in_array($type, $allowedTypes, true), 404);
 
-    $fallback = trim((string) $request->query('fallback', 'https://geodesaconnect.id'));
-    $fallbackParts = parse_url($fallback);
-    $fallbackScheme = strtolower((string) ($fallbackParts['scheme'] ?? ''));
-    $fallbackHost = strtolower((string) ($fallbackParts['host'] ?? ''));
+    $safeDownloadUrl = static function (?string $value, string $default): string {
+        $url = trim((string) $value);
+        if ($url === '') return $default;
 
-    // Batasi tujuan redirect agar route ini tidak menjadi open-redirect bebas.
-    $allowedFallbackHosts = [
-        'geodesaconnect.id',
-        'www.geodesaconnect.id',
-        'play.google.com',
-        'apps.apple.com',
-    ];
+        $parts = parse_url($url);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = trim((string) ($parts['host'] ?? ''));
 
-    if ($fallbackScheme !== 'https' || ! in_array($fallbackHost, $allowedFallbackHosts, true)) {
-        $fallback = 'https://geodesaconnect.id';
+        return $scheme === 'https' && $host !== '' ? $url : $default;
+    };
+
+    $defaultFallback = $safeDownloadUrl(
+        config('app_links.fallback_download_url'),
+        'https://geodesaconnect.id'
+    );
+
+    $androidDownloadUrl = $safeDownloadUrl(
+        config('app_links.android_download_url'),
+        $defaultFallback
+    );
+
+    $iosDownloadUrl = $safeDownloadUrl(
+        config('app_links.ios_download_url'),
+        $defaultFallback
+    );
+
+    $userAgent = (string) $request->userAgent();
+    $isAndroid = preg_match('/Android/i', $userAgent) === 1;
+    $isIos = preg_match('/iPhone|iPad|iPod/i', $userAgent) === 1;
+
+    if ($isIos) {
+        $fallback = $iosDownloadUrl;
+    } elseif ($isAndroid) {
+        $fallback = $androidDownloadUrl;
+    } else {
+        $fallback = $defaultFallback;
     }
 
     $safeSlug = rawurlencode($slug);
