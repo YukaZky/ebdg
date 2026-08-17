@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Midtrans\Config as MidtransConfig;
 use Midtrans\Snap as MidtransSnap;
 use Illuminate\Support\Facades\Http;
@@ -450,9 +451,11 @@ class CartController extends Controller
             MidtransConfig::$isSanitized  = true;
             MidtransConfig::$is3ds        = true;
 
+            $midtransOrderId = 'ORDER-' . $order->id . '-' . time();
+
             $params = [
                 'transaction_details' => [
-                    'order_id'      => $order->id . '-' . time(),
+                    'order_id'      => $midtransOrderId,
                     'gross_amount'  => $order->total, // sudah termasuk diskon + ongkir
                 ],
                 'customer_details' => [
@@ -470,6 +473,16 @@ class CartController extends Controller
             $transaction->mode = 'transfer';
             $transaction->status = 'pending';
             $transaction->payment_token = $snapToken;
+
+            if (Schema::hasColumn('transactions', 'payment_details')) {
+                $transaction->payment_details = json_encode([
+                    'stage' => 'payment_instruction_created',
+                    'midtrans_order_id' => $midtransOrderId,
+                    'gross_amount' => (int) round($order->total),
+                    'integration' => 'snap_web',
+                ]);
+            }
+
             $transaction->save();
 
             Session::put('order_id', $order->id);
