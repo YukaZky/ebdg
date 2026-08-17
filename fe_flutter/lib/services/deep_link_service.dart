@@ -114,10 +114,13 @@ class DeepLinkService {
       _lastHandledKey = key;
       _lastHandledAt = now;
 
+      // Jangan await Future dari push/pushReplacement karena Future tersebut
+      // baru selesai saat halaman yang dibuka ditutup. Listener harus langsung
+      // kembali siap menerima deep link berikutnya.
       if (replace) {
-        await navigator.pushReplacement(route);
+        navigator.pushReplacement(route);
       } else {
-        await navigator.push(route);
+        navigator.push(route);
       }
       return true;
     } catch (_) {
