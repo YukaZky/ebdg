@@ -14,7 +14,7 @@ return [
 
     'android_download_url' => env(
         'APP_ANDROID_DOWNLOAD_URL',
-        'https://play.google.com/store/apps/details?id=com.example.fe_flutter'
+        'https://geodesaconnect.id'
     ),
 
     'ios_download_url' => env(
