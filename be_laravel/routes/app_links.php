@@ -104,3 +104,24 @@ Route::get('/open/product/{slug}', fn (Request $request, string $slug) => $openA
 
 Route::get('/open/store/{slug}', fn (Request $request, string $slug) => $openAppOrRedirect($request, 'store', $slug))
     ->where('slug', '[A-Za-z0-9._~-]+');
+
+Route::get('/download-apk', function () {
+    $relativePath = trim((string) config('app_links.apk_public_path', 'GeoDesaConnect.apk'));
+    $downloadName = trim((string) config('app_links.apk_download_name', 'GeoDesaConnect.apk'));
+
+    abort_if($relativePath === '' || str_contains($relativePath, '..'), 404, 'File APK tidak valid.');
+
+    $normalizedPath = ltrim(str_replace('\\', '/', $relativePath), '/');
+    $filePath = public_path($normalizedPath);
+
+    abort_unless(is_file($filePath) && is_readable($filePath), 404, 'File APK belum tersedia.');
+
+    return response()->download(
+        $filePath,
+        $downloadName !== '' ? $downloadName : basename($filePath),
+        [
+            'Content-Type' => 'application/vnd.android.package-archive',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+        ]
+    );
+})->name('app.download.apk');
