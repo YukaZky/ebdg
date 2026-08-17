@@ -5,6 +5,7 @@ import '../models/product_model.dart';
 import '../services/api_service.dart';
 import '../services/cart_api_service.dart';
 import '../services/marketplace_api_service.dart';
+import '../services/share_link_service.dart';
 import '../widgets/marketplace_product_card.dart';
 import 'cart_screen.dart';
 import 'marketplace/chat_room_screen.dart';
@@ -61,6 +62,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         _variation = matched.isNotEmpty ? matched.first : null;
       }
     });
+  }
+
+  Future<void> _shareProduct() async {
+    await ShareLinkService.shareProduct(
+      context: context,
+      productName: _product.name,
+      slug: _product.slug,
+    );
   }
 
   Future<void> _loadWishlistState() async {
@@ -576,6 +585,15 @@ if (_hasStore) TextButton(onPressed: () => Navigator.push(context, MaterialPageR
         _recommendationSection(),
         _reviewSection(),
       ]),
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'share-product-${_product.slug}',
+        onPressed: _shareProduct,
+        backgroundColor: _primary,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.share_rounded),
+        label: const Text('Bagikan', style: TextStyle(fontWeight: FontWeight.w800)),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _bottomActionBar(),
     );
   }
