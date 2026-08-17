@@ -2,11 +2,9 @@ class AppLinkConfig {
   AppLinkConfig._();
 
   /// Domain HTTPS yang dibagikan ke pengguna.
+  /// Link download/fallback TIDAK disimpan di Flutter agar bisa diubah
+  /// dari backend tanpa rebuild APK.
   static const String shareBaseUrl = 'https://geodesaconnect.id';
-
-  /// Ubah nilai ini jika fallback harus diarahkan ke Play Store,
-  /// App Store, halaman download, atau URL lain yang diizinkan backend.
-  static const String fallbackUrl = 'https://geodesaconnect.id';
 
   /// Custom scheme sebagai jalur cadangan bila HTTPS App Link tidak
   /// langsung diambil oleh sistem operasi.
@@ -35,7 +33,6 @@ class AppLinkConfig {
       host: base.host,
       port: base.hasPort ? base.port : null,
       pathSegments: ['open', type, slug],
-      queryParameters: {'fallback': fallbackUrl},
     );
   }
 
