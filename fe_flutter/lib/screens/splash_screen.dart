@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../services/api_service.dart';
+import '../services/deep_link_service.dart';
 import 'app_opening_popup_screen.dart';
 import 'main_screen.dart';
 
@@ -49,18 +50,37 @@ class _SplashScreenState extends State<SplashScreen> {
     }
   }
 
-  Future<void> _bootstrap() async {
-    final startedAt = DateTime.now();
-    await ApiService.restoreSession();
-    final openingPopup = await _loadOpeningPopup();
-
+  Future<void> _waitMinimumSplash(DateTime startedAt) async {
     final elapsed = DateTime.now().difference(startedAt);
     final remaining = _minimumSplashDuration - elapsed;
     if (remaining > Duration.zero) {
       await Future.delayed(remaining);
     }
+  }
+
+  Future<void> _bootstrap() async {
+    final startedAt = DateTime.now();
+    await ApiService.restoreSession();
+
+    if (DeepLinkService.instance.hasPendingLink) {
+      await _waitMinimumSplash(startedAt);
+      if (!mounted) return;
+      final handled = await DeepLinkService.instance.openPendingFromSplash();
+      if (handled) return;
+    }
+
+    final openingPopup = await _loadOpeningPopup();
+    await _waitMinimumSplash(startedAt);
 
     if (!mounted) return;
+
+    // Link bisa masuk saat startup-ad sedang dimuat. Prioritaskan link tersebut
+    // sebelum membuka halaman utama / popup.
+    if (DeepLinkService.instance.hasPendingLink) {
+      final handled = await DeepLinkService.instance.openPendingFromSplash();
+      if (handled) return;
+    }
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -69,29 +89,34 @@ class _SplashScreenState extends State<SplashScreen> {
             : AppOpeningPopupScreen(popupData: openingPopup),
       ),
     );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      DeepLinkService.instance.markReady();
+    });
   }
 
   @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    backgroundColor: Colors.white,
-    body: SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final shortestSide = constraints.biggest.shortestSide;
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final shortestSide = constraints.biggest.shortestSide;
 
-          final logoSize = (shortestSide * 0.62).clamp(190.0, 380.0).toDouble();
+            final logoSize =
+                (shortestSide * 0.62).clamp(190.0, 380.0).toDouble();
 
-          return Center(
-            child: Image.asset(
-              'assets/logoapk.png',
-              width: logoSize,
-              fit: BoxFit.contain,
-            ),
-          );
-        },
+            return Center(
+              child: Image.asset(
+                'assets/logoapk.png',
+                width: logoSize,
+                fit: BoxFit.contain,
+              ),
+            );
+          },
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
