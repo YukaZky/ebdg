@@ -44,6 +44,17 @@ class MidtransController extends Controller
             return response()->json(['message' => 'Invalid Midtrans signature.'], 403);
         }
 
+        // Dashboard Midtrans mengirim order_id sintetis saat tombol
+        // "Tes URL notifikasi" dijalankan, misalnya:
+        // payment_notif_test_Gxxxx_...
+        // Setelah signature valid, test ini boleh dibalas 200 tanpa
+        // mencari atau mengubah order/transaksi di database.
+        if ($this->isDashboardTestNotification($request, $midtransOrderId)) {
+            return response()->json([
+                'message' => 'Midtrans notification endpoint test received successfully.',
+            ], 200);
+        }
+
         $orderId = $this->extractInternalOrderId($midtransOrderId);
         if (! $orderId) {
             return response()->json(['message' => 'Invalid Midtrans order ID.'], 400);
@@ -108,6 +119,20 @@ class MidtransController extends Controller
         $order->save();
 
         return response()->json(['message' => 'Notification handled successfully.']);
+    }
+
+    private function isDashboardTestNotification(Request $request, string $midtransOrderId): bool
+    {
+        if (! str_starts_with($midtransOrderId, 'payment_notif_test_')) {
+            return false;
+        }
+
+        $configuredMerchantId = trim((string) config('midtrans.merchant_id'));
+        $payloadMerchantId = trim((string) $request->input('merchant_id'));
+
+        return $configuredMerchantId !== ''
+            && $payloadMerchantId !== ''
+            && hash_equals($configuredMerchantId, $payloadMerchantId);
     }
 
     private function extractInternalOrderId(string $midtransOrderId): ?int
