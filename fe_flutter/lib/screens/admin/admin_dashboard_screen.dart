@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import '../../services/store_income_api_service.dart';
 import '../marketplace/chat_list_screen.dart';
 import '../marketplace/list_kupon_screen.dart';
 import '../marketplace/store_profile_screen.dart';
@@ -8,6 +9,8 @@ import 'admin_brands_screen.dart';
 import 'admin_categories_screen.dart';
 import 'admin_products_screen.dart';
 import 'admin_store_location_screen.dart';
+import 'pendapatan_toko.dart';
+import 'pencairan_pendapatan.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({Key? key}) : super(key: key);
@@ -19,6 +22,7 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Map<String, dynamic>? dashboardStats;
   bool isLoading = true;
+  bool isSuperAdmin = false;
 
   @override
   void initState() {
@@ -28,12 +32,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Future<void> _fetchDashboardData() async {
     try {
-      final stats = await ApiService.getAdminDashboardStats();
+      final results = await Future.wait([
+        ApiService.getAdminDashboardStats(),
+        StoreIncomeApiService.canAccessSuperAdminPayouts(),
+      ]);
+      if (!mounted) return;
       setState(() {
-        dashboardStats = stats;
+        dashboardStats = results[0] as Map<String, dynamic>?;
+        isSuperAdmin = results[1] == true;
         isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => isLoading = false);
     }
   }
@@ -72,6 +82,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => const ListKuponScreen())).then((_) => _fetchDashboardData());
   }
 
+  void _openStoreIncome() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const PendapatanTokoScreen())).then((_) => _fetchDashboardData());
+  }
+
+  void _openPayoutManagement() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const PencairanPendapatanScreen())).then((_) => _fetchDashboardData());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -102,10 +120,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                            const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text('Toko Saya Panel', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                              SizedBox(height: 4),
-                              Text('Halo, Admin!', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(isSuperAdmin ? 'Super Admin & Toko Panel' : 'Toko Saya Panel', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                              const SizedBox(height: 4),
+                              const Text('Halo, Admin!', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                             ]),
                             Container(decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle), child: IconButton(icon: const Icon(Icons.notifications_active_rounded, color: Colors.white), onPressed: () {}))
                           ]),
@@ -160,6 +178,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               _buildListMenu(context, 'Daftar Pesanan', 'Cek dan proses pesanan masuk', Icons.receipt_long_outlined, Colors.deepOrange, true, () {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => const TokoPesananScreen()));
                               }),
+                              _buildListMenu(context, 'Pendapatan Toko', 'Saldo order selesai, info pencairan, dan rekening toko', Icons.account_balance_wallet_outlined, Colors.green, true, _openStoreIncome),
+                              if (isSuperAdmin)
+                                _buildListMenu(context, 'Pencairan Pendapatan', 'Khusus Super Admin: cairkan saldo pendapatan setiap toko', Icons.payments_outlined, Colors.indigo, true, _openPayoutManagement),
                               _buildListMenu(context, 'Pesan Pelanggan', 'Lihat dan balas chat yang masuk ke toko ini', Icons.chat_outlined, Colors.amber, true, _openCustomerMessages),
                               _buildListMenu(context, 'Kupon Diskon', 'List, tambah, edit, dan hapus voucher promo', Icons.confirmation_num_outlined, Colors.pink, false, _openCoupons),
                             ]),

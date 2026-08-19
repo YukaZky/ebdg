@@ -20,6 +20,8 @@ dependencies:
   flutter_map: ^6.1.0
   latlong2: ^0.9.1
   shared_preferences: ^2.2.3
+  share_plus: ^7.2.2
+  app_links: ^3.5.1
 
 dev_dependencies:
   flutter_test:

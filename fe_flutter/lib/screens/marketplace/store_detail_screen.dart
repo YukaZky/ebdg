@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/product_model.dart';
 import '../../services/api_service.dart';
 import '../../services/marketplace_api_service.dart';
+import '../../services/share_link_service.dart';
 import '../../widgets/marketplace_product_card.dart';
 
 class StoreDetailScreen extends StatefulWidget {
@@ -70,6 +71,14 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     } else {
       setState(() => loading = false);
     }
+  }
+
+  Future<void> _shareStore() async {
+    await ShareLinkService.shareStore(
+      context: context,
+      storeName: store?['name']?.toString() ?? 'Toko',
+      slug: widget.slug,
+    );
   }
 
   String _mediaUrl(dynamic image, {String folder = 'stores'}) {
@@ -312,7 +321,6 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
             Row(children: [
               _stars(ratingAverage),
               const SizedBox(width: 6),
-              // PERUBAHAN: Membungkus teks ulasan dengan Flexible dan menambahkan ellipsis agar tidak overflowed di layar kecil
               Flexible(
                 child: Text(
                   '${ratingAverage.toStringAsFixed(1)} ($ratingCount ulasan)',
@@ -367,7 +375,6 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
         GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            // PERUBAHAN: Menyesuaikan childAspectRatio dari 0.72 menjadi 0.65 sebagai langkah pencegahan bottom overflow
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.65, crossAxisSpacing: 12, mainAxisSpacing: 12),
             itemCount: items.length,
             itemBuilder: (context, index) => MarketplaceProductCard(product: items[index]))
@@ -405,7 +412,18 @@ class _StoreDetailScreenState extends State<StoreDetailScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(title: const Text('Detail Toko'), backgroundColor: Colors.white, foregroundColor: _primary),
-      body: loading ? const Center(child: CircularProgressIndicator()) : store == null ? const Center(child: Text('Toko tidak ditemukan.')) : RefreshIndicator(onRefresh: loadStore, child: ListView(children: [_header(), _storeInfo(), _couponSection(), _categorySection(), _productSection(), _reviewsSection(), const SizedBox(height: 20)])),
+      body: loading ? const Center(child: CircularProgressIndicator()) : store == null ? const Center(child: Text('Toko tidak ditemukan.')) : RefreshIndicator(onRefresh: loadStore, child: ListView(children: [_header(), _storeInfo(), _couponSection(), _categorySection(), _productSection(), _reviewsSection(), const SizedBox(height: 96)])),
+      floatingActionButton: loading || store == null
+          ? null
+          : FloatingActionButton.extended(
+              heroTag: 'share-store-${widget.slug}',
+              onPressed: _shareStore,
+              backgroundColor: _primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.share_rounded),
+              label: const Text('Bagikan', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }

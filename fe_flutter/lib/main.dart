@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
-import 'screens/splash_screen.dart';
 
-void main() {
+import 'screens/splash_screen.dart';
+import 'services/deep_link_service.dart';
+
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await DeepLinkService.instance.init(rootNavigatorKey);
   runApp(const MyApp());
 }
 
@@ -11,6 +17,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: rootNavigatorKey,
       title: 'GeoDesaConnect',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

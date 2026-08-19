@@ -33,7 +33,8 @@ class HomeController extends Controller
                 return $product->discount_percentage;
             })
             ->max();
-        return view('index', compact('slides', 'categories', 'bannerRandomCategories', 'sproducts', 'fproducts', 'maxDiscount'));
+
+        return view('index-popup', compact('slides', 'categories', 'bannerRandomCategories', 'sproducts', 'fproducts', 'maxDiscount'));
     }
 
     // Metode untuk halaman kontak yang bersih

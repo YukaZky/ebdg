@@ -578,7 +578,6 @@ class ApiCheckoutController extends Controller
         Config::$isProduction = config('midtrans.is_production', env('MIDTRANS_IS_PRODUCTION', false));
         Config::$isSanitized = true;
         Config::$is3ds = true;
-        Config::$curlOptions = [CURLOPT_SSL_VERIFYPEER => false, CURLOPT_SSL_VERIFYHOST => false, CURLOPT_HTTPHEADER => []];
     }
 
     private function toArray($value): array { return json_decode(json_encode($value), true) ?: []; }
