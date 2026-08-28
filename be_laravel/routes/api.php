@@ -1,30 +1,33 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\ApiAdminBrandController;
+use App\Http\Controllers\Api\ApiAdminController;
+use App\Http\Controllers\Api\ApiAdminManualPaymentAccountController;
+use App\Http\Controllers\Api\ApiAdminManualPaymentController;
 use App\Http\Controllers\Api\ApiAuthController;
-use App\Http\Controllers\Api\ApiProductController;
 use App\Http\Controllers\Api\ApiCartController;
 use App\Http\Controllers\Api\ApiCheckoutController;
-use App\Http\Controllers\Api\ApiOrderController;
-use App\Http\Controllers\Api\ApiRajaOngkirController;
-use App\Http\Controllers\Api\ApiWishlistController;
-use App\Http\Controllers\Api\ApiAdminController;
-use App\Http\Controllers\Api\ApiAdminBrandController;
-use App\Http\Controllers\Api\ApiMarketplaceController;
+use App\Http\Controllers\Api\ApiManualPaymentController;
+use App\Http\Controllers\Api\ApiManualPaymentProofController;
 use App\Http\Controllers\Api\ApiMarketplaceChatController;
+use App\Http\Controllers\Api\ApiMarketplaceClaimedCouponController;
+use App\Http\Controllers\Api\ApiMarketplaceController;
 use App\Http\Controllers\Api\ApiMarketplaceCouponController;
 use App\Http\Controllers\Api\ApiMarketplaceCouponTakeController;
-use App\Http\Controllers\Api\ApiMarketplaceClaimedCouponController;
 use App\Http\Controllers\Api\ApiMarketplaceReviewController;
-use App\Http\Controllers\Api\ApiUserProfileController;
 use App\Http\Controllers\Api\ApiMediaController;
-use App\Http\Controllers\Api\ApiProductVariationImageController;
-use App\Http\Controllers\Api\ApiStoreIncomeController;
-use App\Http\Controllers\Api\ApiStorePayoutProofController;
-use App\Http\Controllers\Api\ApiStorePayoutDetailController;
-use App\Http\Controllers\MidtransController;
+use App\Http\Controllers\Api\ApiOrderController;
 use App\Http\Controllers\Api\ApiPaymentMethodController;
+use App\Http\Controllers\Api\ApiProductController;
+use App\Http\Controllers\Api\ApiProductVariationImageController;
+use App\Http\Controllers\Api\ApiRajaOngkirController;
+use App\Http\Controllers\Api\ApiStoreIncomeController;
+use App\Http\Controllers\Api\ApiStorePayoutDetailController;
+use App\Http\Controllers\Api\ApiStorePayoutProofController;
+use App\Http\Controllers\Api\ApiUserProfileController;
+use App\Http\Controllers\Api\ApiWishlistController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [ApiAuthController::class, 'register']);
 Route::post('/login', [ApiAuthController::class, 'login']);
@@ -36,7 +39,6 @@ Route::get('/stores/{slug}', [ApiMarketplaceController::class, 'storeDetail']);
 Route::get('/stores/{slug}/coupons', [ApiMarketplaceCouponController::class, 'storeCoupons']);
 Route::get('/stores/{slug}/reviews', [ApiMarketplaceReviewController::class, 'storeReviews']);
 Route::get('/products/{productId}/reviews', [ApiMarketplaceReviewController::class, 'productReviews']);
-Route::post('/midtrans/notification', [MidtransController::class, 'notificationHandler']);
 Route::get('/payment-methods', [ApiPaymentMethodController::class, 'index']);
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -60,6 +62,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders/{id}/reset-payment', [ApiCheckoutController::class, 'resetPayment']);
     Route::post('/orders/{id}/complete-checkout', [ApiCheckoutController::class, 'completeCheckout']);
     Route::post('/orders/{id}/cancel', [\App\Http\Controllers\Api\ApiOrderCancelController::class, 'cancel']);
+    Route::post('/orders/{id}/payment-proof', [ApiManualPaymentController::class, 'submitProof']);
+    Route::get('/manual-payment-confirmations/{confirmation}/proof', [ApiManualPaymentProofController::class, 'show']);
     Route::get('/orders', [ApiOrderController::class, 'index']);
 
     Route::get('/marketplace/my-store', [ApiMarketplaceController::class, 'myStore']);
@@ -115,6 +119,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/store-payouts', [ApiStoreIncomeController::class, 'superAdminStores']);
         Route::get('/store-payouts/{sellerId}', [ApiStoreIncomeController::class, 'superAdminSellerDetail']);
         Route::post('/store-payouts/{sellerId}/pay', [ApiStoreIncomeController::class, 'processPayout']);
+        Route::get('/manual-payments', [ApiAdminManualPaymentController::class, 'index']);
+        Route::get('/manual-payments/{order}', [ApiAdminManualPaymentController::class, 'show']);
+        Route::post('/manual-payments/{order}/approve', [ApiAdminManualPaymentController::class, 'approve']);
+        Route::post('/manual-payments/{order}/reject', [ApiAdminManualPaymentController::class, 'reject']);
+        Route::post('/manual-payments/{order}/cancel', [ApiAdminManualPaymentController::class, 'cancel']);
+        Route::get('/manual-payment-accounts', [ApiAdminManualPaymentAccountController::class, 'index']);
+        Route::post('/manual-payment-accounts', [ApiAdminManualPaymentAccountController::class, 'store']);
+        Route::put('/manual-payment-accounts/{account}', [ApiAdminManualPaymentAccountController::class, 'update']);
+        Route::post('/manual-payment-accounts/{account}/primary', [ApiAdminManualPaymentAccountController::class, 'setPrimary']);
 
         Route::get('/products', [ApiAdminController::class, 'getProducts']);
         Route::post('/products/store', [ApiAdminController::class, 'storeProduct']);

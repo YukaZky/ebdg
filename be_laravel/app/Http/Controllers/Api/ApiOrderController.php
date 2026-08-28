@@ -5,13 +5,17 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\ProductReview;
+use App\Services\ManualPaymentService;
 use Illuminate\Http\Request;
 
 class ApiOrderController extends Controller
 {
+    public function __construct(private readonly ManualPaymentService $manualPayments) {}
+
     public function index(Request $request)
     {
-        $orders = Order::with('items.product', 'transaction')
+        $this->manualPayments->expireDuePayments();
+        $orders = Order::with('items.product', 'transaction.latestConfirmation.reviewer')
             ->where('user_id', $request->user()->id)
             ->orderBy('created_at', 'desc')
             ->get()
@@ -27,7 +31,7 @@ class ApiOrderController extends Controller
 
     private function formatOrder(Order $order): array
     {
-        $order->loadMissing('items.product', 'transaction');
+        $order->loadMissing('items.product', 'transaction.latestConfirmation.reviewer');
 
         $data = $order->toArray();
         $transaction = $order->transaction;
@@ -40,9 +44,16 @@ class ApiOrderController extends Controller
         $data['frontend_status'] = $frontendStatus;
         $data['frontend_status_label'] = $this->statusLabel($frontendStatus);
         $data['transaction_status'] = $transactionStatus;
+        if ($transaction && is_array($transaction->manual_payment_account_snapshot)) {
+            $paymentInfo = $this->manualPayments->paymentInfo($order, $transaction);
+        }
         $data['payment_info'] = $paymentInfo;
-        $data['payment_deadline'] = is_array($paymentInfo) ? ($paymentInfo['expiry_time'] ?? null) : null;
+        $data['payment_deadline'] = $transaction?->payment_expires_at?->toIso8601String()
+            ?? (is_array($paymentInfo) ? ($paymentInfo['expiry_time'] ?? null) : null);
         $data['payment_stage'] = $details['stage'] ?? null;
+        $data['payment_state'] = $this->manualPayments->state($transaction);
+        $data['rejection_reason'] = $details['rejection_reason'] ?? null;
+        $data['latest_confirmation'] = $this->manualPayments->confirmationPayload($transaction?->latestConfirmation);
         $data['payment_type'] = $details['payment_type'] ?? null;
         $data['payment_bank'] = $details['bank'] ?? null;
         $data['payment_transaction_id'] = is_array($paymentInfo) ? ($paymentInfo['transaction_id'] ?? null) : null;
@@ -75,6 +86,14 @@ class ApiOrderController extends Controller
             return 'packing';
         }
 
+        if (($details['stage'] ?? null) === ManualPaymentService::PROOF_SUBMITTED) {
+            return 'proof_submitted';
+        }
+
+        if (($details['stage'] ?? null) === ManualPaymentService::PROOF_REJECTED) {
+            return 'proof_rejected';
+        }
+
         if (in_array($orderStatus, ['paid', 'dibayar'], true) || in_array($transactionStatus, ['approved', 'settlement', 'capture'], true)) {
             return 'paid_not_checked_out';
         }
@@ -91,6 +110,8 @@ class ApiOrderController extends Controller
         return match ($status) {
             'pending_payment' => 'Belum Dibayar',
             'paid_not_checked_out' => 'Dibayar',
+            'proof_submitted' => 'Menunggu Verifikasi',
+            'proof_rejected' => 'Bukti Ditolak',
             'packing' => 'Dikemas',
             'delivered' => 'Dikirim',
             'done' => 'Selesai',
@@ -106,6 +127,7 @@ class ApiOrderController extends Controller
         }
 
         $details = json_decode($transaction->payment_details, true);
+
         return is_array($details) ? $details : [];
     }
 }

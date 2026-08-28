@@ -14,7 +14,7 @@ class Order extends Model
         'mode_pengiriman', 'jenis_pengiriman', 'ongkir', 'shipping_breakdown',
         'name', 'phone', 'locality', 'address', 'city',
         'state', 'country', 'landmark', 'zip', 'type',
-        'status', 'is_shipping_different', 'delivered_date', 'completed_at', 'canceled_date'
+        'status', 'is_shipping_different', 'delivered_date', 'completed_at', 'canceled_date',
     ];
 
     protected $casts = [
@@ -56,5 +56,10 @@ class Order extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function manualPaymentConfirmations()
+    {
+        return $this->hasMany(ManualPaymentConfirmation::class);
     }
 }

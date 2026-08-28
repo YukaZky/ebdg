@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../models/payment_method_model.dart';
 import '../services/api_service.dart';
 
@@ -41,11 +42,18 @@ class _MetodeScreenState extends State<MetodeScreen> {
           return RefreshIndicator(
             onRefresh: _reloadPaymentMethods,
             child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
               slivers: [
                 SliverToBoxAdapter(child: _header(context)),
                 if (snapshot.connectionState == ConnectionState.waiting)
-                  const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator(color: _primary)))
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: CircularProgressIndicator(color: _primary),
+                    ),
+                  )
                 else if (snapshot.hasError)
                   SliverFillRemaining(
                     hasScrollBody: false,
@@ -74,8 +82,10 @@ class _MetodeScreenState extends State<MetodeScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
                     sliver: SliverList.separated(
                       itemCount: snapshot.data!.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) => _paymentMethodTile(snapshot.data![index]),
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 12),
+                      itemBuilder: (context, index) =>
+                          _paymentMethodTile(snapshot.data![index]),
                     ),
                   ),
               ],
@@ -89,7 +99,11 @@ class _MetodeScreenState extends State<MetodeScreen> {
   Widget _header(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [_primary, Color(0xFF123A68)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: LinearGradient(
+          colors: [_primary, Color(0xFF123A68)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
       ),
       child: SafeArea(
@@ -102,15 +116,28 @@ class _MetodeScreenState extends State<MetodeScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _circleAction(Icons.arrow_back_rounded, () => Navigator.pop(context)),
+                  _circleAction(
+                    Icons.arrow_back_rounded,
+                    () => Navigator.pop(context),
+                  ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.14),
                       borderRadius: BorderRadius.circular(99),
                       border: Border.all(color: Colors.white.withOpacity(0.12)),
                     ),
-                    child: const Text('Aman & cepat', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                    child: const Text(
+                      'Aman & cepat',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -127,21 +154,39 @@ class _MetodeScreenState extends State<MetodeScreen> {
                     Container(
                       width: 56,
                       height: 56,
-                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                      child: const Icon(Icons.account_balance_wallet_rounded, color: _primary, size: 30),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.account_balance_wallet_rounded,
+                        color: _primary,
+                        size: 30,
+                      ),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Metode Pembayaran', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
+                          const Text(
+                            'Metode Pembayaran',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
                           const SizedBox(height: 5),
                           Text(
-                            'Pilih Virtual Account, QRIS, atau e-wallet yang tersedia.',
+                            'Pilih rekening atau Virtual Account transfer manual yang tersedia.',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: Colors.white.withOpacity(0.84), fontSize: 12.5, height: 1.35),
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.84),
+                              fontSize: 12.5,
+                              height: 1.35,
+                            ),
                           ),
                         ],
                       ),
@@ -183,7 +228,13 @@ class _MetodeScreenState extends State<MetodeScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: const Color(0xFFE2E8F0)),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 14, offset: const Offset(0, 6))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         child: Row(
           children: [
@@ -200,7 +251,11 @@ class _MetodeScreenState extends State<MetodeScreen> {
               child: Image.network(
                 method.iconUrl,
                 fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => const Icon(Icons.account_balance_wallet_rounded, color: _primary, size: 24),
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  color: _primary,
+                  size: 24,
+                ),
               ),
             ),
             const SizedBox(width: 14),
@@ -208,17 +263,40 @@ class _MetodeScreenState extends State<MetodeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(method.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, color: Color(0xFF111827), fontWeight: FontWeight.w900)),
+                  Text(
+                    method.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: Color(0xFF111827),
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text(method.paymentType == 'qris' ? 'QRIS siap dibuat setelah checkout' : 'Tap untuk memilih metode ini', style: const TextStyle(fontSize: 11.5, color: _muted, fontWeight: FontWeight.w500)),
+                  const Text(
+                    'Tap untuk memakai rekening tujuan ini',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: _muted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ],
               ),
             ),
             Container(
               width: 34,
               height: 34,
-              decoration: BoxDecoration(color: _accent.withOpacity(0.14), shape: BoxShape.circle),
-              child: const Icon(Icons.chevron_right_rounded, color: _primary, size: 22),
+              decoration: BoxDecoration(
+                color: _accent.withOpacity(0.14),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.chevron_right_rounded,
+                color: _primary,
+                size: 22,
+              ),
             ),
           ],
         ),
@@ -243,13 +321,28 @@ class _MetodeScreenState extends State<MetodeScreen> {
             Container(
               width: 86,
               height: 86,
-              decoration: BoxDecoration(color: iconColor.withOpacity(0.10), shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.10),
+                shape: BoxShape.circle,
+              ),
               child: Icon(icon, color: iconColor, size: 42),
             ),
             const SizedBox(height: 16),
-            Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, color: _primary, fontWeight: FontWeight.w900)),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 18,
+                color: _primary,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: _muted, height: 1.4)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13, color: _muted, height: 1.4),
+            ),
             const SizedBox(height: 18),
             ElevatedButton(
               onPressed: onPressed,
@@ -257,10 +350,18 @@ class _MetodeScreenState extends State<MetodeScreen> {
                 backgroundColor: _primary,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
-              child: Text(buttonText, style: const TextStyle(fontWeight: FontWeight.w900)),
+              child: Text(
+                buttonText,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
             ),
           ],
         ),
