@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'login_screen.dart';
 import '../services/api_service.dart';
 
 class AccountSettingsScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   final _confirmPasswordCtrl = TextEditingController();
 
   bool _saving = false;
+  bool _deleting = false;
   bool _showCurrentPassword = false;
   bool _showNewPassword = false;
   bool _showConfirmPassword = false;
@@ -69,6 +72,77 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         const SnackBar(content: Text('Gagal menyimpan. Periksa email atau password lama.'), backgroundColor: Colors.redAccent),
       );
     }
+  }
+
+  Future<void> _openPrivacyPolicy() async {
+    final uri = Uri.parse('https://geodesaconnect.id/privacy-policy');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kebijakan privasi tidak dapat dibuka.')),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteAccount() async {
+    final passwordController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Hapus akun permanen?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Profil, alamat, toko, produk, percakapan, dan data akun akan dihapus secara permanen. Tindakan ini tidak dapat dibatalkan.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Konfirmasi password'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (passwordController.text.isNotEmpty) {
+                Navigator.pop(dialogContext, true);
+              }
+            },
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('Hapus Permanen'),
+          ),
+        ],
+      ),
+    );
+
+    final password = passwordController.text;
+    passwordController.dispose();
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deleting = true);
+    final error = await ApiService.deleteAccount(password);
+    if (!mounted) return;
+    setState(() => _deleting = false);
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
   }
 
   InputDecoration _decoration(String label, IconData icon, {Widget? suffix}) {
@@ -208,6 +282,30 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+              const SizedBox(height: 26),
+              const Divider(),
+              const SizedBox(height: 12),
+              const Text('Privasi dan Akun', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.privacy_tip_outlined),
+                title: const Text('Kebijakan Privasi'),
+                trailing: const Icon(Icons.open_in_new, size: 18),
+                onTap: _openPrivacyPolicy,
+              ),
+              OutlinedButton.icon(
+                onPressed: _deleting ? null : _confirmDeleteAccount,
+                icon: _deleting
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.delete_forever_outlined),
+                label: Text(_deleting ? 'Menghapus akun...' : 'Hapus Akun Permanen'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red.shade700,
+                  side: BorderSide(color: Colors.red.shade300),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
             ],

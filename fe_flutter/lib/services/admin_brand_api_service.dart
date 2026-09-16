@@ -62,9 +62,6 @@ class AdminBrandApiService {
     try {
       final response = await request.send();
       final body = await response.stream.bytesToString();
-      print('saveAdminBrand status: ${response.statusCode}');
-      print('saveAdminBrand body: $body');
-
       final ok = response.statusCode == 200 || response.statusCode == 201;
       if (!ok) {
         lastError = _messageFromBody(body, fallback: 'Gagal menyimpan brand. Kode: ${response.statusCode}');

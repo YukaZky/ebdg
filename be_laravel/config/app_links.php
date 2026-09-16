@@ -1,6 +1,13 @@
 <?php
 
 return [
+    'android_package_name' => env('ANDROID_PACKAGE_NAME', 'com.geodesaconnect.app'),
+
+    'android_sha256_fingerprints' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('ANDROID_SHA256_FINGERPRINTS', ''))
+    ))),
+
     /*
     |--------------------------------------------------------------------------
     | GeoDesaConnect App Link Download Targets

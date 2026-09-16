@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   bool _passwordVisible = false;
   bool _confirmVisible = false;
+  bool _acceptedPrivacy = false;
 
   static const Color _primary = Color(0xFF0C2442);
   static const Color _purple = Color(0xFF6C4DFF);
@@ -55,6 +57,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
     if (password != confirm) {
       _showSnack('Password tidak cocok.', isError: true);
+      return;
+    }
+    if (!_acceptedPrivacy) {
+      _showSnack('Setujui Kebijakan Privasi untuk melanjutkan.', isError: true);
       return;
     }
 
@@ -159,6 +165,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     textInputAction: TextInputAction.done,
                     onSubmitted: (_) => _register(),
                     decoration: _decoration('Konfirmasi Password', Icons.verified_user_outlined, suffix: IconButton(icon: Icon(_confirmVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded), onPressed: _isLoading ? null : () => setState(() => _confirmVisible = !_confirmVisible))),
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    value: _acceptedPrivacy,
+                    onChanged: _isLoading ? null : (value) => setState(() => _acceptedPrivacy = value ?? false),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        const Text('Saya menyetujui '),
+                        TextButton(
+                          onPressed: () => launchUrl(
+                            Uri.parse('https://geodesaconnect.id/privacy-policy'),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                          child: const Text('Kebijakan Privasi'),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 22),
                   SizedBox(

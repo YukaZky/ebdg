@@ -352,6 +352,22 @@ class ManualPaymentFlowTest extends TestCase
         ]);
     }
 
+    public function test_user_can_permanently_delete_account_with_password_confirmation(): void
+    {
+        Sanctum::actingAs($this->buyer);
+
+        $this->deleteJson('/api/account', ['password' => 'salah'])
+            ->assertUnprocessable();
+        $this->assertDatabaseHas('users', ['id' => $this->buyer->id]);
+
+        $this->deleteJson('/api/account', ['password' => 'password'])
+            ->assertOk()
+            ->assertJsonPath('message', 'Akun dan data terkait berhasil dihapus.');
+
+        $this->assertDatabaseMissing('users', ['id' => $this->buyer->id]);
+        $this->assertDatabaseMissing('orders', ['id' => $this->order->id]);
+    }
+
     private function submitProofAsBuyer(): void
     {
         Sanctum::actingAs($this->buyer);

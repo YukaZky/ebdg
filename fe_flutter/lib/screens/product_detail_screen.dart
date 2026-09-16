@@ -434,7 +434,10 @@ Container(
           children: [
             TileLayer(
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.example.fe_flutter',
+              userAgentPackageName: 'com.geodesaconnect.app',
+            ),
+            const RichAttributionWidget(
+              attributions: [TextSourceAttribution('OpenStreetMap contributors')],
             ),
           ],
         ),

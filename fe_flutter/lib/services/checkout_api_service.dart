@@ -216,9 +216,6 @@ class CheckoutApiService {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return json.decode(response.body) as Map<String, dynamic>;
       }
-      debugPrint(
-        'Checkout POST gagal ${response.statusCode}: ${response.body}',
-      );
       try {
         return json.decode(response.body) as Map<String, dynamic>;
       } catch (_) {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AccountDeletionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -92,5 +93,25 @@ class ApiAuthController extends Controller
         return response()->json([
             'message' => 'Berhasil logout'
         ], 200);
+    }
+
+    public function destroy(Request $request, AccountDeletionService $service)
+    {
+        $validated = $request->validate([
+            'password' => 'required|string',
+        ]);
+
+        $user = $request->user();
+        if (! Hash::check($validated['password'], $user->password)) {
+            return response()->json([
+                'message' => 'Password tidak sesuai.',
+            ], 422);
+        }
+
+        $service->delete($user);
+
+        return response()->json([
+            'message' => 'Akun dan data terkait berhasil dihapus.',
+        ]);
     }
 }

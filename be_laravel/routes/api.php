@@ -43,6 +43,7 @@ Route::get('/payment-methods', [ApiPaymentMethodController::class, 'index']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [ApiAuthController::class, 'logout']);
+    Route::delete('/account', [ApiAuthController::class, 'destroy']);
     Route::get('/user-profile', function (Request $request) {
         return response()->json($request->user());
     });

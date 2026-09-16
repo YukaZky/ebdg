@@ -3,6 +3,19 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+Route::get('/.well-known/assetlinks.json', function () {
+    $fingerprints = config('app_links.android_sha256_fingerprints', []);
+
+    return response()->json($fingerprints === [] ? [] : [[
+        'relation' => ['delegate_permission/common.handle_all_urls'],
+        'target' => [
+            'namespace' => 'android_app',
+            'package_name' => config('app_links.android_package_name'),
+            'sha256_cert_fingerprints' => $fingerprints,
+        ],
+    ]], 200, ['Cache-Control' => 'public, max-age=3600']);
+});
+
 $openAppOrRedirect = static function (Request $request, string $type, string $slug) {
     $allowedTypes = ['product', 'store'];
     abort_unless(in_array($type, $allowedTypes, true), 404);

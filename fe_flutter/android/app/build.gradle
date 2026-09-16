@@ -1,6 +1,6 @@
 plugins {
     id "com.android.application"
-    id "kotlin-android"
+    id "org.jetbrains.kotlin.android"
     id "dev.flutter.flutter-gradle-plugin"
 }
 
@@ -22,18 +22,38 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
+def releaseTaskRequested = gradle.startParameter.taskNames.any {
+    it.toLowerCase().contains('release')
+}
+def requiredSigningProperties = ['keyAlias', 'keyPassword', 'storeFile', 'storePassword']
+def signingPropertiesComplete = requiredSigningProperties.every {
+    keystoreProperties[it]?.toString()?.trim()
+}
+if (releaseTaskRequested && (!keystorePropertiesFile.exists() || !signingPropertiesComplete)) {
+    throw new GradleException(
+        'Release signing belum dikonfigurasi. Salin android/key.properties.example '
+        + 'ke android/key.properties dan isi upload keystore.'
+    )
+}
+
 android {
-    namespace "com.example.fe_flutter"
-    compileSdkVersion 34
+    namespace "com.geodesaconnect.app"
+    compileSdk 36
     ndkVersion flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
 
     sourceSets {
@@ -41,16 +61,27 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.fe_flutter"
-        minSdkVersion 20
-        targetSdkVersion 34
+        applicationId "com.geodesaconnect.app"
+        minSdk flutter.minSdkVersion
+        targetSdk 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
 
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
         }
     }
 }

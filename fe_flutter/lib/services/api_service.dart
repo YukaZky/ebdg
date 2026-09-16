@@ -3,14 +3,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product_model.dart';
 import '../models/payment_method_model.dart';
 
 class ApiService {
-  // static const String baseUrl = "https://ebdg.sidome.id/api";
-  static const String baseUrl = "https://geodesaconnect.id/api";
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://geodesaconnect.id/api',
+  );
   static const String _tokenStorageKey = 'auth_access_token';
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
   static String? _token;
   static bool _sessionRestored = false;
 
@@ -34,7 +38,16 @@ class ApiService {
     if (_sessionRestored) return isLoggedIn;
 
     final prefs = await SharedPreferences.getInstance();
-    final savedToken = prefs.getString(_tokenStorageKey)?.trim();
+    var savedToken = (await _secureStorage.read(key: _tokenStorageKey))?.trim();
+
+    // Migrate sessions created by older releases, then remove the plain-text copy.
+    if (savedToken == null || savedToken.isEmpty) {
+      savedToken = prefs.getString(_tokenStorageKey)?.trim();
+      if (savedToken != null && savedToken.isNotEmpty) {
+        await _secureStorage.write(key: _tokenStorageKey, value: savedToken);
+      }
+    }
+    await prefs.remove(_tokenStorageKey);
     _token = savedToken != null && savedToken.isNotEmpty ? savedToken : null;
     _sessionRestored = true;
     return isLoggedIn;
@@ -43,15 +56,39 @@ class ApiService {
   static Future<void> _persistToken(String token) async {
     _token = token;
     _sessionRestored = true;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenStorageKey, token);
+    await _secureStorage.write(key: _tokenStorageKey, value: token);
   }
 
   static Future<void> clearSession() async {
     _token = null;
     _sessionRestored = true;
     final prefs = await SharedPreferences.getInstance();
+    await _secureStorage.delete(key: _tokenStorageKey);
     await prefs.remove(_tokenStorageKey);
+  }
+
+  static Future<String?> deleteAccount(String password) async {
+    if (_token == null) return 'Sesi telah berakhir. Silakan login kembali.';
+
+    try {
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/account'),
+            headers: _jsonHeaders,
+            body: jsonEncode({'password': password}),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) {
+        await clearSession();
+        return null;
+      }
+
+      final data = jsonDecode(response.body);
+      return data['message']?.toString() ?? 'Akun belum dapat dihapus.';
+    } catch (_) {
+      return 'Tidak dapat terhubung ke server. Coba kembali.';
+    }
   }
 
   static Future<bool> login(String email, String password) async {
@@ -99,55 +136,29 @@ class ApiService {
 
   static Future<List<Product>> getProducts() async {
     try {
-      print("=== DEBUG 1: Mulai request ke API getProducts ===");
-      print("=== DEBUG 1: URL Target: $baseUrl/products ===");
-
       final response = await http.get(
         Uri.parse(
             "$baseUrl/products?_=${DateTime.now().millisecondsSinceEpoch}"),
         headers: {"Accept": "application/json", "Cache-Control": "no-cache"},
       );
 
-      print("=== RESPONSE BODY ===");
-      print(response.body);
-      print("=====================");
-
-      print(
-          "=== DEBUG 2: Request selesai. Status Code: ${response.statusCode} ===");
-
       if (response.statusCode == 200) {
-        print("=== DEBUG 3: Status 200 OK. Memulai decode JSON ===");
         final Map<String, dynamic> responseData = jsonDecode(response.body);
-
-        print("=== DEBUG 4: Mengambil isi dari key 'data' ===");
         final List<dynamic> productsJson = responseData['data'] ?? [];
-
-        print(
-            "=== DEBUG 5: Sukses mengambil List. Jumlah produk di JSON: ${productsJson.length} ===");
-        print("=== DEBUG 6: Memulai proses mapping JSON ke Model Flutter ===");
 
         final List<Product> result = productsJson.map((json) {
           try {
             return Product.fromJson(Map<String, dynamic>.from(json));
           } catch (e) {
-            print("=== ERROR PARSING PADA ITEM: $json ===");
-            print("=== PENYEBAB ERROR PARSING: $e ===");
             rethrow;
           }
         }).toList();
 
-        print(
-            "=== DEBUG 7: SUKSES TOTAL! Berhasil mengubah ${result.length} produk ke dalam Model. Siap dikirim ke UI. ===");
         return result;
       } else {
-        print(
-            "=== DEBUG ERROR: Server menolak dengan status ${response.statusCode} ===");
         throw Exception("Gagal memuat produk");
       }
-    } catch (e, stacktrace) {
-      print("=== DEBUG CATCH ERROR: Proses getProducts TERHENTI! ===");
-      print("=== PESAN ERROR: $e ===");
-      print("=== LOKASI ERROR (Stacktrace): $stacktrace ===");
+    } catch (e) {
       throw Exception("Gagal memuat produk: $e");
     }
   }
@@ -158,8 +169,6 @@ class ApiService {
           "$baseUrl/products/$slug?_=${DateTime.now().millisecondsSinceEpoch}"),
       headers: {"Accept": "application/json", "Cache-Control": "no-cache"},
     );
-    print("Detail produk status: ${response.statusCode}");
-    print("Detail produk body: ${response.body}");
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = jsonDecode(response.body);
       return Product.fromJson(Map<String, dynamic>.from(data['data']));
@@ -572,9 +581,6 @@ class ApiService {
       }),
     );
 
-    print("uploadVariationImage status: ${response.statusCode}");
-    print("uploadVariationImage body: ${response.body}");
-
     return response.statusCode == 200 || response.statusCode == 201;
   }
 
@@ -711,8 +717,6 @@ class ApiService {
     try {
       final response = await request.send();
       final body = await response.stream.bytesToString();
-      print("saveAdminProduct status: ${response.statusCode}");
-      print("saveAdminProduct body: $body");
       if (response.statusCode != 200 && response.statusCode != 201)
         return false;
 

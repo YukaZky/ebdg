@@ -19,6 +19,13 @@ use App\Http\Controllers\GoogleController;
 use App\Http\Controllers\WhatsappSettingController;
 use App\Http\Controllers\RajaOngkirController;
 use App\Http\Controllers\CouponController;
+use App\Http\Controllers\AccountDeletionController;
+
+Route::view('/privacy-policy', 'legal.privacy-policy')->name('privacy.policy');
+Route::get('/account-deletion', [AccountDeletionController::class, 'index'])->name('account.deletion');
+Route::delete('/account-deletion', [AccountDeletionController::class, 'destroy'])
+    ->middleware('throttle:5,1')
+    ->name('account.deletion.destroy');
 
 Route::get('/api/startup-ad', [ApiStartupAdController::class, 'show']);
 Route::get('/uploads/products/{filename}', [ApiMediaController::class, 'productImage'])->where('filename', '.*');
