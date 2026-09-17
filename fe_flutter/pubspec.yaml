@@ -20,9 +20,11 @@ dependencies:
   flutter_map: ^6.1.0
   latlong2: ^0.9.1
   shared_preferences: ^2.2.3
-  flutter_secure_storage: ^11.2.0
+  flutter_secure_storage: 9.2.4
   share_plus: ^7.2.2
   app_links: ^3.5.1
+  win32: 5.15.0
+  flutter_plugin_android_lifecycle: 2.0.35
 
 dev_dependencies:
   flutter_test:
